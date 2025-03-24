@@ -164,17 +164,6 @@ impl<'a> JsonParser<'a> {
     self.seed += 1;
     self.seed
   }
-  fn take_hex(&mut self, digits: usize) -> Result<String, String> {
-    let mut result = String::new();
-    for _ in 0..digits {
-      if let Ok(c) = self.next_char() {
-        result.push(c);
-      } else {
-        return Err("16進数の読み取り失敗".to_string());
-      }
-    }
-    Ok(result)
-  }
   fn parse(&mut self) -> JResult {
     let result = self.parse_value()?;
     self.skipws();
@@ -300,7 +289,14 @@ impl<'a> JsonParser<'a> {
             '/' => result.push('/'),
             '"' => result.push('"'),
             'u' => {
-              let hex = self.take_hex(4)?;
+              let mut hex = String::new();
+              for _ in 0..4 {
+                if let Ok(c) = self.next_char() {
+                  hex.push(c);
+                } else {
+                  return genErr!("Faild read hex", &self.pos, self.input_code);
+                }
+              }
               let cp = u32::from_str_radix(&hex, 16).map_err(|_| "無効なユニコード".to_string())?;
               result.push(std::char::from_u32(cp).ok_or("無効なコードポイント")?);
             }
