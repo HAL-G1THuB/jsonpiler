@@ -1,4 +1,5 @@
-Jsompiler - JSON Syntax Programming Language
+# Jsompiler - JSON Syntax Programming Language
+
 Jsompiler is a compiler for the JSON syntax programming language.
 
 🚨 This program runs only on Windows! 🚨
@@ -6,11 +7,10 @@ Jsompiler is a compiler for the JSON syntax programming language.
 Prerequisites
 Make sure the following tools are installed and included in your PATH environment variable:
 
--nasm
+- nasm
+- gcc
 
--gcc
-
-Installation & Usage
+## Installation & Usage
 
 ```bash
 git clone https://github.com/HAL-G1THuB/jsompiler
@@ -18,7 +18,7 @@ cd jsompiler
 cargo run <input_json_file>
 ```
 
-Command Syntax
+## Command Syntax
 
 ```bash
 jsompiler <input_json_file>
