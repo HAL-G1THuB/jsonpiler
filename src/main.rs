@@ -141,7 +141,7 @@ impl<'a> JsonParser<'a> {
     }
   }
   fn next_char(&mut self) -> Result<char, String> {
-    let ch = self.peek_char().ok_or("終端到達")?;
+    let ch = self.peek_char().ok_or("Reached end of text")?;
     self.pos += ch.len_utf8();
     Ok(ch)
   }
@@ -154,7 +154,7 @@ impl<'a> JsonParser<'a> {
       Ok(())
     } else {
       genErr!(
-        format!("期待された文字 '{}' が見つかりません", expected),
+        format!("Expected character '{}' not found.", expected),
         &self.pos,
         self.input_code
       )
@@ -168,7 +168,7 @@ impl<'a> JsonParser<'a> {
     let result = self.parse_value()?;
     self.skipws();
     if self.pos != self.input_code.len() {
-      genErr!("余分な文字が見つかりました", &self.pos, self.input_code)
+      genErr!("Unexpected trailing characters", &self.pos, self.input_code)
     } else {
       Ok(result)
     }
@@ -190,7 +190,7 @@ impl<'a> JsonParser<'a> {
       })
     } else {
       genErr!(
-        format!("{}の解析に失敗しました", n),
+        format!("Faild to parse '{}'", n),
         &self.pos,
         self.input_code
       )
@@ -217,7 +217,7 @@ impl<'a> JsonParser<'a> {
           self.next_char()?;
           if !matches!(self.peek_char(), Some(c) if c.is_ascii_digit()) {
             return genErr!(
-              "無効な数値フォーマット: 小数点の後に数字がありません",
+              "There are no digits after the decimal point",
               &self.pos,
               self.input_code
             );
@@ -232,7 +232,7 @@ impl<'a> JsonParser<'a> {
           }
           if !matches!(self.peek_char(), Some(c) if c.is_ascii_digit()) {
             return genErr!(
-              "無効な数値フォーマット: 指数部の数字が不足しています",
+              "Missing digits in the exponent part",
               &self.pos,
               self.input_code
             );
@@ -247,7 +247,7 @@ impl<'a> JsonParser<'a> {
         value: JValue::Int(VorL::Lit(int_val)),
       }),
       _ => num_str.parse::<f64>().map_or_else(
-        |_| genErr!("無効な数値フォーマット", &self.pos, self.input_code),
+        |_| genErr!("Invalid value", &self.pos, self.input_code),
         |float_val| {
           Ok(Json {
             pos: start,
@@ -260,7 +260,7 @@ impl<'a> JsonParser<'a> {
   fn parse_string(&mut self) -> JResult {
     if !self.input_code[self.pos..].starts_with('\"') {
       return genErr!(
-        "文字列の開始クォーテーションがありません",
+        "Missing opening quotation for string",
         &self.pos,
         self.input_code
       );
@@ -297,16 +297,21 @@ impl<'a> JsonParser<'a> {
                   return genErr!("Faild read hex", &self.pos, self.input_code);
                 }
               }
-              let cp = u32::from_str_radix(&hex, 16).map_err(|_| "無効なユニコード".to_string())?;
-              result.push(std::char::from_u32(cp).ok_or("無効なコードポイント")?);
+              let cp =
+                u32::from_str_radix(&hex, 16).map_err(|_| "Invalid codepoint".to_string())?;
+              result.push(std::char::from_u32(cp).ok_or("Invalid unicode")?);
             }
-            _ => return genErr!("未知のエスケープシーケンス", &self.pos, self.input_code),
+            _ => return genErr!("Invalid escape sequense", &self.pos, self.input_code),
           }
         }
         _ => result.push(c),
       }
     }
-    genErr!("文字列が正しく終了していません", &self.pos, self.input_code)
+    genErr!(
+      "String is not properly terminated",
+      &self.pos,
+      self.input_code
+    )
   }
   fn parse_array(&mut self) -> JResult {
     let start = self.pos;
@@ -335,7 +340,7 @@ impl<'a> JsonParser<'a> {
           self.pos += 1;
           self.skipws();
         }
-        _ => return genErr!("配列の区切りが不正です", &self.pos, self.input_code),
+        _ => return genErr!("Invalid array separator", &self.pos, self.input_code),
       }
     }
   }
@@ -360,13 +365,7 @@ impl<'a> JsonParser<'a> {
         Json {
           pos: invalid_pos,
           value: _,
-        } => {
-          return genErr!(
-            "キーは文字列である必要があります",
-            &invalid_pos,
-            self.input_code
-          )
-        }
+        } => return genErr!("Keys must be strings", &invalid_pos, self.input_code),
       };
       self.skipws();
       self.expect(':')?;
@@ -385,14 +384,14 @@ impl<'a> JsonParser<'a> {
         self.pos += 1;
         self.skipws();
       } else {
-        return genErr!("オブジェクトの区切りが不正です", &self.pos, self.input_code);
+        return genErr!("Invalid object separator", &self.pos, self.input_code);
       }
     }
   }
   fn parse_value(&mut self) -> JResult {
     self.skipws();
     if self.pos >= self.input_code.len() {
-      return genErr!("予期しない終端", &self.pos, self.input_code);
+      return genErr!("Unexpected end of text", &self.pos, self.input_code);
     }
     match self.peek_char() {
       Some('"') => self.parse_string(),
@@ -497,7 +496,7 @@ exit_program:
     };
     if list.is_empty() {
       return genErr!(
-        "式が期待されていますが、空のリストが渡されました",
+        "An procedure was expected, but an empty list was provided",
         listpos,
         self.input_code
       );
@@ -513,7 +512,11 @@ exit_program:
         if let Some(func) = self.func_table.get(cmd.as_str()) {
           return func(self, list, function);
         }
-        genErr!(format!("Undefined function: {}", cmd), cmdpos, self.input_code)
+        genErr!(
+          format!("Undefined function: {}", cmd),
+          cmdpos,
+          self.input_code
+        )
       }
       _ => {
         let mut func_buffer = String::new();
@@ -578,7 +581,7 @@ exit_program:
   fn f_setvar(&mut self, args: &[Json], function: &mut String) -> JResult {
     if args.len() != 3 {
       return genErr!(
-        "=の引数は2つである必要があります",
+        "'=' is exactly two arguments",
         &args[0].pos,
         self.input_code
       );
@@ -598,7 +601,13 @@ exit_program:
               },
             );
           }
-          _ => return genErr!("未実装の型", &args[0].pos, self.input_code),
+          _ => {
+            return genErr!(
+              "Assignment to an unimplemented type",
+              &args[0].pos,
+              self.input_code
+            )
+          }
         }
       } else {
         self.vars.insert(var_name.clone(), value);
@@ -609,7 +618,7 @@ exit_program:
       })
     } else {
       genErr!(
-       "Variable names must be compile-time fixed strings",
+        "Variable names must be compile-time fixed strings",
         &args[0].pos,
         ""
       )
@@ -618,7 +627,7 @@ exit_program:
   fn f_getvar(&mut self, args: &[Json], _: &mut String) -> JResult {
     if args.len() != 2 {
       return genErr!(
-        "$の引数は1つである必要があります",
+        "'=' is exactly one arguments",
         &args[0].pos,
         self.input_code
       );
@@ -628,7 +637,7 @@ exit_program:
         Ok(value.clone())
       } else {
         genErr!(
-          &format!("$変数 '{}' は未定義です", var_name),
+          &format!("Undefined variables: '{}'", var_name),
           &args[0].pos,
           self.input_code
         )
@@ -644,7 +653,7 @@ exit_program:
   fn f_plus(&mut self, args: &[Json], function: &mut String) -> JResult {
     if args.len() <= 1 {
       return genErr!(
-        "The '+' operator requires at least one operand",
+        "'+' requires at least one arguments",
         &args[0].pos,
         self.input_code
       );
@@ -655,14 +664,14 @@ exit_program:
     }) = self.eval(&args[1], function)
     else {
       return genErr!(
-        "+には整数型のオペランドが必要です",
+        "'+' requires integer operands",
         &args[0].pos,
         self.input_code
       );
     };
     match result {
-      VorL::Lit(l) => function.push_str(&format!("  mov rax, {}\n", l)),
-      VorL::Var(v) => function.push_str(&format!("  mov rax, [{}]\n", v)),
+      VorL::Lit(l) => writeln!(function, "  mov rax, {}", l)?,
+      VorL::Var(v) => writeln!(function, "  mov rax, [{}]", v)?,
     }
     for a in &args[2..args.len()] {
       let Ok(Json {
@@ -671,14 +680,14 @@ exit_program:
       }) = self.eval(a, function)
       else {
         return genErr!(
-          "+には整数型のオペランドが必要です",
+          "'+' requires integer operands",
           &args[0].pos,
           self.input_code
         );
       };
       match result {
-        VorL::Lit(l) => function.push_str(&format!("  add rax, {}\n", l)),
-        VorL::Var(v) => function.push_str(&format!("  add rax, [{}]\n", v)),
+        VorL::Lit(l) => writeln!(function, "  add rax, {}", l)?,
+        VorL::Var(v) => writeln!(function, "  add rax, [{}]", v)?,
       }
     }
     let assign_name = format!("l_{}", int2hex(self.get_seed()));
@@ -723,8 +732,8 @@ exit_program:
       );
     };
     match result {
-      VorL::Lit(l) => function.push_str(&format!("  mov rax, {}\n", l)),
-      VorL::Var(v) => function.push_str(&format!("  mov rax, [{}]\n", v)),
+      VorL::Lit(l) => writeln!(function, "  mov rax, {}", l)?,
+      VorL::Var(v) => writeln!(function, "  mov rax, [{}]", v)?,
     }
     for a in &args[2..args.len()] {
       let Ok(Json {
@@ -739,8 +748,8 @@ exit_program:
         );
       };
       match result {
-        VorL::Lit(l) => function.push_str(&format!("  sub rax, {}\n", l)),
-        VorL::Var(v) => function.push_str(&format!("  sub rax, [{}]\n", v)),
+        VorL::Lit(l) => writeln!(function, "  sub rax, {}", l)?,
+        VorL::Var(v) => writeln!(function, "  sub rax, [{}]", v)?,
       }
     }
     let assign_name = format!("l_{}", int2hex(self.get_seed()));
@@ -776,7 +785,7 @@ exit_program:
       } => v,
       _ => {
         return genErr!(
-          "The first argument of message must be a string.",
+          "The first argument of message must be a string",
           &args[1].pos,
           self.input_code
         )
@@ -806,7 +815,8 @@ exit_program:
     };
     let retcode = format!("l_{}", int2hex(self.get_seed()));
     writeln!(self.bss, "  {} resq 1", retcode)?;
-    function.push_str(&format!(
+    writeln!(
+      function,
       r#"  xor ecx, ecx
   mov rdx, {}
   mov r8, {}
@@ -817,7 +827,7 @@ exit_program:
   mov [{}], rax
 "#,
       msg, title, retcode
-    ));
+    )?;
     Ok(Json {
       pos: args[0].pos,
       value: JValue::Null,
@@ -914,9 +924,7 @@ fn escape_string(s: &str) -> String {
       '\r' => escaped.push_str("\\r"),
       '\u{08}' => escaped.push_str("\\b"),
       '\u{0C}' => escaped.push_str("\\f"),
-      c if c < '\u{20}' => {
-        escaped.push_str(&format!("\\u{:04x}", c as u32));
-      }
+      c if c < '\u{20}' => escaped.push_str(&format!("\\u{:04x}", c as u32)),
       _ => escaped.push(c),
     }
   }
@@ -932,7 +940,7 @@ fn main() -> Result<(), Box<dyn Error>> {
   let mut parser = JsonParser::new(&input_code);
   let parsed = parser
     .parse()
-    .map_err(|errmsg| panic!("\nパース時エラー: {}", errmsg))?;
+    .map_err(|errmsg| panic!("\nParseError: {}", errmsg))?;
   if false {
     parsed.print_json()?
   };
@@ -945,30 +953,28 @@ fn main() -> Result<(), Box<dyn Error>> {
   let exe_file = format!("{}.exe", filename);
   parser
     .build(parsed, &asm_file)
-    .map_err(|errmsg| panic!("\nコンパイル時エラー: {}", errmsg))?;
+    .map_err(|errmsg| panic!("\nCompileError: {}", errmsg))?;
   Command::new("nasm")
     .args(["-f", "win64", &asm_file, "-o", &obj_file])
     .status()
-    .map_err(|_| "アセンブルに失敗しました")?
+    .map_err(|_| "Failed assembling pro")?
     .success()
     .then_some(())
-    .ok_or("アセンブルに失敗しました")?;
+    .ok_or("Failed assembling process")?;
   Command::new("gcc")
     .args([&obj_file, "-o", &exe_file, "-nostartfiles"])
     .status()
-    .map_err(|_| "リンクに失敗しました")?
+    .map_err(|_| "Failed linking process")?
     .success()
     .then_some(())
-    .ok_or("リンクに失敗しました")?;
+    .ok_or("Failed linking process")?;
   let mut path = env::current_dir()?;
   path.push(&exe_file);
   let exit_code = Command::new(path)
     .spawn()?
     .wait()?
     .code()
-    .ok_or("終了コードが得られませんでした")?;
-  Command::new("cmd")
-    .args(["/C", "pause >nul 2>nul"])
-    .status()?;
+    .ok_or("Failed to retrieve the exit code")?;
+  Command::new("cmd").args(["/C", "pause"]).status()?;
   std::process::exit(exit_code);
 }
