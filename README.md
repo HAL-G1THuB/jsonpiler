@@ -7,8 +7,12 @@ Jsompiler is a compiler for the JSON syntax programming language.
 Prerequisites
 Make sure the following tools are installed and included in your PATH environment variable:
 
+---
+
 - nasm
 - gcc
+
+---
 
 ## Installation & Usage
 
