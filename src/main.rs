@@ -513,7 +513,7 @@ exit_program:
         if let Some(func) = self.func_table.get(cmd.as_str()) {
           return func(self, list, function);
         }
-        genErr!("未定義の関数です", cmdpos, self.input_code)
+        genErr!(format!("Undefined function: {}", cmd), cmdpos, self.input_code)
       }
       _ => {
         let mut func_buffer = String::new();
@@ -530,7 +530,7 @@ exit_program:
     } = &parsed
     else {
       return genErr!(
-        "Only a lambda list or a string is allowed as the first element of a list.",
+        "Only a lambda list or a string is allowed as the first element of a list",
         &parsed.pos,
         self.input_code
       );
@@ -541,20 +541,20 @@ exit_program:
     } = &parsed
     else {
       return genErr!(
-        "Only a lambda list or a string is allowed as the first element of a list.",
+        "Only a lambda list or a string is allowed as the first element of a list",
         &func_list_pos,
         self.input_code
       );
     };
     if cmd != "lambda" {
       return genErr!(
-        "Only a lambda list or a string is allowed as the first element of a list.",
+        "Only a lambda list or a string is allowed as the first element of a list",
         cmdpos,
         self.input_code
       );
     }
     if func_list.len() < 3 {
-      return genErr!("関数の定義が不正です", func_list_pos, self.input_code);
+      return genErr!("Invalid function defintion", func_list_pos, self.input_code);
     };
     let Json {
       pos: _,
@@ -562,7 +562,7 @@ exit_program:
     } = &func_list[1]
     else {
       return genErr!(
-        "lambdaリストの第2要素は引数リストである必要があります",
+        "The second element of a lambda list must be an argument list",
         func_list_pos,
         self.input_code
       );
@@ -609,7 +609,7 @@ exit_program:
       })
     } else {
       genErr!(
-        "=変数名はコンパイル時に確定している文字列である必要があります",
+       "Variable names must be compile-time fixed strings",
         &args[0].pos,
         ""
       )
@@ -635,7 +635,7 @@ exit_program:
       }
     } else {
       genErr!(
-        "$変数名はコンパイル時に確定している文字列である必要があります",
+        "Variable names must be compile-time fixed strings",
         &args[0].pos,
         self.input_code
       )
