@@ -530,7 +530,7 @@ exit_program:
     } = &parsed
     else {
       return genErr!(
-        "lambdaリストか文字列以外はリストの最初の要素として認められません",
+        "Only a lambda list or a string is allowed as the first element of a list.",
         &parsed.pos,
         self.input_code
       );
@@ -541,14 +541,14 @@ exit_program:
     } = &parsed
     else {
       return genErr!(
-        "lambdaリストか文字列以外はリストの最初の要素として認められません",
+        "Only a lambda list or a string is allowed as the first element of a list.",
         &func_list_pos,
         self.input_code
       );
     };
     if cmd != "lambda" {
       return genErr!(
-        "lambdaリストか文字列以外はリストの最初の要素として認められません",
+        "Only a lambda list or a string is allowed as the first element of a list.",
         cmdpos,
         self.input_code
       );
@@ -644,7 +644,7 @@ exit_program:
   fn f_plus(&mut self, args: &[Json], function: &mut String) -> JResult {
     if args.len() <= 1 {
       return genErr!(
-        "+には少なくとも1つのオペランドが必要です",
+        "The '+' operator requires at least one operand",
         &args[0].pos,
         self.input_code
       );
@@ -692,12 +692,12 @@ exit_program:
   fn f_begin(&mut self, args: &[Json], function: &mut String) -> JResult {
     if args.len() <= 1 {
       return genErr!(
-        "beginには少なくとも1つのオペランドが必要です",
+        "begin requires at least one arguments",
         &args[0].pos,
         self.input_code
       );
     };
-    let mut result: JResult = Err("到達不可能".into());
+    let mut result: JResult = Err("Unreachable".into());
     for a in &args[1..args.len()] {
       result = self.eval(a, function)
     }
@@ -706,7 +706,7 @@ exit_program:
   fn f_minus(&mut self, args: &[Json], function: &mut String) -> JResult {
     if args.len() <= 1 {
       return genErr!(
-        "-には少なくとも1つのオペランドが必要です",
+        "'-' requires at least one operand",
         &args[0].pos,
         self.input_code
       );
@@ -717,7 +717,7 @@ exit_program:
     }) = self.eval(&args[1], function)
     else {
       return genErr!(
-        "-には整数型のオペランドが必要です",
+        "'-' requires integer operands",
         &args[0].pos,
         self.input_code
       );
@@ -733,7 +733,7 @@ exit_program:
       }) = self.eval(a, function)
       else {
         return genErr!(
-          "-には整数型のオペランドが必要です",
+          "'-' requires integer operands",
           &args[0].pos,
           self.input_code
         );
@@ -754,7 +754,7 @@ exit_program:
   fn f_message(&mut self, args: &[Json], function: &mut String) -> JResult {
     if args.len() != 3 {
       return genErr!(
-        "messageには3つのオペランドが必要です",
+        "message requires three operands",
         &args[0].pos,
         self.input_code
       );
@@ -776,7 +776,7 @@ exit_program:
       } => v,
       _ => {
         return genErr!(
-          "messsage.1には文字列が必要です",
+          "The first argument of message must be a string.",
           &args[1].pos,
           self.input_code
         )
@@ -798,7 +798,7 @@ exit_program:
       } => v,
       _ => {
         return genErr!(
-          "messsage.2には文字列が必要です",
+          "The second argument of message must be a string",
           &args[2].pos,
           self.input_code
         )
