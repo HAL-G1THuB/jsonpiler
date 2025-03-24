@@ -1,0 +1,11 @@
+[package]
+name = "jsompiler"
+version = "0.1.0"
+edition = "2024"
+description = "Json syntax programming language"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/HAL-G1THub/jsompiler.git"
+[dependencies]
+[[bin]]
+name = "jsompiler"
+path = "src/main.rs"
