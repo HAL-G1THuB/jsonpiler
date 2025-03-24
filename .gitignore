@@ -1,2 +1,5 @@
 /target
 /.history
+/input.asm
+/input.obj
+/input.exe

@@ -2,6 +2,11 @@
 
 this is compiler for json syntax programming language.
 
+THIS PROGRAM IS RUN ONLY FOR WINDOWS!
+
+Tools that need to be included in the PATH environment variable:
+`nasm gcc`
+
 ```bash
 git clone https://github.com/HAL-G1THuB/jsompiler
 cd jsompiler
