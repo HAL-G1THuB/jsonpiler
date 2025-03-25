@@ -2,6 +2,8 @@
 
 Jsompiler is a compiler for the JSON syntax programming language.
 
+This program converts a program written in JSON into GNU Assembly, compiles it, and executes it.
+
 🚨 This program runs only on Windows! 🚨
 
 Prerequisites
