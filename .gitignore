@@ -1,8 +1,8 @@
 /target
 /jsompiler-doc
 /.history
-/input.s
 /input.obj
 /input.exe
+/input.s
 /commit.ps1
 /doc
