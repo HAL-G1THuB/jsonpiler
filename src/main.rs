@@ -87,10 +87,7 @@ enum JValue {
   Object(VorL<HashMap<String, Json>>),
   Function(VorL<Vec<Json>>),
 }
-trait LitOrVar {
-  fn is_lit(&self) -> bool;
-}
-impl LitOrVar for JValue {
+impl JValue {
   fn is_lit(&self) -> bool {
     match self {
       JValue::Null => true,
@@ -105,7 +102,7 @@ impl LitOrVar for JValue {
   }
 }
 type FuncType<T> = fn(&mut T, &[Json], &mut String) -> JResult;
-struct JsonParser<'a> {
+struct JParser<'a> {
   input_code: &'a str,
   pos: usize,
   extern_set: HashSet<String>,
@@ -116,17 +113,17 @@ struct JsonParser<'a> {
   vars: HashMap<String, Json>,
   seed: u64,
 }
-impl<'a> JsonParser<'a> {
+impl<'a> JParser<'a> {
   pub fn new(code: &'a str) -> Self {
     let mut table = HashMap::new();
-    table.insert(String::from("="), JsonParser::f_setvar as FuncType<Self>);
-    table.insert(String::from("$"), JsonParser::f_getvar as FuncType<Self>);
-    table.insert(String::from("+"), JsonParser::f_plus as FuncType<Self>);
-    table.insert(String::from("-"), JsonParser::f_minus as FuncType<Self>);
-    table.insert(String::from("begin"), JsonParser::f_begin as FuncType<Self>);
+    table.insert(String::from("="), JParser::f_setvar as FuncType<Self>);
+    table.insert(String::from("$"), JParser::f_getvar as FuncType<Self>);
+    table.insert(String::from("+"), JParser::f_plus as FuncType<Self>);
+    table.insert(String::from("-"), JParser::f_minus as FuncType<Self>);
+    table.insert(String::from("begin"), JParser::f_begin as FuncType<Self>);
     table.insert(
       String::from("message"),
-      JsonParser::f_message as FuncType<Self>,
+      JParser::f_message as FuncType<Self>,
     );
     Self {
       input_code: code,
@@ -298,7 +295,7 @@ impl<'a> JsonParser<'a> {
                 }
               }
               let cp =
-                u32::from_str_radix(&hex, 16).map_err(|_| "Invalid codepoint".to_string())?;
+                u32::from_str_radix(&hex, 16).map_err(|_| String::from("Invalid codepoint"))?;
               result.push(std::char::from_u32(cp).ok_or("Invalid unicode")?);
             }
             _ => return genErr!("Invalid escape sequense", &self.pos, self.input_code),
@@ -933,7 +930,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     return Ok(());
   }
   let input_code = fs::read_to_string(&args[1])?;
-  let mut parser = JsonParser::new(&input_code);
+  let mut parser = JParser::new(&input_code);
   let parsed = parser
     .parse()
     .map_err(|errmsg| panic!("\nParseError: {}", errmsg))?;
