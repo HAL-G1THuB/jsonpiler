@@ -6,7 +6,8 @@ This program converts a program written in JSON into GNU Assembly, compiles it, 
 
 🚨 **This program runs only on Windows!** 🚨
 
-Prerequisites
+## Prerequisites
+
 **Make sure the following tools are installed and included in your PATH environment variable:**
 
 ---
