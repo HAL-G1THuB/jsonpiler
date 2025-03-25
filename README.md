@@ -9,7 +9,6 @@ Make sure the following tools are installed and included in your PATH environmen
 
 ---
 
-- nasm
 - gcc
 
 ---

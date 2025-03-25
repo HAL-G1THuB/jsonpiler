@@ -17,7 +17,7 @@ const HEX_TABLE: [[u8; 2]; 256] = {
   }
   table
 };
-fn str2hex(s: &str) -> String {
+fn _str2hex(s: &str) -> String {
   let hex: Vec<u8> = s
     .as_bytes()
     .iter()
@@ -132,9 +132,9 @@ impl<'a> JsonParser<'a> {
       input_code: code,
       pos: 0,
       extern_set: HashSet::new(),
-      data: String::from("section .data\n"),
-      bss: String::from("section .bss\n"),
-      functions: String::from("section .text\n"),
+      data: String::from(".section .data\n"),
+      bss: String::from(".section .bss\n"),
+      functions: String::from(".section .text\n"),
       func_table: table,
       vars: HashMap::new(),
       seed: 0,
@@ -413,75 +413,71 @@ impl<'a> JsonParser<'a> {
     self.extern_set.insert(String::from("FormatMessageW"));
     self.extern_set.insert(String::from("GetStdHandle"));
     self.bss.push_str(
-      r#"  lastError resd 1
-  errorMessage resw 256
-  STDOUT resq 1
-  STDERR resq 1
-  STDIN resq 1
+      r#"  .lcomm lastError, 4
+  .lcomm errorMessage, 512
+  .lcomm STDOUT, 8
+  .lcomm STDERR, 8
+  .lcomm STDIN, 8
 "#,
     );
     let mut mainfunc = String::from(
       r#"_start:
-  sub rsp, 40
-  mov ecx, 65001
-  call SetConsoleCP
-  mov ecx, 65001
-  call SetConsoleOutputCP
-  mov ecx, -10
-  call GetStdHandle
-  mov [STDIN], rax
-  mov ecx, -11
-  call GetStdHandle
-  mov [STDOUT], rax
-  mov ecx, -12
-  call GetStdHandle
-  mov [STDERR], rax
+  subq $40, %rsp
+  movl $65001, %ecx
+  callq SetConsoleCP
+  movl $65001, %ecx
+  callq SetConsoleOutputCP
+  movl $-10, %ecx
+  callq GetStdHandle
+  movq %rax, STDIN(%rip)
+  movl $-11, %ecx
+  callq GetStdHandle
+  movq %rax, STDOUT(%rip)
+  movl $-12, %ecx
+  callq GetStdHandle
+  movq %rax, STDERR(%rip)
 "#,
     );
     self.eval(&parsed, &mut mainfunc)?;
-    mainfunc.push_str(
-      r#"  xor ecx, ecx
-  call ExitProcess
-"#,
-    );
     let mut file = File::create(filename)?;
-    writeln!(file, "global start")?;
+    writeln!(file, ".global start")?;
     for inc in &self.extern_set {
-      writeln!(file, "extern {}", inc)?;
+      writeln!(file, ".extern {}", inc)?;
     }
-    writeln!(file, "default rel")?;
     write!(file, "{}", self.data)?;
     write!(file, "{}", self.bss)?;
     write!(file, "{}", self.functions)?;
     write!(file, "{}", mainfunc)?;
     write!(
       file,
-      r#"display_error:
-  call GetLastError
-  mov [lastError], eax
-  sub rsp, 32
-  mov ecx, 0x1200
-  xor edx, edx
-  mov r8d, [lastError]
-  xor r9d, r9d
-  lea rax, [errorMessage]
-  mov qword [rsp+32], rax
-  mov dword [rsp+40], 1024
-  mov qword [rsp+48], 0
-  call FormatMessageW
-  add rsp, 16
-  test eax, eax
+      r#"  xorl %ecx, %ecx
+  callq ExitProcess
+display_error:
+  callq GetLastError
+  movl %eax, lastError(%rip)
+  subq $32, %rsp
+  movl $0x1200, %ecx
+  xorl %edx, %edx
+  movl lastError(%rip), %r8d
+  xorl %r9d, %r9d
+  leaq errorMessage(%rip), %rax
+  movq %rax, 32(%rsp)
+  movl $1024, 40(%rsp)
+  movq $0, 48(%rsp)
+  callq FormatMessageW
+  addq $16, %rsp
+  testl %eax, %eax
   jz exit_program
-  mov rcx, [STDERR]
-  lea rdx, [errorMessage]
-  mov r8, 256
-  lea r9, [rsp+32]
-  mov qword [rsp+40], 0
-  add rsp, 16
-  call WriteConsoleW
+  movq STDERR(%rip), %rcx
+  leaq errorMessage(%rip), %rdx
+  movq $256, %r8
+  leaq 32(%rsp), %r9
+  movq $0, 40(%rsp)
+  addq $16, %rsp
+  callq WriteConsoleW
 exit_program:
-  mov ecx, [lastError]
-  call ExitProcess
+  movl lastError(%rip), %ecx
+  callq ExitProcess
 "#
     )?;
     Ok(())
@@ -592,7 +588,7 @@ exit_program:
         match value.value {
           JValue::String(VorL::Lit(s)) => {
             let n = format!("l_{}", int2hex(self.get_seed()));
-            writeln!(self.data, "  {} db \"{}\", 0", n, s)?;
+            writeln!(self.data, "  {}: .string \"{}\"", n, s)?;
             self.vars.insert(
               var_name.clone(),
               Json {
@@ -670,8 +666,8 @@ exit_program:
       );
     };
     match result {
-      VorL::Lit(l) => writeln!(function, "  mov rax, {}", l)?,
-      VorL::Var(v) => writeln!(function, "  mov rax, [{}]", v)?,
+      VorL::Lit(l) => writeln!(function, "  movq ${}, %rax", l)?,
+      VorL::Var(v) => writeln!(function, "  movq {}(%rip), %rax", v)?,
     }
     for a in &args[2..args.len()] {
       let Ok(Json {
@@ -686,13 +682,13 @@ exit_program:
         );
       };
       match result {
-        VorL::Lit(l) => writeln!(function, "  add rax, {}", l)?,
-        VorL::Var(v) => writeln!(function, "  add rax, [{}]", v)?,
+        VorL::Lit(l) => writeln!(function, "  addq ${}, %rax", l)?,
+        VorL::Var(v) => writeln!(function, "  addq {}(%rip), %rax", v)?,
       }
     }
     let assign_name = format!("l_{}", int2hex(self.get_seed()));
-    writeln!(self.bss, "  {} resq 1", assign_name)?;
-    writeln!(function, "  mov [{}], rax", assign_name)?;
+    writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
+    writeln!(function, "  movq %rax, {}(%rip)", assign_name)?;
     Ok(Json {
       pos: args[0].pos,
       value: JValue::Int(VorL::Var(assign_name)),
@@ -732,8 +728,8 @@ exit_program:
       );
     };
     match result {
-      VorL::Lit(l) => writeln!(function, "  mov rax, {}", l)?,
-      VorL::Var(v) => writeln!(function, "  mov rax, [{}]", v)?,
+      VorL::Lit(l) => writeln!(function, "  movq ${}, %rax", l)?,
+      VorL::Var(v) => writeln!(function, "  movq {}(%rip), %rax", v)?,
     }
     for a in &args[2..args.len()] {
       let Ok(Json {
@@ -748,13 +744,13 @@ exit_program:
         );
       };
       match result {
-        VorL::Lit(l) => writeln!(function, "  sub rax, {}", l)?,
-        VorL::Var(v) => writeln!(function, "  sub rax, [{}]", v)?,
+        VorL::Lit(l) => writeln!(function, "  subq ${}, %rax", l)?,
+        VorL::Var(v) => writeln!(function, "  subq {}(%rip), %rax", v)?,
       }
     }
     let assign_name = format!("l_{}", int2hex(self.get_seed()));
-    writeln!(self.bss, "  {} resq 1", assign_name)?;
-    writeln!(function, "  mov [{}], rax", assign_name)?;
+    writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
+    writeln!(function, "  movq %rax, {}(%rip)", assign_name)?;
     Ok(Json {
       pos: args[0].pos,
       value: JValue::Int(VorL::Var(assign_name)),
@@ -768,29 +764,6 @@ exit_program:
         self.input_code
       );
     };
-    let parsed1 = self.eval(&args[1], function)?;
-    self.extern_set.insert(String::from("MessageBoxA"));
-    let title = match parsed1 {
-      Json {
-        pos: _,
-        value: JValue::String(VorL::Lit(l)),
-      } => {
-        let mn = format!("l_{}", int2hex(self.get_seed()));
-        writeln!(self.data, "  {} db \"{}\", 0", mn, l)?;
-        mn
-      }
-      Json {
-        pos: _,
-        value: JValue::String(VorL::Var(v)),
-      } => v,
-      _ => {
-        return genErr!(
-          "The first argument of message must be a string",
-          &args[1].pos,
-          self.input_code
-        )
-      }
-    };
     let parsed2 = self.eval(&args[2], function)?;
     let msg = match parsed2 {
       Json {
@@ -798,7 +771,7 @@ exit_program:
         value: JValue::String(VorL::Lit(l)),
       } => {
         let mn = format!("l_{}", int2hex(self.get_seed()));
-        writeln!(self.data, "  {} db \"{}\", 0", mn, l)?;
+        writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
         mn
       }
       Json {
@@ -813,18 +786,41 @@ exit_program:
         )
       }
     };
+    let parsed1 = self.eval(&args[1], function)?;
+    self.extern_set.insert(String::from("MessageBoxA"));
+    let title = match parsed1 {
+      Json {
+        pos: _,
+        value: JValue::String(VorL::Lit(l)),
+      } => {
+        let mn = format!("l_{}", int2hex(self.get_seed()));
+        writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
+        mn
+      }
+      Json {
+        pos: _,
+        value: JValue::String(VorL::Var(v)),
+      } => v,
+      _ => {
+        return genErr!(
+          "The first argument of message must be a string",
+          &args[1].pos,
+          self.input_code
+        )
+      }
+    };
     let retcode = format!("l_{}", int2hex(self.get_seed()));
-    writeln!(self.bss, "  {} resq 1", retcode)?;
+    writeln!(self.bss, "  .lcomm {}, 8", retcode)?;
     writeln!(
       function,
-      r#"  xor ecx, ecx
-  mov rdx, {}
-  mov r8, {}
-  xor r9d, r9d
-  call MessageBoxA
-  test eax, eax
+      r#"  xorl %ecx, %ecx
+  leaq {}(%rip), %rdx
+  leaq {}(%rip), %r8
+  xorl %r9d, %r9d
+  callq MessageBoxA
+  testl %eax, %eax
   jz display_error
-  mov [{}], rax
+  movq %rax, {}(%rip)
 "#,
       msg, title, retcode
     )?;
@@ -948,26 +944,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     .file_stem()
     .ok_or("無効なファイル名")?
     .to_string_lossy();
-  let asm_file = format!("{}.asm", filename);
-  let obj_file = format!("{}.obj", filename);
+  let asm_file = format!("{}.s", filename);
   let exe_file = format!("{}.exe", filename);
   parser
     .build(parsed, &asm_file)
     .map_err(|errmsg| panic!("\nCompileError: {}", errmsg))?;
-  Command::new("nasm")
-    .args(["-f", "win64", &asm_file, "-o", &obj_file])
-    .status()
-    .map_err(|_| "Failed assembling pro")?
-    .success()
-    .then_some(())
-    .ok_or("Failed assembling process")?;
   Command::new("gcc")
-    .args([&obj_file, "-o", &exe_file, "-nostartfiles"])
+    .args([&asm_file, "-o", &exe_file, "-nostartfiles"])
     .status()
-    .map_err(|_| "Failed linking process")?
+    .map_err(|_| "Failed assembling or linking process")?
     .success()
     .then_some(())
-    .ok_or("Failed linking process")?;
+    .ok_or("Failed assembling or linking process")?;
   let mut path = env::current_dir()?;
   path.push(&exe_file);
   let exit_code = Command::new(path)
