@@ -120,11 +120,8 @@ impl<'a> JParser<'a> {
     table.insert(String::from("$"), JParser::f_getvar as JType<Self>);
     table.insert(String::from("+"), JParser::f_plus as JType<Self>);
     table.insert(String::from("-"), JParser::f_minus as JType<Self>);
+    table.insert(String::from("message"), JParser::f_message as JType<Self>);
     table.insert(String::from("begin"), JParser::f_begin as JType<Self>);
-    table.insert(
-      String::from("message"),
-      JParser::f_message as JType<Self>,
-    );
     Self {
       input_code: code,
       pos: 0,
@@ -272,7 +269,7 @@ impl<'a> JParser<'a> {
           return Ok(Json {
             pos: start,
             value: JValue::String(VorL::Lit(result)),
-          })
+          });
         }
         '\\' => {
           let escaped = self.next_char()?;
@@ -599,7 +596,7 @@ exit_program:
               "Assignment to an unimplemented type",
               &args[0].pos,
               self.input_code
-            )
+            );
           }
         }
       } else {
@@ -780,7 +777,7 @@ exit_program:
           "The second argument of message must be a string",
           &args[2].pos,
           self.input_code
-        )
+        );
       }
     };
     let parsed1 = self.eval(&args[1], function)?;
@@ -803,7 +800,7 @@ exit_program:
           "The first argument of message must be a string",
           &args[1].pos,
           self.input_code
-        )
+        );
       }
     };
     let retcode = format!("_{}", int2hex(self.get_seed()));
