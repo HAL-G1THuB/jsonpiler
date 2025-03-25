@@ -1,8 +1,5 @@
 /target
 /.history
-/Cargo.lock
-/Cargo.toml
-/rustfmt.toml
 /input.obj
 /input.exe
 /input.s
