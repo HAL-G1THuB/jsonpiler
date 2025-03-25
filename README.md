@@ -10,11 +10,7 @@ This program converts a program written in JSON into GNU Assembly, compiles it, 
 
 **Make sure the following tools are installed and included in your PATH environment variable:**
 
----
-
 - gcc
-
----
 
 ## Installation & Usage
 
