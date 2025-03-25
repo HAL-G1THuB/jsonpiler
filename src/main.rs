@@ -3,7 +3,7 @@ use std::env;
 use std::error::Error;
 use std::fmt::{self, Write as _};
 use std::fs::{self, File};
-use std::io::Write as _;
+use std::io::{self, Write as _};
 use std::path::Path;
 use std::process::Command;
 type JResult = Result<Json, Box<dyn Error>>;
@@ -587,7 +587,7 @@ exit_program:
       if value.value.is_lit() {
         match value.value {
           JValue::String(VorL::Lit(s)) => {
-            let n = format!("l_{}", int2hex(self.get_seed()));
+            let n = format!("_{}", int2hex(self.get_seed()));
             writeln!(self.data, "  {}: .string \"{}\"", n, s)?;
             self.vars.insert(
               var_name.clone(),
@@ -686,7 +686,7 @@ exit_program:
         VorL::Var(v) => writeln!(function, "  addq {}(%rip), %rax", v)?,
       }
     }
-    let assign_name = format!("l_{}", int2hex(self.get_seed()));
+    let assign_name = format!("_{}", int2hex(self.get_seed()));
     writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
     writeln!(function, "  movq %rax, {}(%rip)", assign_name)?;
     Ok(Json {
@@ -748,7 +748,7 @@ exit_program:
         VorL::Var(v) => writeln!(function, "  subq {}(%rip), %rax", v)?,
       }
     }
-    let assign_name = format!("l_{}", int2hex(self.get_seed()));
+    let assign_name = format!("_{}", int2hex(self.get_seed()));
     writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
     writeln!(function, "  movq %rax, {}(%rip)", assign_name)?;
     Ok(Json {
@@ -770,7 +770,7 @@ exit_program:
         pos: _,
         value: JValue::String(VorL::Lit(l)),
       } => {
-        let mn = format!("l_{}", int2hex(self.get_seed()));
+        let mn = format!("_{}", int2hex(self.get_seed()));
         writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
         mn
       }
@@ -793,7 +793,7 @@ exit_program:
         pos: _,
         value: JValue::String(VorL::Lit(l)),
       } => {
-        let mn = format!("l_{}", int2hex(self.get_seed()));
+        let mn = format!("_{}", int2hex(self.get_seed()));
         writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
         mn
       }
@@ -809,7 +809,7 @@ exit_program:
         )
       }
     };
-    let retcode = format!("l_{}", int2hex(self.get_seed()));
+    let retcode = format!("_{}", int2hex(self.get_seed()));
     writeln!(self.bss, "  .lcomm {}, 8", retcode)?;
     writeln!(
       function,
@@ -963,6 +963,5 @@ fn main() -> Result<(), Box<dyn Error>> {
     .wait()?
     .code()
     .ok_or("Failed to retrieve the exit code")?;
-  Command::new("cmd").args(["/C", "pause"]).status()?;
   std::process::exit(exit_code);
 }
