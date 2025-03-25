@@ -101,7 +101,7 @@ impl JValue {
     }
   }
 }
-type FuncType<T> = fn(&mut T, &[Json], &mut String) -> JResult;
+type JType<T> = fn(&mut T, &[Json], &mut String) -> JResult;
 struct JParser<'a> {
   input_code: &'a str,
   pos: usize,
@@ -109,21 +109,21 @@ struct JParser<'a> {
   data: String,
   bss: String,
   functions: String,
-  func_table: HashMap<String, FuncType<Self>>,
+  func_table: HashMap<String, JType<Self>>,
   vars: HashMap<String, Json>,
   seed: u64,
 }
 impl<'a> JParser<'a> {
   pub fn new(code: &'a str) -> Self {
     let mut table = HashMap::new();
-    table.insert(String::from("="), JParser::f_setvar as FuncType<Self>);
-    table.insert(String::from("$"), JParser::f_getvar as FuncType<Self>);
-    table.insert(String::from("+"), JParser::f_plus as FuncType<Self>);
-    table.insert(String::from("-"), JParser::f_minus as FuncType<Self>);
-    table.insert(String::from("begin"), JParser::f_begin as FuncType<Self>);
+    table.insert(String::from("="), JParser::f_setvar as JType<Self>);
+    table.insert(String::from("$"), JParser::f_getvar as JType<Self>);
+    table.insert(String::from("+"), JParser::f_plus as JType<Self>);
+    table.insert(String::from("-"), JParser::f_minus as JType<Self>);
+    table.insert(String::from("begin"), JParser::f_begin as JType<Self>);
     table.insert(
       String::from("message"),
-      JParser::f_message as FuncType<Self>,
+      JParser::f_message as JType<Self>,
     );
     Self {
       input_code: code,
