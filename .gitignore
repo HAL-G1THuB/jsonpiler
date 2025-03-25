@@ -4,3 +4,6 @@
 /input.exe
 /input.s
 /commit.ps1
+/Cargo.lock
+/Cargo.toml
+/rustfmt.toml

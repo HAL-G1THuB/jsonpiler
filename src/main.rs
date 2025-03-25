@@ -17,7 +17,7 @@ const HEX_TABLE: [[u8; 2]; 256] = {
   }
   table
 };
-fn _str2hex(s: &str) -> String {
+fn str2hex(s: &str) -> String {
   let hex: Vec<u8> = s
     .as_bytes()
     .iter()
