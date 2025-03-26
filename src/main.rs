@@ -124,6 +124,14 @@ impl<'a> JParser<'a> {
     self.seed += 1;
     format!("_{:x}", self.seed)
   }
+  fn validate(&self, flag: bool, name: String, text: String, pos: &usize)-> Result<(), Box<dyn Error>>{
+    if flag {
+    return genErr!(
+      format!("'{}' requires {} argument", name, text),
+      pos,
+      self.input_code
+    );
+  };Ok(())}
   fn parse(&mut self) -> JResult {
     let result = self.parse_value()?;
     self.skipws();
@@ -538,13 +546,7 @@ exit_program:
     })
   }
   fn f_setvar(&mut self, args: &[Json], function: &mut String) -> JResult {
-    if args.len() != 3 {
-      return genErr!(
-        "'=' is exactly two arguments",
-        &args[0].pos,
-        self.input_code
-      );
-    }
+    self.validate(args.len() != 3, "=".into(), "two".into(),&args[0].pos)?;
     if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       let value = self.eval(&args[2], function)?;
       if value.value.is_lit() {
@@ -584,13 +586,7 @@ exit_program:
     }
   }
   fn f_getvar(&mut self, args: &[Json], _: &mut String) -> JResult {
-    if args.len() != 2 {
-      return genErr!(
-        "'=' is exactly one arguments",
-        &args[0].pos,
-        self.input_code
-      );
-    }
+    self.validate(args.len() != 2, "$".into(), "one".into(),&args[0].pos)?;
     if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       if let Some(value) = self.vars.get(var_name) {
         Ok(value.clone())
@@ -610,13 +606,7 @@ exit_program:
     }
   }
   fn f_plus(&mut self, args: &[Json], function: &mut String) -> JResult {
-    if args.len() <= 1 {
-      return genErr!(
-        "'+' requires at least one arguments",
-        &args[0].pos,
-        self.input_code
-      );
-    };
+    self.validate(args.len() == 1, "+".into(), "at least one".into(),&args[0].pos)?;
     let Ok(Json {
       pos: _,
       value: JValue::Int(result),
@@ -658,13 +648,7 @@ exit_program:
     })
   }
   fn f_begin(&mut self, args: &[Json], function: &mut String) -> JResult {
-    if args.len() <= 1 {
-      return genErr!(
-        "begin requires at least one arguments",
-        &args[0].pos,
-        self.input_code
-      );
-    };
+    self.validate(args.len() == 1, "begin".into(), "at least one".into(),&args[0].pos)?;
     let mut result: JResult = Err("Unreachable".into());
     for a in &args[1..args.len()] {
       result = self.eval(a, function)
@@ -672,13 +656,7 @@ exit_program:
     result
   }
   fn f_minus(&mut self, args: &[Json], function: &mut String) -> JResult {
-    if args.len() <= 1 {
-      return genErr!(
-        "'-' requires at least one operand",
-        &args[0].pos,
-        self.input_code
-      );
-    };
+    self.validate(args.len() == 1, "-".into(), "at least one".into(),&args[0].pos)?;
     let Ok(Json {
       pos: _,
       value: JValue::Int(result),
@@ -720,13 +698,7 @@ exit_program:
     })
   }
   fn f_message(&mut self, args: &[Json], function: &mut String) -> JResult {
-    if args.len() != 3 {
-      return genErr!(
-        "message requires three operands",
-        &args[0].pos,
-        self.input_code
-      );
-    };
+    self.validate(args.len() != 3, "message".into(), "two".into(),&args[0].pos)?;
     let parsed2 = self.eval(&args[2], function)?;
     let msg = match parsed2 {
       Json {
@@ -774,11 +746,11 @@ exit_program:
     };
     let retcode = self.get_name();
     writeln!(self.bss, "  .lcomm {}, 8", retcode)?;
-    writeln!(
+    write!(
       function,
       r#"  xor ecx, ecx
-  lea rdx, [rip + {}]
   lea r8, [rip + {}]
+  lea rdx, [rip + {}]
   xor r9d, r9d
   call MessageBoxA
   test eax, eax
@@ -789,7 +761,7 @@ exit_program:
     )?;
     Ok(Json {
       pos: args[0].pos,
-      value: JValue::Null,
+      value: JValue::Int(VKind::Var(retcode)),
     })
   }
 }
@@ -851,7 +823,7 @@ impl Json {
             }
             item.write_json(out)?;
           }
-          out.write_str(": function")
+          out.write_str(": function)")
         }
       },
       JValue::Object(maybe_o) => match maybe_o {
