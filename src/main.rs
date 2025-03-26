@@ -793,11 +793,12 @@ exit_program:
     })
   }
 }
+#[allow(dead_code)]
 impl Json {
   pub fn print_json(&self) -> fmt::Result {
     let mut output = String::new();
     if self.write_json(&mut output).is_ok() {
-      writeln!(output)?;
+      println!("{}",output);
     }
     Ok(())
   }
@@ -900,7 +901,8 @@ fn main() -> Result<(), Box<dyn Error>> {
   let parsed = parser
     .parse()
     .map_err(|errmsg| panic!("\nParseError: {}", errmsg))?;
-  if false {
+  #[cfg(debug_assertions)]
+  {
     parsed.print_json()?;
   }
   let filename = Path::new(&args[1])
@@ -915,7 +917,7 @@ fn main() -> Result<(), Box<dyn Error>> {
   Command::new("gcc")
     .args([&asm_file, "-o", &exe_file, "-nostartfiles"])
     .status()
-    .map_err(|_| "Failed assembling or linking process")?
+    .map_err(|m| format!("Failed assembling or linking process: {}", m))?
     .success()
     .then_some(())
     .ok_or("Failed assembling or linking process")?;
