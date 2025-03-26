@@ -1,1 +1,1 @@
-["begin", ["begin", ["message", 1, 1], 3], ["message", "1", "1"]]
+["message", "wait", "WriteConsoleW"]
