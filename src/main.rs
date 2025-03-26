@@ -72,36 +72,36 @@ struct Json {
   pub value: JValue,
 }
 #[derive(Debug, Clone)]
-enum VorL<T> {
+enum VKind<T> {
   Var(String),
   Lit(T),
 }
 #[derive(Debug, Clone)]
 enum JValue {
   Null,
-  Bool(VorL<bool>),
-  Int(VorL<i64>),
-  Float(VorL<f64>),
-  String(VorL<String>),
-  Array(VorL<Vec<Json>>),
-  Object(VorL<HashMap<String, Json>>),
-  Function(VorL<Vec<Json>>),
+  Bool(VKind<bool>),
+  Int(VKind<i64>),
+  Float(VKind<f64>),
+  String(VKind<String>),
+  Array(VKind<Vec<Json>>),
+  Object(VKind<HashMap<String, Json>>),
+  Function(VKind<Vec<Json>>),
 }
 impl JValue {
   fn is_lit(&self) -> bool {
     match self {
       JValue::Null => true,
-      JValue::Bool(v) => matches!(v, VorL::Lit(_)),
-      JValue::Int(v) => matches!(v, VorL::Lit(_)),
-      JValue::Float(v) => matches!(v, VorL::Lit(_)),
-      JValue::String(v) => matches!(v, VorL::Lit(_)),
-      JValue::Array(v) => matches!(v, VorL::Lit(_)),
-      JValue::Object(v) => matches!(v, VorL::Lit(_)),
-      JValue::Function(v) => matches!(v, VorL::Lit(_)),
+      JValue::Bool(v) => matches!(v, VKind::Lit(_)),
+      JValue::Int(v) => matches!(v, VKind::Lit(_)),
+      JValue::Float(v) => matches!(v, VKind::Lit(_)),
+      JValue::String(v) => matches!(v, VKind::Lit(_)),
+      JValue::Array(v) => matches!(v, VKind::Lit(_)),
+      JValue::Object(v) => matches!(v, VKind::Lit(_)),
+      JValue::Function(v) => matches!(v, VKind::Lit(_)),
     }
   }
 }
-type JType<T> = fn(&mut T, &[Json], &mut String) -> JResult;
+type FType<T> = fn(&mut T, &[Json], &mut String) -> JResult;
 struct JParser<'a> {
   input_code: &'a str,
   pos: usize,
@@ -109,19 +109,19 @@ struct JParser<'a> {
   data: String,
   bss: String,
   functions: String,
-  func_table: HashMap<String, JType<Self>>,
+  func_table: HashMap<String, FType<Self>>,
   vars: HashMap<String, Json>,
   seed: u64,
 }
 impl<'a> JParser<'a> {
   pub fn new(code: &'a str) -> Self {
     let mut table = HashMap::new();
-    table.insert(String::from("="), JParser::f_setvar as JType<Self>);
-    table.insert(String::from("$"), JParser::f_getvar as JType<Self>);
-    table.insert(String::from("+"), JParser::f_plus as JType<Self>);
-    table.insert(String::from("-"), JParser::f_minus as JType<Self>);
-    table.insert(String::from("message"), JParser::f_message as JType<Self>);
-    table.insert(String::from("begin"), JParser::f_begin as JType<Self>);
+    table.insert(String::from("="), JParser::f_setvar as FType<Self>);
+    table.insert(String::from("$"), JParser::f_getvar as FType<Self>);
+    table.insert(String::from("+"), JParser::f_plus as FType<Self>);
+    table.insert(String::from("-"), JParser::f_minus as FType<Self>);
+    table.insert(String::from("message"), JParser::f_message as FType<Self>);
+    table.insert(String::from("begin"), JParser::f_begin as FType<Self>);
     Self {
       input_code: code,
       pos: 0,
@@ -154,9 +154,9 @@ impl<'a> JParser<'a> {
       )
     }
   }
-  fn get_seed(&mut self) -> u64 {
+  fn get_name(&mut self) -> String {
     self.seed += 1;
-    self.seed
+    format!("_{}", int2hex(self.seed))
   }
   fn parse(&mut self) -> JResult {
     let result = self.parse_value()?;
@@ -238,14 +238,14 @@ impl<'a> JParser<'a> {
     match num_str.parse::<i64>() {
       Ok(int_val) if !has_decimal && !has_exponent => Ok(Json {
         pos: start,
-        value: JValue::Int(VorL::Lit(int_val)),
+        value: JValue::Int(VKind::Lit(int_val)),
       }),
       _ => num_str.parse::<f64>().map_or_else(
         |_| genErr!("Invalid value", &self.pos, self.input_code),
         |float_val| {
           Ok(Json {
             pos: start,
-            value: JValue::Float(VorL::Lit(float_val)),
+            value: JValue::Float(VKind::Lit(float_val)),
           })
         },
       ),
@@ -268,7 +268,7 @@ impl<'a> JParser<'a> {
         '\"' => {
           return Ok(Json {
             pos: start,
-            value: JValue::String(VorL::Lit(result)),
+            value: JValue::String(VKind::Lit(result)),
           });
         }
         '\\' => {
@@ -316,7 +316,7 @@ impl<'a> JParser<'a> {
       self.pos += 1;
       return Ok(Json {
         pos: start,
-        value: JValue::Array(VorL::Lit(array)),
+        value: JValue::Array(VKind::Lit(array)),
       });
     }
     loop {
@@ -327,7 +327,7 @@ impl<'a> JParser<'a> {
           self.pos += 1;
           return Ok(Json {
             pos: start,
-            value: JValue::Array(VorL::Lit(array)),
+            value: JValue::Array(VKind::Lit(array)),
           });
         }
         Some(',') => {
@@ -347,14 +347,14 @@ impl<'a> JParser<'a> {
       self.pos += 1;
       return Ok(Json {
         pos: start,
-        value: JValue::Object(VorL::Lit(object)),
+        value: JValue::Object(VKind::Lit(object)),
       });
     }
     loop {
       let key = match self.parse_string()? {
         Json {
           pos: _,
-          value: JValue::String(VorL::Lit(s)),
+          value: JValue::String(VKind::Lit(s)),
         } => s,
         Json {
           pos: invalid_pos,
@@ -371,7 +371,7 @@ impl<'a> JParser<'a> {
         self.pos += 1;
         return Ok(Json {
           pos: start,
-          value: JValue::Object(VorL::Lit(object)),
+          value: JValue::Object(VKind::Lit(object)),
         });
       }
       if let Some(',') = self.peek_char() {
@@ -391,8 +391,8 @@ impl<'a> JParser<'a> {
       Some('"') => self.parse_string(),
       Some('{') => self.parse_object(),
       Some('[') => self.parse_array(),
-      Some('t') => self.parse_name("true", JValue::Bool(VorL::Lit(true))),
-      Some('f') => self.parse_name("false", JValue::Bool(VorL::Lit(false))),
+      Some('t') => self.parse_name("true", JValue::Bool(VKind::Lit(true))),
+      Some('f') => self.parse_name("false", JValue::Bool(VKind::Lit(false))),
       Some('n') => self.parse_name("null", JValue::Null),
       _ => self.parse_number(),
     }
@@ -407,8 +407,8 @@ impl<'a> JParser<'a> {
     self.extern_set.insert(String::from("FormatMessageW"));
     self.extern_set.insert(String::from("GetStdHandle"));
     self.bss.push_str(
-      r#"  .lcomm lastError, 4
-  .lcomm errorMessage, 512
+      r#"  .lcomm errorMessage, 512
+  .lcomm lastError, 4
   .lcomm STDOUT, 8
   .lcomm STDERR, 8
   .lcomm STDIN, 8
@@ -416,24 +416,25 @@ impl<'a> JParser<'a> {
     );
     let mut mainfunc = String::from(
       r#"_start:
-  subq $40, %rsp
-  movl $65001, %ecx
-  callq SetConsoleCP
-  movl $65001, %ecx
-  callq SetConsoleOutputCP
-  movl $-10, %ecx
-  callq GetStdHandle
-  movq %rax, STDIN(%rip)
-  movl $-11, %ecx
-  callq GetStdHandle
-  movq %rax, STDOUT(%rip)
-  movl $-12, %ecx
-  callq GetStdHandle
-  movq %rax, STDERR(%rip)
+  sub rsp, 40
+  mov ecx, 65001
+  call SetConsoleCP
+  mov ecx, 65001
+  call SetConsoleOutputCP
+  mov ecx, -10
+  call GetStdHandle
+  mov [rip + STDIN], rax
+  mov ecx, -11
+  call GetStdHandle
+  mov [rip + STDOUT], rax
+  mov ecx, -12
+  call GetStdHandle
+  mov [rip + STDERR], rax
 "#,
     );
     self.eval(&parsed, &mut mainfunc)?;
     let mut file = File::create(filename)?;
+    writeln!(file, ".intel_syntax noprefix")?;
     writeln!(file, ".global start")?;
     for inc in &self.extern_set {
       writeln!(file, ".extern {}", inc)?;
@@ -444,34 +445,34 @@ impl<'a> JParser<'a> {
     write!(file, "{}", mainfunc)?;
     write!(
       file,
-      r#"  xorl %ecx, %ecx
-  callq ExitProcess
+      r#"  xor ecx, ecx
+  call ExitProcess
 display_error:
-  callq GetLastError
-  movl %eax, lastError(%rip)
-  subq $32, %rsp
-  movl $0x1200, %ecx
-  xorl %edx, %edx
-  movl lastError(%rip), %r8d
-  xorl %r9d, %r9d
-  leaq errorMessage(%rip), %rax
-  movq %rax, 32(%rsp)
-  movl $1024, 40(%rsp)
-  movq $0, 48(%rsp)
-  callq FormatMessageW
-  addq $16, %rsp
-  testl %eax, %eax
+  call GetLastError
+  mov [rip + errorMessage], eax
+  sub rsp, 32
+  mov ecx, 0x1200
+  xor edx, edx
+  mov r8d, eax
+  xor r9d, r9d
+  lea rax, [rip + errorMessage]
+  mov [rsp + 32], rax
+  mov qword ptr [rsp + 40], 512
+  mov qword ptr [rsp + 48], 0
+  call FormatMessageW
+  add rsp, 16
+  test eax, eax
   jz exit_program
-  movq STDERR(%rip), %rcx
-  leaq errorMessage(%rip), %rdx
-  movq $256, %r8
-  leaq 32(%rsp), %r9
-  movq $0, 40(%rsp)
-  addq $16, %rsp
-  callq WriteConsoleW
+  mov rcx, [rip + STDERR]
+  lea rdx, [rip + errorMessage]
+  mov r8, 256
+  lea r9, [rsp + 32]
+  mov qword ptr [rsp + 40], 0
+  add rsp, 16
+  call WriteConsoleW
 exit_program:
-  movl lastError(%rip), %ecx
-  callq ExitProcess
+  mov ecx, [rip + lastError]
+  call ExitProcess
 "#
     )?;
     Ok(())
@@ -479,7 +480,7 @@ exit_program:
   fn eval(&mut self, parsed: &Json, function: &mut String) -> JResult {
     let Json {
       pos: listpos,
-      value: JValue::Array(VorL::Lit(list)),
+      value: JValue::Array(VKind::Lit(list)),
     } = parsed
     else {
       return Ok(parsed.clone());
@@ -494,7 +495,7 @@ exit_program:
     match &list[0] {
       Json {
         pos: cmdpos,
-        value: JValue::String(VorL::Lit(cmd)),
+        value: JValue::String(VKind::Lit(cmd)),
       } => {
         if cmd == "lambda" {
           return Ok(parsed.clone());
@@ -519,7 +520,7 @@ exit_program:
   fn eval_lambda(&mut self, parsed: &Json, function: &mut String) -> JResult {
     let Json {
       pos: func_list_pos,
-      value: JValue::Array(VorL::Lit(func_list)),
+      value: JValue::Array(VKind::Lit(func_list)),
     } = &parsed
     else {
       return genErr!(
@@ -530,7 +531,7 @@ exit_program:
     };
     let Json {
       pos: cmdpos,
-      value: JValue::String(VorL::Lit(cmd)),
+      value: JValue::String(VKind::Lit(cmd)),
     } = &parsed
     else {
       return genErr!(
@@ -551,7 +552,7 @@ exit_program:
     };
     let Json {
       pos: _,
-      value: JValue::Array(VorL::Lit(params)),
+      value: JValue::Array(VKind::Lit(params)),
     } = &func_list[1]
     else {
       return genErr!(
@@ -565,7 +566,7 @@ exit_program:
     }
     Ok(Json {
       pos: 1,
-      value: JValue::Function(VorL::Lit(params.clone())),
+      value: JValue::Function(VKind::Lit(params.clone())),
     })
   }
   fn f_setvar(&mut self, args: &[Json], function: &mut String) -> JResult {
@@ -576,18 +577,18 @@ exit_program:
         self.input_code
       );
     }
-    if let JValue::String(VorL::Lit(var_name)) = &args[1].value {
+    if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       let value = self.eval(&args[2], function)?;
       if value.value.is_lit() {
         match value.value {
-          JValue::String(VorL::Lit(s)) => {
-            let n = format!("_{}", int2hex(self.get_seed()));
+          JValue::String(VKind::Lit(s)) => {
+            let n = self.get_name();
             writeln!(self.data, "  {}: .string \"{}\"", n, s)?;
             self.vars.insert(
               var_name.clone(),
               Json {
                 pos: args[0].pos,
-                value: JValue::String(VorL::Var(n)),
+                value: JValue::String(VKind::Var(n)),
               },
             );
           }
@@ -622,7 +623,7 @@ exit_program:
         self.input_code
       );
     }
-    if let JValue::String(VorL::Lit(var_name)) = &args[1].value {
+    if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       if let Some(value) = self.vars.get(var_name) {
         Ok(value.clone())
       } else {
@@ -660,8 +661,8 @@ exit_program:
       );
     };
     match result {
-      VorL::Lit(l) => writeln!(function, "  movq ${}, %rax", l)?,
-      VorL::Var(v) => writeln!(function, "  movq {}(%rip), %rax", v)?,
+      VKind::Lit(l) => writeln!(function, "  mov rax, {}", l)?,
+      VKind::Var(v) => writeln!(function, "  mov rax, [rip + {}]", v)?,
     }
     for a in &args[2..args.len()] {
       let Ok(Json {
@@ -676,16 +677,16 @@ exit_program:
         );
       };
       match result {
-        VorL::Lit(l) => writeln!(function, "  addq ${}, %rax", l)?,
-        VorL::Var(v) => writeln!(function, "  addq {}(%rip), %rax", v)?,
+        VKind::Lit(l) => writeln!(function, "  add rax, {}", l)?,
+        VKind::Var(v) => writeln!(function, "  add rax, [rip + {}]", v)?,
       }
     }
-    let assign_name = format!("_{}", int2hex(self.get_seed()));
+    let assign_name = self.get_name();
     writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
-    writeln!(function, "  movq %rax, {}(%rip)", assign_name)?;
+    writeln!(function, "  mov rax, [rip + {}]", assign_name)?;
     Ok(Json {
       pos: args[0].pos,
-      value: JValue::Int(VorL::Var(assign_name)),
+      value: JValue::Int(VKind::Var(assign_name)),
     })
   }
   fn f_begin(&mut self, args: &[Json], function: &mut String) -> JResult {
@@ -722,8 +723,8 @@ exit_program:
       );
     };
     match result {
-      VorL::Lit(l) => writeln!(function, "  movq ${}, %rax", l)?,
-      VorL::Var(v) => writeln!(function, "  movq {}(%rip), %rax", v)?,
+      VKind::Lit(l) => writeln!(function, "  mov rax, {}", l)?,
+      VKind::Var(v) => writeln!(function, "  mov rax, [rip + {}]", v)?,
     }
     for a in &args[2..args.len()] {
       let Ok(Json {
@@ -738,16 +739,16 @@ exit_program:
         );
       };
       match result {
-        VorL::Lit(l) => writeln!(function, "  subq ${}, %rax", l)?,
-        VorL::Var(v) => writeln!(function, "  subq {}(%rip), %rax", v)?,
+        VKind::Lit(l) => writeln!(function, "  sub rax, {}", l)?,
+        VKind::Var(v) => writeln!(function, "  sub rax, [rip + {}]", v)?,
       }
     }
-    let assign_name = format!("_{}", int2hex(self.get_seed()));
+    let assign_name = self.get_name();
     writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
-    writeln!(function, "  movq %rax, {}(%rip)", assign_name)?;
+    writeln!(function, "  movq [rip + {}], rax", assign_name)?;
     Ok(Json {
       pos: args[0].pos,
-      value: JValue::Int(VorL::Var(assign_name)),
+      value: JValue::Int(VKind::Var(assign_name)),
     })
   }
   fn f_message(&mut self, args: &[Json], function: &mut String) -> JResult {
@@ -762,15 +763,15 @@ exit_program:
     let msg = match parsed2 {
       Json {
         pos: _,
-        value: JValue::String(VorL::Lit(l)),
+        value: JValue::String(VKind::Lit(l)),
       } => {
-        let mn = format!("_{}", int2hex(self.get_seed()));
+        let mn = self.get_name();
         writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
         mn
       }
       Json {
         pos: _,
-        value: JValue::String(VorL::Var(v)),
+        value: JValue::String(VKind::Var(v)),
       } => v,
       _ => {
         return genErr!(
@@ -785,15 +786,15 @@ exit_program:
     let title = match parsed1 {
       Json {
         pos: _,
-        value: JValue::String(VorL::Lit(l)),
+        value: JValue::String(VKind::Lit(l)),
       } => {
-        let mn = format!("_{}", int2hex(self.get_seed()));
+        let mn = self.get_name();
         writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
         mn
       }
       Json {
         pos: _,
-        value: JValue::String(VorL::Var(v)),
+        value: JValue::String(VKind::Var(v)),
       } => v,
       _ => {
         return genErr!(
@@ -803,18 +804,18 @@ exit_program:
         );
       }
     };
-    let retcode = format!("_{}", int2hex(self.get_seed()));
+    let retcode = self.get_name();
     writeln!(self.bss, "  .lcomm {}, 8", retcode)?;
     writeln!(
       function,
-      r#"  xorl %ecx, %ecx
-  leaq {}(%rip), %rdx
-  leaq {}(%rip), %r8
-  xorl %r9d, %r9d
-  callq MessageBoxA
-  testl %eax, %eax
+      r#"  xor ecx, ecx
+  lea rdx, [rip + {}]
+  lea r8, [rip + {}]
+  xor r9d, r9d
+  call MessageBoxA
+  test eax, eax
   jz display_error
-  movq %rax, {}(%rip)
+  mov [rip + {}], rax
 "#,
       msg, title, retcode
     )?;
@@ -836,29 +837,29 @@ impl Json {
     match &self.value {
       JValue::Null => out.write_str("null"),
       JValue::Bool(maybe_b) => match maybe_b {
-        VorL::Lit(b) => match b {
+        VKind::Lit(b) => match b {
           true => write!(out, "true"),
           false => write!(out, "false"),
         },
-        VorL::Var(v) => write!(out, "({}: bool)", v),
+        VKind::Var(v) => write!(out, "({}: bool)", v),
       },
       JValue::Int(maybe_i) => match maybe_i {
-        VorL::Lit(i) => write!(out, "{}", i),
-        VorL::Var(v) => write!(out, "({}: int)", v),
+        VKind::Lit(i) => write!(out, "{}", i),
+        VKind::Var(v) => write!(out, "({}: int)", v),
       },
       JValue::Float(maybe_f) => match maybe_f {
-        VorL::Lit(f) => write!(out, "{}", f),
-        VorL::Var(v) => write!(out, "({}: float)", v),
+        VKind::Lit(f) => write!(out, "{}", f),
+        VKind::Var(v) => write!(out, "({}: float)", v),
       },
       JValue::String(maybe_s) => match maybe_s {
-        VorL::Lit(s) => write!(out, "\"{}\"", escape_string(s)),
-        VorL::Var(v) => write!(out, "({}: string)", v),
+        VKind::Lit(s) => write!(out, "\"{}\"", escape_string(s)),
+        VKind::Var(v) => write!(out, "({}: string)", v),
       },
       JValue::Array(maybe_a) => match maybe_a {
-        VorL::Var(v) => {
+        VKind::Var(v) => {
           write!(out, "({}: array)", v)
         }
-        VorL::Lit(a) => {
+        VKind::Lit(a) => {
           out.write_str("[")?;
           for (i, item) in a.iter().enumerate() {
             if i > 0 {
@@ -870,10 +871,10 @@ impl Json {
         }
       },
       JValue::Function(maybe_fn) => match maybe_fn {
-        VorL::Var(v) => {
+        VKind::Var(v) => {
           write!(out, "({}: function)", v)
         }
-        VorL::Lit(f) => {
+        VKind::Lit(f) => {
           out.write_str("(")?;
           for (i, item) in f.iter().enumerate() {
             if i > 0 {
@@ -885,10 +886,10 @@ impl Json {
         }
       },
       JValue::Object(maybe_o) => match maybe_o {
-        VorL::Var(v) => {
+        VKind::Var(v) => {
           write!(out, "({}: array)", v)
         }
-        VorL::Lit(o) => {
+        VKind::Lit(o) => {
           out.write_str("{")?;
           for (i, (k, v)) in o.iter().enumerate() {
             if i > 0 {
@@ -936,7 +937,7 @@ fn main() -> Result<(), Box<dyn Error>> {
   };
   let filename = Path::new(&args[1])
     .file_stem()
-    .ok_or("無効なファイル名")?
+    .ok_or(format!("Invalid file name: {}",args[1] ))?
     .to_string_lossy();
   let asm_file = format!("{}.s", filename);
   let exe_file = format!("{}.exe", filename);
