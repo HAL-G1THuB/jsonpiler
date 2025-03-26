@@ -3,7 +3,7 @@ use std::env;
 use std::error::Error;
 use std::fmt::{self, Write as _};
 use std::fs::{self, File};
-use std::io::Write as _;
+use std::io::{self, Write as _};
 use std::path::Path;
 use std::process::Command;
 type JResult = Result<Json, Box<dyn Error>>;
@@ -17,7 +17,8 @@ fn get_error_line(input_code: &str, index: &usize) -> Option<String> {
     .find('\n')
     .map_or(input_code.len(), |pos| index + pos);
   let error_line = &input_code[start..end];
-  let marker = " ".repeat(index - start) + "^";
+  let ws = " ".repeat(index - start - 1);
+  let marker = ws.clone() + " A\n" + &ws + "/|\\\n" + &ws + " |\n";
   Some(format!("{}\n{}", error_line, marker))
 }
 macro_rules! genErr {
@@ -133,7 +134,7 @@ impl<'a> JParser<'a> {
   ) -> Result<(), Box<dyn Error>> {
     if flag {
       return genErr!(
-        format!("'{}' requires {} argument", name, text),
+        format!("\"{name}\" requires {text} argument"),
         pos,
         self.input_code
       );
@@ -165,11 +166,7 @@ impl<'a> JParser<'a> {
         value: v,
       })
     } else {
-      genErr!(
-        format!("Faild to parse '{}'", n),
-        &self.pos,
-        self.input_code
-      )
+      genErr!(format!("Faild to parse '{n}'"), &self.pos, self.input_code)
     }
   }
   fn parse_number(&mut self) -> JResult {
@@ -560,7 +557,10 @@ exit_program:
       "at least one".into(),
       &args[0].pos,
     )?;
-    let mut result = Json{pos: 0, value: JValue::Null};
+    let mut result = Json {
+      pos: 0,
+      value: JValue::Null,
+    };
     for a in &args[1..] {
       a.print_json()?;
       result = self.eval(a, function)?
@@ -794,6 +794,12 @@ exit_program:
     })
   }
 }
+fn error_exit(text: String) -> ! {
+  let mut nu = String::new();
+  eprint!("{text}\nPress Enter to exit:");
+  let _ = io::stdin().read_line(&mut nu);
+  std::process::exit(1)
+}
 #[allow(dead_code)]
 impl Json {
   pub fn print_json(&self) -> fmt::Result {
@@ -895,39 +901,42 @@ fn main() -> Result<(), Box<dyn Error>> {
   let args: Vec<String> = env::args().collect();
   if args.len() != 2 {
     eprintln!("Usage: {} <input json file>", args[0]);
- std::process::exit(0)  }
-  let input_code = fs::read_to_string(&args[1])?;
+    std::process::exit(0)
+  }
+  let input_code = fs::read_to_string(&args[1])
+    .unwrap_or_else(|errmsg| error_exit(format!("Failed to read file: {errmsg}")));
   let mut parser = JParser::new(&input_code);
   let parsed = parser
     .parse()
-    .map_err(|errmsg|{ eprintln!("ParseError: {}", errmsg) ; std::process::exit(1)})?;
+    .unwrap_or_else(|errmsg| error_exit(format!("ParseError: {errmsg}")));
   #[cfg(debug_assertions)]
   {
     parsed.print_json()?;
   }
   let json_file = Path::new(&args[1])
     .file_stem()
-    .ok_or(format!("Invalid file name: {}", args[1]))?
-    .to_string_lossy()
-    .to_string();
-  let asm_file = format!("{}.s", json_file);
-  let exe_file = format!("{}.exe", json_file);
+    .unwrap_or_else(|| error_exit(format!("Invalid filename: {}", args[1])))
+    .to_string_lossy();
+  let asm_file = format!("{json_file}.s");
+  let exe_file = format!("{json_file}.exe");
   parser
     .build(parsed, &asm_file)
-    .map_err(|errmsg| {eprintln!("CompileError: {}", errmsg) ; std::process::exit(1)})?;
-  Command::new("gcc")
+    .unwrap_or_else(|errmsg| error_exit(format!("CompileError: {errmsg}")));
+  if !Command::new("gcc")
     .args([&asm_file, "-o", &exe_file, "-nostartfiles"])
     .status()
-    .map_err(|m| format!("Failed assembling or linking process: {}", m))?
+    .unwrap_or_else(|e| error_exit(format!("Failed to assemble or link: {e}")))
     .success()
-    .then_some(())
-    .ok_or("Failed assembling or linking process")?;
-  let mut path = env::current_dir()?;
+  {
+    error_exit(String::from("Failed to assemble or link"))
+  };
+  let mut path = env::current_dir()
+    .unwrap_or_else(|errmsg| error_exit(format!("Failed to get current directory: {errmsg}")));
   path.push(&exe_file);
   let exit_code = Command::new(path)
-    .spawn()?
-    .wait()?
+    .spawn().unwrap_or_else(|errmsg| error_exit(format!("Failed to spawn child process: {errmsg}")))
+    .wait().unwrap_or_else(|errmsg| error_exit(format!("Failed to wait for child process: {errmsg}")))
     .code()
-    .ok_or("Failed to retrieve the exit code")?;
+    .unwrap_or_else(|| error_exit(String::from("Failed to retrieve the exit code")));
   std::process::exit(exit_code)
 }
