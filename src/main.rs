@@ -8,32 +8,31 @@ use std::path::Path;
 use std::process::Command;
 type JResult = Result<Json, Box<dyn Error>>;
 type FType<T> = fn(&mut T, &[Json], &mut String) -> JResult;
-fn get_error_line(input_code: &str, index: &usize) -> Option<String> {
-  if *index >= input_code.len() {
-    return None;
-  }
-  let start = input_code[..*index].rfind('\n').map_or(0, |pos| pos + 1);
-  let end = input_code[*index..]
-    .find('\n')
-    .map_or(input_code.len(), |pos| index + pos);
-  let error_line = &input_code[start..end];
-  let ws = " ".repeat(index - start - 1);
-  let marker = ws.clone() + " A\n" + &ws + "/|\\\n" + &ws + " |\n";
-  Some(format!("{}\n{}", error_line, marker))
+fn get_error_line(input_code: &str, index: &usize) -> String {
+    if *index >= input_code.len() {
+        return String::from("End of File");
+    }
+    let start = input_code[..*index].rfind('\n').map_or(0, |pos| pos + 1);
+    let end = input_code[*index..]
+        .find('\n')
+        .map_or(input_code.len(), |pos| index + pos);
+    let ws = " ".repeat(index - start);
+    format!("{}\n{ws} A\n{ws}/|\\n{ws}+ | \n", &input_code[start..end])
 }
 macro_rules! genErr {
-  ($text:expr, $pos:expr, $input_code:expr) => {
-    Err(
-      format!(
-        "{}\nError occurred at byte: {}\nError position:\n{}",
-        $text,
-        &(*$pos + 1),
-        get_error_line($input_code, $pos).unwrap_or(String::from("End of File"))
-      )
-      .into(),
-    )
-  };
+    ($text:expr, $pos:expr, $input_code:expr) => {
+        Err(
+            format!(
+                "{}\nError occurred at byte: {}\nError position:\n{}",
+                $text,
+                &(*$pos + 1),
+                get_error_line($input_code, $pos)
+            )
+            .into(),
+        )
+    };
 }
+
 #[derive(Debug, Clone)]
 struct Json {
   pub pos: usize,
