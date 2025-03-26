@@ -17,22 +17,6 @@ const HEX_TABLE: [[u8; 2]; 256] = {
   }
   table
 };
-fn int2hex(num: u64) -> String {
-  if num == 0 {
-    return String::from("00");
-  }
-  let mut hex_bytes = Vec::new();
-  let mut leading_zero = true;
-  for shift in (0..8).rev() {
-    let byte = (num >> (shift * 8)) as u8;
-    if byte == 0 && leading_zero {
-      continue;
-    }
-    leading_zero = false;
-    hex_bytes.extend_from_slice(&HEX_TABLE[byte as usize]);
-  }
-  String::from_utf8(hex_bytes).unwrap()
-}
 fn get_error_line(input_code: &str, index: &usize) -> Option<String> {
   if *index >= input_code.len() {
     return None;
@@ -146,9 +130,22 @@ impl<'a> JParser<'a> {
       )
     }
   }
-  fn get_name(&mut self) -> String {
+  fn get_name(&mut self) -> Result<String, Box<dyn Error>> {
+    if self.seed == 0 {
+      return Ok(String::from("00"));
+    }
+    let mut hex_bytes = Vec::new();
+    let mut leading_zero = true;
+    for shift in (0..8).rev() {
+      let byte = (self.seed >> (shift * 8)) as u8;
+      if byte == 0 && leading_zero {
+        continue;
+      }
+      leading_zero = false;
+      hex_bytes.extend_from_slice(&HEX_TABLE[byte as usize]);
+    }
     self.seed += 1;
-    format!("_{}", int2hex(self.seed))
+      Ok(format!("_{}", String::from_utf8(hex_bytes  )?))
   }
   fn parse(&mut self) -> JResult {
     let result = self.parse_value()?;
@@ -574,7 +571,7 @@ exit_program:
       if value.value.is_lit() {
         match value.value {
           JValue::String(VKind::Lit(s)) => {
-            let n = self.get_name();
+            let n = self.get_name()?;
             writeln!(self.data, "  {}: .string \"{}\"", n, s)?;
             self.vars.insert(
               var_name.clone(),
@@ -673,7 +670,7 @@ exit_program:
         VKind::Var(v) => writeln!(function, "  add rax, [rip + {}]", v)?,
       }
     }
-    let assign_name = self.get_name();
+    let assign_name = self.get_name()?;
     writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
     writeln!(function, "  mov rax, [rip + {}]", assign_name)?;
     Ok(Json {
@@ -735,7 +732,7 @@ exit_program:
         VKind::Var(v) => writeln!(function, "  sub rax, [rip + {}]", v)?,
       }
     }
-    let assign_name = self.get_name();
+    let assign_name = self.get_name()?;
     writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
     writeln!(function, "  movq [rip + {}], rax", assign_name)?;
     Ok(Json {
@@ -757,7 +754,7 @@ exit_program:
         pos: _,
         value: JValue::String(VKind::Lit(l)),
       } => {
-        let mn = self.get_name();
+        let mn = self.get_name()?;
         writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
         mn
       }
@@ -780,7 +777,7 @@ exit_program:
         pos: _,
         value: JValue::String(VKind::Lit(l)),
       } => {
-        let mn = self.get_name();
+        let mn = self.get_name()?;
         writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
         mn
       }
@@ -796,7 +793,7 @@ exit_program:
         );
       }
     };
-    let retcode = self.get_name();
+    let retcode = self.get_name()?;
     writeln!(self.bss, "  .lcomm {}, 8", retcode)?;
     writeln!(
       function,
