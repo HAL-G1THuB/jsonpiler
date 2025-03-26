@@ -17,14 +17,6 @@ const HEX_TABLE: [[u8; 2]; 256] = {
   }
   table
 };
-fn _str2hex(s: &str) -> String {
-  let hex: Vec<u8> = s
-    .as_bytes()
-    .iter()
-    .flat_map(|&b| HEX_TABLE[b as usize])
-    .collect();
-  String::from_utf8(hex).unwrap()
-}
 fn int2hex(num: u64) -> String {
   if num == 0 {
     return String::from("00");
