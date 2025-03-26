@@ -111,15 +111,15 @@ impl<'a> JParser<'a> {
     }
   }
   fn next_char(&mut self) -> Result<char, String> {
-    let ch = self.peek_char().ok_or("Reached end of text")?;
+    let ch = self.input_code[self.pos..]
+      .chars()
+      .next()
+      .ok_or("Reached end of text")?;
     self.pos += ch.len_utf8();
     Ok(ch)
   }
-  fn peek_char(&self) -> Option<char> {
-    self.input_code[self.pos..].chars().next()
-  }
   fn expect(&mut self, expected: char) -> Result<(), String> {
-    if self.peek_char() == Some(expected) {
+    if self.input_code[self.pos..].starts_with(expected) {
       self.next_char()?;
       Ok(())
     } else {
@@ -146,7 +146,7 @@ impl<'a> JParser<'a> {
       hex_bytes.extend_from_slice(&HEX_TABLE[byte as usize]);
     }
     self.seed += 1;
-      Ok(format!("_{}", String::from_utf8(hex_bytes  )?))
+    Ok(format!("_{}", String::from_utf8(hex_bytes)?))
   }
   fn parse(&mut self) -> JResult {
     let result = self.parse_value()?;
@@ -185,11 +185,11 @@ impl<'a> JParser<'a> {
     let mut num_str = String::new();
     let mut has_decimal = false;
     let mut has_exponent = false;
-    if let Some('-') = self.peek_char() {
+    if self.input_code[self.pos..].starts_with('-') {
       num_str.push('-');
       self.next_char()?;
     }
-    while let Some(ch) = self.peek_char() {
+    while let Some(ch) = self.input_code[self.pos..].chars().next() {
       match ch {
         '0'..='9' => {
           num_str.push(ch);
@@ -199,7 +199,9 @@ impl<'a> JParser<'a> {
           has_decimal = true;
           num_str.push(ch);
           self.next_char()?;
-          if !matches!(self.peek_char(), Some(c) if c.is_ascii_digit()) {
+          if !matches!(self.input_code[self.pos..].chars().next()
+, Some(c) if c.is_ascii_digit())
+          {
             return genErr!(
               "There are no digits after the decimal point",
               &self.pos,
@@ -211,10 +213,12 @@ impl<'a> JParser<'a> {
           has_exponent = true;
           num_str.push(ch);
           self.next_char()?;
-          if matches!(self.peek_char(), Some('+' | '-')) {
+          if matches!(self.input_code[self.pos..].chars().next(), Some('+' | '-')) {
             num_str.push(self.next_char()?);
           }
-          if !matches!(self.peek_char(), Some(c) if c.is_ascii_digit()) {
+          if !matches!(self.input_code[self.pos..].chars().next()
+, Some(c) if c.is_ascii_digit())
+          {
             return genErr!(
               "Missing digits in the exponent part",
               &self.pos,
@@ -302,7 +306,7 @@ impl<'a> JParser<'a> {
     let mut array = Vec::new();
     self.expect('[')?;
     self.skipws();
-    if self.peek_char() == Some(']') {
+    if self.input_code[self.pos..].starts_with(']') {
       self.pos += 1;
       return Ok(Json {
         pos: start,
@@ -312,19 +316,17 @@ impl<'a> JParser<'a> {
     loop {
       array.push(self.parse_value()?);
       self.skipws();
-      match self.peek_char() {
-        Some(']') => {
-          self.pos += 1;
-          return Ok(Json {
-            pos: start,
-            value: JValue::Array(VKind::Lit(array)),
-          });
-        }
-        Some(',') => {
-          self.pos += 1;
-          self.skipws();
-        }
-        _ => return genErr!("Invalid array separator", &self.pos, self.input_code),
+      if self.input_code[self.pos..].starts_with(']') {
+        self.pos += 1;
+        return Ok(Json {
+          pos: start,
+          value: JValue::Array(VKind::Lit(array)),
+        });
+      } else if self.input_code[self.pos..].starts_with(',') {
+        self.pos += 1;
+        self.skipws();
+      } else {
+        return genErr!("Invalid array separator", &self.pos, self.input_code);
       }
     }
   }
@@ -333,7 +335,7 @@ impl<'a> JParser<'a> {
     let mut object = HashMap::new();
     self.expect('{')?;
     self.skipws();
-    if self.peek_char() == Some('}') {
+    if self.input_code[self.pos..].starts_with('}') {
       self.pos += 1;
       return Ok(Json {
         pos: start,
@@ -357,14 +359,14 @@ impl<'a> JParser<'a> {
       let value = self.parse_value()?;
       object.insert(key, value);
       self.skipws();
-      if let Some('}') = self.peek_char() {
+      if self.input_code[self.pos..].starts_with('}') {
         self.pos += 1;
         return Ok(Json {
           pos: start,
           value: JValue::Object(VKind::Lit(object)),
         });
       }
-      if let Some(',') = self.peek_char() {
+      if self.input_code[self.pos..].starts_with(',') {
         self.pos += 1;
         self.skipws();
       } else {
@@ -377,7 +379,7 @@ impl<'a> JParser<'a> {
     if self.pos >= self.input_code.len() {
       return genErr!("Unexpected end of text", &self.pos, self.input_code);
     }
-    match self.peek_char() {
+    match self.input_code[self.pos..].chars().next() {
       Some('"') => self.parse_string(),
       Some('{') => self.parse_object(),
       Some('[') => self.parse_array(),
@@ -927,7 +929,7 @@ fn main() -> Result<(), Box<dyn Error>> {
   };
   let filename = Path::new(&args[1])
     .file_stem()
-    .ok_or(format!("Invalid file name: {}",args[1] ))?
+    .ok_or(format!("Invalid file name: {}", args[1]))?
     .to_string_lossy();
   let asm_file = format!("{}.s", filename);
   let exe_file = format!("{}.exe", filename);
