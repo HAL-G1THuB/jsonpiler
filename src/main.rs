@@ -545,7 +545,7 @@ exit_program:
         self.input_code
       );
     };
-    for i in func_list.iter().skip(3) {
+    for i in &func_list[2..] {
       self.eval(i, function)?;
     }
     Ok(Json {
@@ -560,11 +560,12 @@ exit_program:
       "at least one".into(),
       &args[0].pos,
     )?;
-    let mut result: JResult = Err("Unreachable".into());
-    for a in &args[1..args.len()] {
-      result = self.eval(a, function)
+    let mut result = Json{pos: 0, value: JValue::Null};
+    for a in &args[1..] {
+      a.print_json()?;
+      result = self.eval(a, function)?
     }
-    result
+    Ok(result)
   }
   fn f_setvar(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(args.len() != 3, "=".into(), "two".into(), &args[0].pos)?;
@@ -727,28 +728,6 @@ exit_program:
       "two".into(),
       &args[0].pos,
     )?;
-    let parsed2 = self.eval(&args[2], function)?;
-    let msg = match parsed2 {
-      Json {
-        pos: _,
-        value: JValue::String(VKind::Lit(l)),
-      } => {
-        let mn = self.get_name();
-        writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
-        mn
-      }
-      Json {
-        pos: _,
-        value: JValue::String(VKind::Var(v)),
-      } => v,
-      _ => {
-        return genErr!(
-          "The second argument of message must be a string",
-          &args[2].pos,
-          self.input_code
-        );
-      }
-    };
     let parsed1 = self.eval(&args[1], function)?;
     self.extern_set.insert(String::from("MessageBoxA"));
     let title = match parsed1 {
@@ -772,13 +751,35 @@ exit_program:
         );
       }
     };
+    let parsed2 = self.eval(&args[2], function)?;
+    let msg = match parsed2 {
+      Json {
+        pos: _,
+        value: JValue::String(VKind::Lit(l)),
+      } => {
+        let mn = self.get_name();
+        writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
+        mn
+      }
+      Json {
+        pos: _,
+        value: JValue::String(VKind::Var(v)),
+      } => v,
+      _ => {
+        return genErr!(
+          "The second argument of message must be a string",
+          &args[2].pos,
+          self.input_code
+        );
+      }
+    };
     let retcode = self.get_name();
     writeln!(self.bss, "  .lcomm {}, 8", retcode)?;
     write!(
       function,
       r#"  xor ecx, ecx
-  lea r8, [rip + {}]
   lea rdx, [rip + {}]
+  lea r8, [rip + {}]
   xor r9d, r9d
   call MessageBoxA
   test eax, eax
@@ -893,27 +894,27 @@ impl Json {
 fn main() -> Result<(), Box<dyn Error>> {
   let args: Vec<String> = env::args().collect();
   if args.len() != 2 {
-    println!("Usage: {} <input json file>", args[0]);
-    return Ok(());
-  }
+    eprintln!("Usage: {} <input json file>", args[0]);
+ std::process::exit(0)  }
   let input_code = fs::read_to_string(&args[1])?;
   let mut parser = JParser::new(&input_code);
   let parsed = parser
     .parse()
-    .map_err(|errmsg| panic!("\nParseError: {}", errmsg))?;
+    .map_err(|errmsg|{ eprintln!("ParseError: {}", errmsg) ; std::process::exit(1)})?;
   #[cfg(debug_assertions)]
   {
     parsed.print_json()?;
   }
-  let filename = Path::new(&args[1])
+  let json_file = Path::new(&args[1])
     .file_stem()
     .ok_or(format!("Invalid file name: {}", args[1]))?
-    .to_string_lossy();
-  let asm_file = format!("{}.s", filename);
-  let exe_file = format!("{}.exe", filename);
+    .to_string_lossy()
+    .to_string();
+  let asm_file = format!("{}.s", json_file);
+  let exe_file = format!("{}.exe", json_file);
   parser
     .build(parsed, &asm_file)
-    .map_err(|errmsg| panic!("\nCompileError: {}", errmsg))?;
+    .map_err(|errmsg| {eprintln!("CompileError: {}", errmsg) ; std::process::exit(1)})?;
   Command::new("gcc")
     .args([&asm_file, "-o", &exe_file, "-nostartfiles"])
     .status()
@@ -928,5 +929,5 @@ fn main() -> Result<(), Box<dyn Error>> {
     .wait()?
     .code()
     .ok_or("Failed to retrieve the exit code")?;
-  std::process::exit(exit_code);
+  std::process::exit(exit_code)
 }

@@ -1,1 +1,1 @@
-["begin", ["=", "a", "title"], ["message", ["$", "a"], "345"]]
+["begin", ["begin", ["message", 1, 1], 3], ["message", "1", "1"]]
