@@ -7,16 +7,7 @@ use std::io::Write as _;
 use std::path::Path;
 use std::process::Command;
 type JResult = Result<Json, Box<dyn Error>>;
-const HEX_TABLE: [[u8; 2]; 256] = {
-  let mut table = [[0u8; 2]; 256];
-  let hex_chars = *b"0123456789ABCDEF";
-  let mut i = 0;
-  while i < 256 {
-    table[i] = [hex_chars[i >> 4], hex_chars[i & 0xF]];
-    i += 1;
-  }
-  table
-};
+type FType<T> = fn(&mut T, &[Json], &mut String) -> JResult;
 fn get_error_line(input_code: &str, index: &usize) -> Option<String> {
   if *index >= input_code.len() {
     return None;
@@ -77,17 +68,16 @@ impl JValue {
     }
   }
 }
-type FType<T> = fn(&mut T, &[Json], &mut String) -> JResult;
 struct JParser<'a> {
   input_code: &'a str,
   pos: usize,
   extern_set: HashSet<String>,
   data: String,
   bss: String,
-  functions: String,
+  text: String,
   func_table: HashMap<String, FType<Self>>,
   vars: HashMap<String, Json>,
-  seed: u64,
+  seed: usize,
 }
 impl<'a> JParser<'a> {
   pub fn new(code: &'a str) -> Self {
@@ -100,13 +90,13 @@ impl<'a> JParser<'a> {
     table.insert(String::from("begin"), JParser::f_begin as FType<Self>);
     Self {
       input_code: code,
-      pos: 0,
       extern_set: HashSet::new(),
       data: String::from(".section .data\n"),
       bss: String::from(".section .bss\n"),
-      functions: String::from(".section .text\n"),
+      text: String::from(".section .text\n"),
       func_table: table,
       vars: HashMap::new(),
+      pos: 0,
       seed: 0,
     }
   }
@@ -130,23 +120,9 @@ impl<'a> JParser<'a> {
       )
     }
   }
-  fn get_name(&mut self) -> Result<String, Box<dyn Error>> {
-    if self.seed == 0 {
-      self.seed += 1;
-      return Ok(String::from("_00"));
-    }
-    let mut hex_bytes = Vec::new();
-    let mut leading_zero = true;
-    for shift in (0..8).rev() {
-      let byte = (self.seed >> (shift * 8)) as u8;
-      if byte == 0 && leading_zero {
-        continue;
-      }
-      leading_zero = false;
-      hex_bytes.extend_from_slice(&HEX_TABLE[byte as usize]);
-    }
+  fn get_name(&mut self) -> String {
     self.seed += 1;
-    Ok(format!("_{}", String::from_utf8(hex_bytes)?))
+    format!("_{:x}", self.seed)
   }
   fn parse(&mut self) -> JResult {
     let result = self.parse_value()?;
@@ -433,7 +409,7 @@ impl<'a> JParser<'a> {
     }
     write!(file, "{}", self.data)?;
     write!(file, "{}", self.bss)?;
-    write!(file, "{}", self.functions)?;
+    write!(file, "{}", self.text)?;
     write!(file, "{}", mainfunc)?;
     write!(
       file,
@@ -504,7 +480,7 @@ exit_program:
       _ => {
         let mut func_buffer = String::new();
         let funcvalue = self.eval_lambda(parsed, &mut func_buffer)?;
-        self.functions.push_str(&func_buffer);
+        self.text.push_str(&func_buffer);
         Ok(funcvalue)
       }
     }
@@ -574,7 +550,7 @@ exit_program:
       if value.value.is_lit() {
         match value.value {
           JValue::String(VKind::Lit(s)) => {
-            let n = self.get_name()?;
+            let n = self.get_name();
             writeln!(self.data, "  {}: .string \"{}\"", n, s)?;
             self.vars.insert(
               var_name.clone(),
@@ -673,7 +649,7 @@ exit_program:
         VKind::Var(v) => writeln!(function, "  add rax, [rip + {}]", v)?,
       }
     }
-    let assign_name = self.get_name()?;
+    let assign_name = self.get_name();
     writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
     writeln!(function, "  mov rax, [rip + {}]", assign_name)?;
     Ok(Json {
@@ -735,7 +711,7 @@ exit_program:
         VKind::Var(v) => writeln!(function, "  sub rax, [rip + {}]", v)?,
       }
     }
-    let assign_name = self.get_name()?;
+    let assign_name = self.get_name();
     writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
     writeln!(function, "  movq [rip + {}], rax", assign_name)?;
     Ok(Json {
@@ -757,7 +733,7 @@ exit_program:
         pos: _,
         value: JValue::String(VKind::Lit(l)),
       } => {
-        let mn = self.get_name()?;
+        let mn = self.get_name();
         writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
         mn
       }
@@ -780,7 +756,7 @@ exit_program:
         pos: _,
         value: JValue::String(VKind::Lit(l)),
       } => {
-        let mn = self.get_name()?;
+        let mn = self.get_name();
         writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
         mn
       }
@@ -796,7 +772,7 @@ exit_program:
         );
       }
     };
-    let retcode = self.get_name()?;
+    let retcode = self.get_name();
     writeln!(self.bss, "  .lcomm {}, 8", retcode)?;
     writeln!(
       function,
@@ -844,7 +820,7 @@ impl Json {
         VKind::Var(v) => write!(out, "({}: float)", v),
       },
       JValue::String(maybe_s) => match maybe_s {
-        VKind::Lit(s) => write!(out, "\"{}\"", escape_string(s)),
+        VKind::Lit(s) => write!(out, "\"{}\"", self.escape_string(s)),
         VKind::Var(v) => write!(out, "({}: string)", v),
       },
       JValue::Array(maybe_a) => match maybe_a {
@@ -887,7 +863,7 @@ impl Json {
             if i > 0 {
               out.write_str(", ")?;
             }
-            write!(out, "\"{}\": ", escape_string(k))?;
+            write!(out, "\"{}\": ", self.escape_string(k))?;
             v.write_json(out)?;
           }
           out.write_str("}")
@@ -895,23 +871,23 @@ impl Json {
       },
     }
   }
-}
-fn escape_string(s: &str) -> String {
-  let mut escaped = String::new();
-  for c in s.chars() {
-    match c {
-      '\"' => escaped.push_str("\\\""),
-      '\\' => escaped.push_str("\\\\"),
-      '\n' => escaped.push_str("\\n"),
-      '\t' => escaped.push_str("\\t"),
-      '\r' => escaped.push_str("\\r"),
-      '\u{08}' => escaped.push_str("\\b"),
-      '\u{0C}' => escaped.push_str("\\f"),
-      c if c < '\u{20}' => escaped.push_str(&format!("\\u{:04x}", c as u32)),
-      _ => escaped.push(c),
+  fn escape_string(&self, s: &str) -> String {
+    let mut escaped = String::new();
+    for c in s.chars() {
+      match c {
+        '\"' => escaped.push_str("\\\""),
+        '\\' => escaped.push_str("\\\\"),
+        '\n' => escaped.push_str("\\n"),
+        '\t' => escaped.push_str("\\t"),
+        '\r' => escaped.push_str("\\r"),
+        '\u{08}' => escaped.push_str("\\b"),
+        '\u{0C}' => escaped.push_str("\\f"),
+        c if c < '\u{20}' => escaped.push_str(&format!("\\u{:04x}", c as u32)),
+        _ => escaped.push(c),
+      }
     }
+    escaped
   }
-  escaped
 }
 fn main() -> Result<(), Box<dyn Error>> {
   let args: Vec<String> = env::args().collect();
@@ -925,8 +901,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     .parse()
     .map_err(|errmsg| panic!("\nParseError: {}", errmsg))?;
   if false {
-    parsed.print_json()?
-  };
+    parsed.print_json()?;
+  }
   let filename = Path::new(&args[1])
     .file_stem()
     .ok_or(format!("Invalid file name: {}", args[1]))?
