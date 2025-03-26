@@ -9,30 +9,29 @@ use std::process::Command;
 type JResult = Result<Json, Box<dyn Error>>;
 type FType<T> = fn(&mut T, &[Json], &mut String) -> JResult;
 fn get_error_line(input_code: &str, index: &usize) -> String {
-    if *index >= input_code.len() {
-        return String::from("End of File");
-    }
-    let start = input_code[..*index].rfind('\n').map_or(0, |pos| pos + 1);
-    let end = input_code[*index..]
-        .find('\n')
-        .map_or(input_code.len(), |pos| index + pos);
-    let ws = " ".repeat(index - start);
-    format!("{}\n{ws} A\n{ws}/|\\n{ws}+ | \n", &input_code[start..end])
+  if *index >= input_code.len() {
+    return String::from("End of File");
+  }
+  let start = input_code[..*index].rfind('\n').map_or(0, |pos| pos + 1);
+  let end = input_code[*index..]
+    .find('\n')
+    .map_or(input_code.len(), |pos| index + pos);
+  let ws = " ".repeat(index - start);
+  format!("{}\n{ws} A\n{ws}/|\\n{ws}+ | \n", &input_code[start..end])
 }
 macro_rules! genErr {
-    ($text:expr, $pos:expr, $input_code:expr) => {
-        Err(
-            format!(
-                "{}\nError occurred at byte: {}\nError position:\n{}",
-                $text,
-                &(*$pos + 1),
-                get_error_line($input_code, $pos)
-            )
-            .into(),
-        )
-    };
+  ($text:expr, $pos:expr, $input_code:expr) => {
+    Err(
+      format!(
+        "{}\nError occurred at byte: {}\nError position:\n{}",
+        $text,
+        &(*$pos + 1),
+        get_error_line($input_code, $pos)
+      )
+      .into(),
+    )
+  };
 }
-
 #[derive(Debug, Clone)]
 struct Json {
   pub pos: usize,
@@ -173,64 +172,102 @@ impl<'a> JParser<'a> {
     let mut num_str = String::new();
     let mut has_decimal = false;
     let mut has_exponent = false;
+
     if self.input_code[self.pos..].starts_with('-') {
       num_str.push('-');
       self.next_char()?;
     }
-    while let Some(ch) = self.input_code[self.pos..].chars().next() {
-      match ch {
-        '0'..='9' => {
+
+    if self.input_code[self.pos..].starts_with('0') {
+      num_str.push('0');
+      self.next_char()?;
+      if matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
+        return genErr!(
+          "Leading zeros are not allowed in numbers",
+          &self.pos,
+          self.input_code
+        );
+      }
+    } else if matches!(self.input_code[self.pos..].chars().next(), Some('1'..='9')) {
+      while let Some(ch) = self.input_code[self.pos..].chars().next() {
+        if ch.is_ascii_digit() {
           num_str.push(ch);
           self.next_char()?;
+        } else {
+          break;
         }
-        '.' if !has_decimal && !has_exponent => {
-          has_decimal = true;
-          num_str.push(ch);
-          self.next_char()?;
-          if !matches!(self.input_code[self.pos..].chars().next()
-, Some(c) if c.is_ascii_digit())
-          {
-            return genErr!(
-              "There are no digits after the decimal point",
-              &self.pos,
-              self.input_code
-            );
+      }
+    } else {
+      return genErr!("Invalid number format", &self.pos, self.input_code);
+    }
+
+    if let Some(ch) = self.input_code[self.pos..].chars().next() {
+      if ch == '.' {
+        has_decimal = true;
+        num_str.push(ch);
+        self.next_char()?;
+        if !matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
+          return genErr!(
+            "A digit is required after the decimal point",
+            &self.pos,
+            self.input_code
+          );
+        }
+        while let Some(ch) = self.input_code[self.pos..].chars().next() {
+          if ch.is_ascii_digit() {
+            num_str.push(ch);
+            self.next_char()?;
+          } else {
+            break;
           }
         }
-        'e' | 'E' if !has_exponent => {
-          has_exponent = true;
-          num_str.push(ch);
-          self.next_char()?;
-          if matches!(self.input_code[self.pos..].chars().next(), Some('+' | '-')) {
-            num_str.push(self.next_char()?);
-          }
-          if !matches!(self.input_code[self.pos..].chars().next()
-, Some(c) if c.is_ascii_digit())
-          {
-            return genErr!(
-              "Missing digits in the exponent part",
-              &self.pos,
-              self.input_code
-            );
-          }
-        }
-        _ => break,
       }
     }
-    match num_str.parse::<i64>() {
-      Ok(int_val) if !has_decimal && !has_exponent => Ok(Json {
-        pos: start,
-        value: JValue::Int(VKind::Lit(int_val)),
-      }),
-      _ => num_str.parse::<f64>().map_or_else(
-        |_| genErr!("Invalid value", &self.pos, self.input_code),
+    if let Some(ch) = self.input_code[self.pos..].chars().next() {
+      if ch == 'e' || ch == 'E' {
+        has_exponent = true;
+        num_str.push(ch);
+        self.next_char()?;
+        if matches!(self.input_code[self.pos..].chars().next(), Some('+' | '-')) {
+          num_str.push(self.next_char()?);
+        }
+        if !matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
+          return genErr!(
+            "A digit is required in the exponent part",
+            &self.pos,
+            self.input_code
+          );
+        }
+        while let Some(ch) = self.input_code[self.pos..].chars().next() {
+          if ch.is_ascii_digit() {
+            num_str.push(ch);
+            self.next_char()?;
+          } else {
+            break;
+          }
+        }
+      }
+    }
+    if !has_decimal && !has_exponent {
+      num_str.parse::<i64>().map_or_else(
+        |_| genErr!("Invalid integer value", &self.pos, self.input_code),
+        |int_val| {
+          Ok(Json {
+            pos: start,
+            value: JValue::Int(VKind::Lit(int_val)),
+          })
+        },
+      )
+    } else {
+      num_str.parse::<f64>().map_or_else(
+        |_| genErr!("Invalid numeric value", &self.pos, self.input_code),
         |float_val| {
           Ok(Json {
             pos: start,
             value: JValue::Float(VKind::Lit(float_val)),
           })
         },
-      ),
+      )
     }
   }
   fn parse_string(&mut self) -> JResult {
@@ -268,17 +305,27 @@ impl<'a> JParser<'a> {
               let mut hex = String::new();
               for _ in 0..4 {
                 if let Ok(c) = self.next_char() {
-                  hex.push(c);
+                  if c.is_ascii_hexdigit() {
+                    hex.push(c);
+                  } else {
+                    return genErr!("Invalid hex digit", &self.pos, self.input_code);
+                  }
                 } else {
                   return genErr!("Faild read hex", &self.pos, self.input_code);
                 }
               }
               let cp =
                 u32::from_str_radix(&hex, 16).map_err(|_| String::from("Invalid codepoint"))?;
+              if (0xD800..=0xDFFF).contains(&cp) {
+                return genErr!("Invalid unicode", &self.pos, self.input_code);
+              }
               result.push(std::char::from_u32(cp).ok_or("Invalid unicode")?);
             }
             _ => return genErr!("Invalid escape sequense", &self.pos, self.input_code),
           }
+        }
+        c if c < '\u{20}' => {
+          return genErr!("Invalid control character", &self.pos, self.input_code);
         }
         _ => result.push(c),
       }
@@ -423,7 +470,7 @@ impl<'a> JParser<'a> {
     write!(file, "{}", self.bss)?;
     write!(file, "{}", self.text)?;
     write!(file, "{}", mainfunc)?;
-    write!(
+    writeln!(
       file,
       r#"  xor ecx, ecx
   call ExitProcess
@@ -452,8 +499,7 @@ display_error:
   call WriteConsoleW
 exit_program:
   mov ecx, [rip + lastError]
-  call ExitProcess
-"#
+  call ExitProcess"#
     )?;
     Ok(())
   }
@@ -774,7 +820,7 @@ exit_program:
     };
     let retcode = self.get_name();
     writeln!(self.bss, "  .lcomm {}, 8", retcode)?;
-    write!(
+    writeln!(
       function,
       r#"  xor ecx, ecx
   lea rdx, [rip + {}]
@@ -783,8 +829,7 @@ exit_program:
   call MessageBoxA
   test eax, eax
   jz display_error
-  mov [rip + {}], rax
-"#,
+  mov [rip + {}], rax"#,
       title, msg, retcode
     )?;
     Ok(Json {
@@ -910,7 +955,9 @@ fn main() -> ! {
     .unwrap_or_else(|errmsg| error_exit(format!("ParseError: {errmsg}")));
   #[cfg(debug_assertions)]
   {
-    parsed.print_json()    .unwrap_or_else(|| error_exit(format!("Couldn't print json: {}", args[1])))    ;
+    parsed
+      .print_json()
+      .unwrap_or_else(|_| error_exit(format!("Couldn't print json: {}", args[1])));
   }
   let json_file = Path::new(&args[1])
     .file_stem()
@@ -933,8 +980,10 @@ fn main() -> ! {
     .unwrap_or_else(|errmsg| error_exit(format!("Failed to get current directory: {errmsg}")));
   path.push(&exe_file);
   let exit_code = Command::new(path)
-    .spawn().unwrap_or_else(|errmsg| error_exit(format!("Failed to spawn child process: {errmsg}")))
-    .wait().unwrap_or_else(|errmsg| error_exit(format!("Failed to wait for child process: {errmsg}")))
+    .spawn()
+    .unwrap_or_else(|errmsg| error_exit(format!("Failed to spawn child process: {errmsg}")))
+    .wait()
+    .unwrap_or_else(|errmsg| error_exit(format!("Failed to wait for child process: {errmsg}")))
     .code()
     .unwrap_or_else(|| error_exit(String::from("Failed to retrieve the exit code")));
   std::process::exit(exit_code)
