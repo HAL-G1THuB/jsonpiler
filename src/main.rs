@@ -124,14 +124,22 @@ impl<'a> JParser<'a> {
     self.seed += 1;
     format!("_{:x}", self.seed)
   }
-  fn validate(&self, flag: bool, name: String, text: String, pos: &usize)-> Result<(), Box<dyn Error>>{
+  fn validate(
+    &self,
+    flag: bool,
+    name: String,
+    text: String,
+    pos: &usize,
+  ) -> Result<(), Box<dyn Error>> {
     if flag {
-    return genErr!(
-      format!("'{}' requires {} argument", name, text),
-      pos,
-      self.input_code
-    );
-  };Ok(())}
+      return genErr!(
+        format!("'{}' requires {} argument", name, text),
+        pos,
+        self.input_code
+      );
+    };
+    Ok(())
+  }
   fn parse(&mut self) -> JResult {
     let result = self.parse_value()?;
     self.skipws();
@@ -545,8 +553,21 @@ exit_program:
       value: JValue::Function(VKind::Lit(params.clone())),
     })
   }
+  fn f_begin(&mut self, args: &[Json], function: &mut String) -> JResult {
+    self.validate(
+      args.len() == 1,
+      "begin".into(),
+      "at least one".into(),
+      &args[0].pos,
+    )?;
+    let mut result: JResult = Err("Unreachable".into());
+    for a in &args[1..args.len()] {
+      result = self.eval(a, function)
+    }
+    result
+  }
   fn f_setvar(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.validate(args.len() != 3, "=".into(), "two".into(),&args[0].pos)?;
+    self.validate(args.len() != 3, "=".into(), "two".into(), &args[0].pos)?;
     if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       let value = self.eval(&args[2], function)?;
       if value.value.is_lit() {
@@ -586,7 +607,7 @@ exit_program:
     }
   }
   fn f_getvar(&mut self, args: &[Json], _: &mut String) -> JResult {
-    self.validate(args.len() != 2, "$".into(), "one".into(),&args[0].pos)?;
+    self.validate(args.len() != 2, "$".into(), "one".into(), &args[0].pos)?;
     if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       if let Some(value) = self.vars.get(var_name) {
         Ok(value.clone())
@@ -606,7 +627,12 @@ exit_program:
     }
   }
   fn f_plus(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.validate(args.len() == 1, "+".into(), "at least one".into(),&args[0].pos)?;
+    self.validate(
+      args.len() == 1,
+      "+".into(),
+      "at least one".into(),
+      &args[0].pos,
+    )?;
     let Ok(Json {
       pos: _,
       value: JValue::Int(result),
@@ -647,16 +673,13 @@ exit_program:
       value: JValue::Int(VKind::Var(assign_name)),
     })
   }
-  fn f_begin(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.validate(args.len() == 1, "begin".into(), "at least one".into(),&args[0].pos)?;
-    let mut result: JResult = Err("Unreachable".into());
-    for a in &args[1..args.len()] {
-      result = self.eval(a, function)
-    }
-    result
-  }
   fn f_minus(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.validate(args.len() == 1, "-".into(), "at least one".into(),&args[0].pos)?;
+    self.validate(
+      args.len() == 1,
+      "-".into(),
+      "at least one".into(),
+      &args[0].pos,
+    )?;
     let Ok(Json {
       pos: _,
       value: JValue::Int(result),
@@ -698,7 +721,12 @@ exit_program:
     })
   }
   fn f_message(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.validate(args.len() != 3, "message".into(), "two".into(),&args[0].pos)?;
+    self.validate(
+      args.len() != 3,
+      "message".into(),
+      "two".into(),
+      &args[0].pos,
+    )?;
     let parsed2 = self.eval(&args[2], function)?;
     let msg = match parsed2 {
       Json {
@@ -757,7 +785,7 @@ exit_program:
   jz display_error
   mov [rip + {}], rax
 "#,
-      msg, title, retcode
+      title, msg, retcode
     )?;
     Ok(Json {
       pos: args[0].pos,
@@ -770,7 +798,7 @@ impl Json {
   pub fn print_json(&self) -> fmt::Result {
     let mut output = String::new();
     if self.write_json(&mut output).is_ok() {
-      println!("{}",output);
+      println!("{}", output);
     }
     Ok(())
   }
