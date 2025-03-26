@@ -896,7 +896,7 @@ impl Json {
     escaped
   }
 }
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> ! {
   let args: Vec<String> = env::args().collect();
   if args.len() != 2 {
     eprintln!("Usage: {} <input json file>", args[0]);
@@ -910,7 +910,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     .unwrap_or_else(|errmsg| error_exit(format!("ParseError: {errmsg}")));
   #[cfg(debug_assertions)]
   {
-    parsed.print_json()?;
+    parsed.print_json()    .unwrap_or_else(|| error_exit(format!("Couldn't print json: {}", args[1])))    ;
   }
   let json_file = Path::new(&args[1])
     .file_stem()
