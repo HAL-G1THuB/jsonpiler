@@ -132,7 +132,8 @@ impl<'a> JParser<'a> {
   }
   fn get_name(&mut self) -> Result<String, Box<dyn Error>> {
     if self.seed == 0 {
-      return Ok(String::from("00"));
+      self.seed += 1;
+      return Ok(String::from("_00"));
     }
     let mut hex_bytes = Vec::new();
     let mut leading_zero = true;
