@@ -135,8 +135,7 @@ impl<'a> JParser<'a> {
     self.skipws();
     if self.pos != self.input_code.len() {
       genErr!(
-        "
-        Unexpected trailing characters",
+        "        Unexpected trailing characters",
         self.pos,
         self.ln,
         self.input_code
@@ -190,8 +189,7 @@ impl<'a> JParser<'a> {
       self.next()?;
       if matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
         return genErr!(
-          "
-          Leading zeros are not allowed in numbers",
+          "          Leading zeros are not allowed in numbers",
           self.pos,
           self.ln,
           self.input_code
@@ -242,8 +240,7 @@ impl<'a> JParser<'a> {
         }
         if !matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
           return genErr!(
-            "
-            A digit is required in the exponent part",
+            "            A digit is required in the exponent part",
             self.pos,
             self.ln,
             self.input_code
@@ -286,8 +283,7 @@ impl<'a> JParser<'a> {
   fn parse_string(&mut self) -> JResult {
     if !self.input_code[self.pos..].starts_with('\"') {
       return genErr!(
-        "
-        Missing opening quotation for string",
+        "        Missing opening quotation for string",
         self.pos,
         self.ln,
         self.input_code
@@ -339,8 +335,7 @@ impl<'a> JParser<'a> {
             }
             _ => {
               return genErr!(
-                "
-                Invalid escape sequense",
+                "                Invalid escape sequense",
                 self.pos,
                 self.ln,
                 self.input_code
@@ -350,8 +345,7 @@ impl<'a> JParser<'a> {
         }
         c if c < '\u{20}' => {
           return genErr!(
-            "
-            Invalid control character",
+            "            Invalid control character",
             self.pos,
             self.ln,
             self.input_code
@@ -361,8 +355,7 @@ impl<'a> JParser<'a> {
       }
     }
     genErr!(
-      "
-      String is not properly terminated",
+      "String is not properly terminated",
       self.pos,
       self.ln,
       self.input_code
@@ -397,8 +390,7 @@ impl<'a> JParser<'a> {
         self.skipws();
       } else {
         return genErr!(
-          "
-          Invalid array separator",
+          "          Invalid array separator",
           self.pos,
           self.ln,
           self.input_code
@@ -433,8 +425,7 @@ impl<'a> JParser<'a> {
           value: _,
         } => {
           return genErr!(
-            "
-            Keys must be strings",
+            "            Keys must be strings",
             invalid_pos,
             invalid_ln,
             self.input_code
@@ -460,8 +451,7 @@ impl<'a> JParser<'a> {
         self.skipws();
       } else {
         return genErr!(
-          "
-          Invalid object separator",
+          "          Invalid object separator",
           self.pos,
           self.ln,
           self.input_code
@@ -527,17 +517,17 @@ impl<'a> JParser<'a> {
   call GetStdHandle
   cmp rax, -1
   je display_error
-  mov [rip + STDIN], rax
+  mov QWORD PTR [rip + STDIN], rax
   mov ecx, -11
   call GetStdHandle
   cmp rax, -1
   je display_error
-  mov [rip + STDOUT], rax
+  mov QWORD PTR [rip + STDOUT], rax
   mov ecx, -12
   call GetStdHandle
   cmp rax, -1
   je display_error
-  mov [rip + STDERR], rax
+  mov QWORD PTR [rip + STDERR], rax
 "#,
     );
     self.eval(&parsed, &mut mainfunc)?;
@@ -557,13 +547,13 @@ impl<'a> JParser<'a> {
   call ExitProcess
 display_error:
   call GetLastError
-  mov [rip + errorCode], eax
+  mov DWORD PTR [rip + errorCode], eax
   sub rsp, 32
   mov ecx, 0x1200
   xor edx, edx
   mov r8d, eax
   xor r9d, r9d
-  lea rax, [rip + errorMessage]
+  lea rax, QWORD PTR [rip + errorMessage]
   mov [rsp + 32], rax
   mov qword ptr [rsp + 40], 512
   mov qword ptr [rsp + 48], 0
@@ -572,12 +562,12 @@ display_error:
   test rax, rax
   jz exit_program
   xor ecx, ecx
-  lea rdx, [rip + errorMessage]
+  lea rdx, QWORD PTR [rip + errorMessage]
   xor r8d, r8d
   mov r9, 0x10
   call MessageBoxW
 exit_program:
-  mov ecx, [rip + errorCode]
+  mov ecx, DWORD PTR [rip + errorCode]
   call ExitProcess"#
     )?;
     Ok(())
@@ -663,8 +653,7 @@ exit_program:
     }
     if func_list.len() < 3 {
       return genErr!(
-        "
-        Invalid function defintion",
+        "        Invalid function defintion",
         parsed.pos,
         parsed.ln,
         self.input_code
@@ -737,8 +726,7 @@ exit_program:
           }
           _ => {
             return genErr!(
-              "
-              Assignment to an unimplemented type",
+              "              Assignment to an unimplemented type",
               args[0].pos,
               args[0].ln,
               self.input_code
@@ -805,8 +793,7 @@ exit_program:
     }) = self.eval(&args[1], function)
     else {
       return genErr!(
-        "
-        '+' requires integer operands",
+        "        '+' requires integer operands",
         args[0].pos,
         args[0].ln,
         self.input_code
@@ -814,7 +801,7 @@ exit_program:
     };
     match result {
       VKind::Lit(l) => writeln!(function, "  mov rax, {}", l)?,
-      VKind::Var(v) => writeln!(function, "  mov rax, [rip + {}]", v)?,
+      VKind::Var(v) => writeln!(function, "  mov rax, QWORD PTR [rip + {}]", v)?,
     }
     for a in &args[2..args.len()] {
       let Ok(Json {
@@ -824,8 +811,7 @@ exit_program:
       }) = self.eval(a, function)
       else {
         return genErr!(
-          "
-          '+' requires integer operands",
+          "          '+' requires integer operands",
           args[0].pos,
           args[0].ln,
           self.input_code
@@ -833,12 +819,12 @@ exit_program:
       };
       match result {
         VKind::Lit(l) => writeln!(function, "  add rax, {}", l)?,
-        VKind::Var(v) => writeln!(function, "  add rax, [rip + {}]", v)?,
+        VKind::Var(v) => writeln!(function, "  add rax, QWORD PTR [rip + {}]", v)?,
       }
     }
     let assign_name = self.get_name();
     writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
-    writeln!(function, "  mov rax, [rip + {}]", assign_name)?;
+    writeln!(function, "  mov rax, QWORD PTR [rip + {}]", assign_name)?;
     Ok(Json {
       pos: args[0].pos,
       ln: args[0].ln,
@@ -860,8 +846,7 @@ exit_program:
     }) = self.eval(&args[1], function)
     else {
       return genErr!(
-        "
-        '-' requires integer operands",
+        "        '-' requires integer operands",
         args[0].pos,
         args[0].ln,
         self.input_code
@@ -869,7 +854,7 @@ exit_program:
     };
     match result {
       VKind::Lit(l) => writeln!(function, "  mov rax, {}", l)?,
-      VKind::Var(v) => writeln!(function, "  mov rax, [rip + {}]", v)?,
+      VKind::Var(v) => writeln!(function, "  mov rax, QWORD PTR [rip + {}]", v)?,
     }
     for a in &args[2..args.len()] {
       let Ok(Json {
@@ -879,8 +864,7 @@ exit_program:
       }) = self.eval(a, function)
       else {
         return genErr!(
-          "
-          '-' requires integer operands",
+          "          '-' requires integer operands",
           args[0].pos,
           args[0].ln,
           self.input_code
@@ -888,12 +872,12 @@ exit_program:
       };
       match result {
         VKind::Lit(l) => writeln!(function, "  sub rax, {}", l)?,
-        VKind::Var(v) => writeln!(function, "  sub rax, [rip + {}]", v)?,
+        VKind::Var(v) => writeln!(function, "  sub rax, QWORD PTR [rip + {}]", v)?,
       }
     }
     let assign_name = self.get_name();
     writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
-    writeln!(function, "  movq [rip + {}], rax", assign_name)?;
+    writeln!(function, "  mov QWORD PTR [rip + {}], rax", assign_name)?;
     Ok(Json {
       pos: args[0].pos,
       ln: args[0].ln,
@@ -964,13 +948,13 @@ exit_program:
     writeln!(
       function,
       r#"  xor ecx, ecx
-  lea rdx, [rip + {}]
-  lea r8, [rip + {}]
+  lea rdx, QWORD PTR [rip + {}]
+  lea r8, QWORD PTR [rip + {}]
   xor r9d, r9d
   call MessageBoxA
   test eax, eax
   jz display_error
-  mov [rip + {}], rax"#,
+  mov QWORD PTR [rip + {}], rax"#,
       msg, title, retcode
     )?;
     Ok(Json {
@@ -1090,16 +1074,16 @@ fn main() -> ! {
     std::process::exit(0)
   }
   let input_code = fs::read_to_string(&args[1])
-    .unwrap_or_else(|errmsg| error_exit(format!("Failed to read file: {errmsg}")));
+    .unwrap_or_else(|e| error_exit(format!("Failed to read file: {e}")));
   let mut parser = JParser::default();
   let parsed = parser
     .parse(&input_code)
-    .unwrap_or_else(|errmsg| error_exit(format!("ParseError: {errmsg}")));
+    .unwrap_or_else(|e| error_exit(format!("ParseError: {e}")));
   #[cfg(debug_assertions)]
   {
     parsed
       .print_json()
-      .unwrap_or_else(|_| error_exit(format!("Couldn't print json: {}", args[1])));
+      .unwrap_or_else(|e| error_exit(format!("Couldn't print json: {}", e)));
   }
   let json_file = Path::new(&args[1])
     .file_stem()
@@ -1109,7 +1093,7 @@ fn main() -> ! {
   let exe_file = format!("{json_file}.exe");
   parser
     .build(parsed, &asm_file)
-    .unwrap_or_else(|errmsg| error_exit(format!("CompileError: {errmsg}")));
+    .unwrap_or_else(|e| error_exit(format!("CompileError: {e}")));
   if !Command::new("gcc")
     .args([&asm_file, "-o", &exe_file, "-nostartfiles"])
     .status()
@@ -1119,13 +1103,13 @@ fn main() -> ! {
     error_exit(String::from("Failed to assemble or link"))
   };
   let mut path = env::current_dir()
-    .unwrap_or_else(|errmsg| error_exit(format!("Failed to get current directory: {errmsg}")));
+    .unwrap_or_else(|e| error_exit(format!("Failed to get current directory: {e}")));
   path.push(&exe_file);
   let exit_code = Command::new(path)
     .spawn()
-    .unwrap_or_else(|errmsg| error_exit(format!("Failed to spawn child process: {errmsg}")))
+    .unwrap_or_else(|e| error_exit(format!("Failed to spawn child process: {e}")))
     .wait()
-    .unwrap_or_else(|errmsg| error_exit(format!("Failed to wait for child process: {errmsg}")))
+    .unwrap_or_else(|e| error_exit(format!("Failed to wait for child process: {e}")))
     .code()
     .unwrap_or_else(|| error_exit(String::from("Failed to retrieve the exit code")));
   std::process::exit(exit_code)
