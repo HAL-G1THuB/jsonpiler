@@ -126,6 +126,13 @@ impl<'a> JParser<'a> {
   fn obj_err(&self, text: &str, obj: &Json) -> JResult {
     genErr!(text, obj.pos, obj.ln, self.input_code)
   }
+  fn obj_ok(&self, val: JValue, obj: &Json) -> JResult {
+    Ok(Json {
+      pos: obj.pos,
+      ln: obj.ln,
+      value: val,
+    })
+  }
   fn parse(&mut self, code: &'a str) -> JResult {
     self.input_code = code;
     let result = self.parse_value()?;
@@ -360,11 +367,10 @@ impl<'a> JParser<'a> {
       });
     }
     loop {
-      let key = self.parse_string()?;
+      let key = self.parse_value()?;
       let JValue::String(VKind::Lit(s)) = key.value else {
         return self.obj_err("Keys must be strings", &key);
       };
-      self.skip_ws();
       self.expect(':')?;
       let value = self.parse_value()?;
       object.insert(s, value);
@@ -377,8 +383,7 @@ impl<'a> JParser<'a> {
         });
       }
       if self.input_code[self.pos..].starts_with(',') {
-        self.pos += 1;
-        self.skip_ws();
+        self.pos += 1
       } else {
         return self.parse_err("Invalid object separator");
       }
@@ -401,7 +406,7 @@ impl<'a> JParser<'a> {
     self.skip_ws();
     result
   }
-  pub fn build(&mut self, parsed: Json, filename: &str) -> Result<(), Box<dyn Error>> {
+  pub fn build(&mut self, parsed: Json, filename: &str) -> JResult {
     self.f_table.insert("=".into(), JParser::setvar as F<Self>);
     self.f_table.insert("$".into(), JParser::getvar as F<Self>);
     self.f_table.insert("+".into(), JParser::plus as F<Self>);
@@ -457,7 +462,7 @@ impl<'a> JParser<'a> {
   mov QWORD PTR [rip + STDERR], rax
 "#,
     );
-    self.eval(&parsed, &mut main_func)?;
+    let result = self.eval(&parsed, &mut main_func)?;
     let mut file = File::create(filename)?;
     writeln!(file, ".intel_syntax noprefix")?;
     writeln!(file, ".global start")?;
@@ -497,15 +502,10 @@ exit_program:
   mov ecx, DWORD PTR [rip + errorCode]
   call ExitProcess"#
     )?;
-    Ok(())
+    Ok(result)
   }
   fn eval(&mut self, parsed: &Json, function: &mut String) -> JResult {
-    let Json {
-      pos: _,
-      ln: _,
-      value: JValue::Array(VKind::Lit(list)),
-    } = parsed
-    else {
+    let JValue::Array(VKind::Lit(list)) = &parsed.value else {
       return Ok(parsed.clone());
     };
     if list.is_empty() {
@@ -514,19 +514,16 @@ exit_program:
         parsed,
       );
     };
-    match &list[0] {
-      Json {
-        pos: _,
-        ln: _,
-        value: JValue::String(VKind::Lit(cmd)),
-      } => {
+    match &list[0].value {
+      JValue::String(VKind::Lit(cmd)) => {
         if cmd == "lambda" {
           return Ok(parsed.clone());
         }
         if let Some(func) = self.f_table.get(cmd.as_str()) {
-          return func(self, list, function);
+          func(self, list.as_slice(), function)
+        } else {
+          self.obj_err(&format!("Undefined function: {}", cmd), &list[0])
         }
-        self.obj_err(&format!("Undefined function: {}", cmd), &list[0])
       }
       _ => {
         let mut func_buffer = String::new();
@@ -537,23 +534,13 @@ exit_program:
     }
   }
   fn eval_lambda(&mut self, parsed: &Json, function: &mut String) -> JResult {
-    let Json {
-      pos: _,
-      ln: _,
-      value: JValue::Array(VKind::Lit(func_list)),
-    } = &parsed
-    else {
+    let JValue::Array(VKind::Lit(func_list)) = &parsed.value else {
       return self.obj_err(
         "Only a lambda list or a string is allowed as the first element of a list",
         parsed,
       );
     };
-    let Json {
-      pos: _,
-      ln: _,
-      value: JValue::String(VKind::Lit(cmd)),
-    } = &parsed
-    else {
+    let JValue::String(VKind::Lit(cmd)) = &func_list[0].value else {
       return self.obj_err(
         "Only a lambda list or a string is allowed as the first element of a list",
         parsed,
@@ -568,12 +555,7 @@ exit_program:
     if func_list.len() < 3 {
       return self.obj_err("Invalid function definition", parsed);
     };
-    let Json {
-      pos: _,
-      ln: _,
-      value: JValue::Array(VKind::Lit(params)),
-    } = &func_list[1]
-    else {
+    let JValue::Array(VKind::Lit(params)) = &func_list[1].value else {
       return self.obj_err(
         "The second element of a lambda list must be an argument list",
         &func_list[1],
@@ -582,11 +564,7 @@ exit_program:
     for i in &func_list[2..] {
       self.eval(i, function)?;
     }
-    Ok(Json {
-      pos: 1,
-      ln: 1,
-      value: JValue::Function(VKind::Lit(params.clone())),
-    })
+    self.obj_ok(JValue::Function(VKind::Lit(params.clone())), &func_list[0])
   }
   fn begin(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(
@@ -720,7 +698,7 @@ exit_program:
   fn message(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(args.len() != 3, "message".into(), "two".into(), &args[0])?;
     let arg1 = self.eval(&args[1], function)?.value;
-    self.extern_set.insert(String::from("MessageBoxA"));
+    self.extern_set.insert("MessageBoxA".into());
     let title = match arg1 {
       JValue::String(VKind::Lit(l)) => {
         let mn = self.get_name();
