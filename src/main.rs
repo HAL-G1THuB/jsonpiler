@@ -10,22 +10,18 @@ type JResult = Result<Json, Box<dyn Error>>;
 type F<T> = fn(&mut T, &[Json], &mut String) -> JResult;
 fn get_error_line(input_code: &str, index: usize) -> String {
   if input_code.is_empty() {
-      return "Error: Empty input".to_string();
+    return "Error: Empty input".to_string();
   }
   let len = input_code.len();
   let idx = index.min(len.saturating_sub(1));
   let start = if idx > 0 {
-      input_code[..idx].rfind('\n').map_or(0, |pos| pos + 1)
+    input_code[..idx].rfind('\n').map_or(0, |pos| pos + 1)
   } else {
-      0
+    0
   };
   let end = input_code[idx..].find('\n').map_or(len, |pos| idx + pos);
   let ws = " ".repeat(idx.saturating_sub(start));
-  format!(
-      "{}\n{}^",
-      &input_code[start..end],
-      ws
-  )
+  format!("{}\n{}^", &input_code[start..end], ws)
 }
 macro_rules! genErr {
   ($text:expr, $pos:expr,$ln: expr, $input_code:expr) => {
@@ -139,7 +135,8 @@ impl<'a> JParser<'a> {
     self.skipws();
     if self.pos != self.input_code.len() {
       genErr!(
-        "Unexpected trailing characters",
+        "
+        Unexpected trailing characters",
         self.pos,
         self.ln,
         self.input_code
@@ -193,7 +190,8 @@ impl<'a> JParser<'a> {
       self.next()?;
       if matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
         return genErr!(
-          "Leading zeros are not allowed in numbers",
+          "
+          Leading zeros are not allowed in numbers",
           self.pos,
           self.ln,
           self.input_code
@@ -209,12 +207,7 @@ impl<'a> JParser<'a> {
         }
       }
     } else {
-      return genErr!(
-        "Invalid number format",
-        self.pos,
-        self.ln,
-        self.input_code
-      );
+      return genErr!("Invalid number format", self.pos, self.ln, self.input_code);
     }
     if let Some(ch) = self.input_code[self.pos..].chars().next() {
       if ch == '.' {
@@ -249,7 +242,8 @@ impl<'a> JParser<'a> {
         }
         if !matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
           return genErr!(
-            "A digit is required in the exponent part",
+            "
+            A digit is required in the exponent part",
             self.pos,
             self.ln,
             self.input_code
@@ -267,14 +261,7 @@ impl<'a> JParser<'a> {
     }
     if !has_decimal && !has_exponent {
       num_str.parse::<i64>().map_or_else(
-        |_| {
-          genErr!(
-            "Invalid integer value",
-            self.pos,
-            self.ln,
-            self.input_code
-          )
-        },
+        |_| genErr!("Invalid integer value", self.pos, self.ln, self.input_code),
         |int_val| {
           Ok(Json {
             pos: start,
@@ -285,14 +272,7 @@ impl<'a> JParser<'a> {
       )
     } else {
       num_str.parse::<f64>().map_or_else(
-        |_| {
-          genErr!(
-            "Invalid numeric value",
-            self.pos,
-            self.ln,
-            self.input_code
-          )
-        },
+        |_| genErr!("Invalid numeric value", self.pos, self.ln, self.input_code),
         |float_val| {
           Ok(Json {
             pos: start,
@@ -306,7 +286,8 @@ impl<'a> JParser<'a> {
   fn parse_string(&mut self) -> JResult {
     if !self.input_code[self.pos..].starts_with('\"') {
       return genErr!(
-        "Missing opening quotation for string",
+        "
+        Missing opening quotation for string",
         self.pos,
         self.ln,
         self.input_code
@@ -358,7 +339,8 @@ impl<'a> JParser<'a> {
             }
             _ => {
               return genErr!(
-                "Invalid escape sequense",
+                "
+                Invalid escape sequense",
                 self.pos,
                 self.ln,
                 self.input_code
@@ -368,7 +350,8 @@ impl<'a> JParser<'a> {
         }
         c if c < '\u{20}' => {
           return genErr!(
-            "Invalid control character",
+            "
+            Invalid control character",
             self.pos,
             self.ln,
             self.input_code
@@ -378,7 +361,8 @@ impl<'a> JParser<'a> {
       }
     }
     genErr!(
-      "String is not properly terminated",
+      "
+      String is not properly terminated",
       self.pos,
       self.ln,
       self.input_code
@@ -413,7 +397,8 @@ impl<'a> JParser<'a> {
         self.skipws();
       } else {
         return genErr!(
-          "Invalid array separator",
+          "
+          Invalid array separator",
           self.pos,
           self.ln,
           self.input_code
@@ -448,7 +433,8 @@ impl<'a> JParser<'a> {
           value: _,
         } => {
           return genErr!(
-            "Keys must be strings",
+            "
+            Keys must be strings",
             invalid_pos,
             invalid_ln,
             self.input_code
@@ -474,7 +460,8 @@ impl<'a> JParser<'a> {
         self.skipws();
       } else {
         return genErr!(
-          "Invalid object separator",
+          "
+          Invalid object separator",
           self.pos,
           self.ln,
           self.input_code
@@ -485,12 +472,7 @@ impl<'a> JParser<'a> {
   fn parse_value(&mut self) -> JResult {
     self.skipws();
     if self.pos >= self.input_code.len() {
-      return genErr!(
-        "Unexpected end of text",
-        self.pos,
-        self.ln,
-        self.input_code
-      );
+      return genErr!("Unexpected end of text", self.pos, self.ln, self.input_code);
     }
     match self.input_code[self.pos..].chars().next() {
       Some('"') => self.parse_string(),
@@ -525,9 +507,7 @@ impl<'a> JParser<'a> {
     );
     self.text.push_str(".text\n");
     self.extern_set.insert("ExitProcess".into());
-    self
-      .extern_set
-      .insert("SetConsoleCP, SetConsoleOutputCP".into());
+    self.extern_set.insert("SetConsoleCP".into());
     self.extern_set.insert("GetLastError".into());
     self.extern_set.insert("MessageBoxW".into());
     self.extern_set.insert("FormatMessageW".into());
@@ -683,7 +663,8 @@ exit_program:
     }
     if func_list.len() < 3 {
       return genErr!(
-        "Invalid function defintion",
+        "
+        Invalid function defintion",
         parsed.pos,
         parsed.ln,
         self.input_code
@@ -756,7 +737,8 @@ exit_program:
           }
           _ => {
             return genErr!(
-              "Assignment to an unimplemented type",
+              "
+              Assignment to an unimplemented type",
               args[0].pos,
               args[0].ln,
               self.input_code
@@ -823,7 +805,8 @@ exit_program:
     }) = self.eval(&args[1], function)
     else {
       return genErr!(
-        "'+' requires integer operands",
+        "
+        '+' requires integer operands",
         args[0].pos,
         args[0].ln,
         self.input_code
@@ -841,7 +824,8 @@ exit_program:
       }) = self.eval(a, function)
       else {
         return genErr!(
-          "'+' requires integer operands",
+          "
+          '+' requires integer operands",
           args[0].pos,
           args[0].ln,
           self.input_code
@@ -876,7 +860,8 @@ exit_program:
     }) = self.eval(&args[1], function)
     else {
       return genErr!(
-        "'-' requires integer operands",
+        "
+        '-' requires integer operands",
         args[0].pos,
         args[0].ln,
         self.input_code
@@ -894,7 +879,8 @@ exit_program:
       }) = self.eval(a, function)
       else {
         return genErr!(
-          "'-' requires integer operands",
+          "
+          '-' requires integer operands",
           args[0].pos,
           args[0].ln,
           self.input_code
@@ -985,7 +971,7 @@ exit_program:
   test eax, eax
   jz display_error
   mov [rip + {}], rax"#,
-      msg,title, retcode
+      msg, title, retcode
     )?;
     Ok(Json {
       pos: args[0].pos,
