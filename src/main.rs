@@ -545,18 +545,18 @@ impl<'a> JParser<'a> {
   jz display_error
   mov ecx, -10
   call GetStdHandle
-  test rax, rax
-  jz display_error
+  cmp rax, -1
+  je display_error
   mov [rip + STDIN], rax
   mov ecx, -11
   call GetStdHandle
-  test rax, rax
-  jz display_error
+  cmp rax, -1
+  je display_error
   mov [rip + STDOUT], rax
   mov ecx, -12
   call GetStdHandle
-  test rax, rax
-  jz display_error
+  cmp rax, -1
+  je display_error
   mov [rip + STDERR], rax
 "#,
     );
@@ -594,7 +594,7 @@ display_error:
   xor ecx, ecx
   lea rdx, [rip + errorMessage]
   xor r8d, r8d
-  mov r9, 10h
+  mov r9, 0x10
   call MessageBoxW
 exit_program:
   mov ecx, [rip + errorCode]
