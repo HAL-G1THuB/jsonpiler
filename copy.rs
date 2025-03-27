@@ -10,22 +10,18 @@ type JResult = Result<Json, Box<dyn Error>>;
 type F<T> = fn(&mut T, &[Json], &mut String) -> JResult;
 fn get_error_line(input_code: &str, index: usize) -> String {
   if input_code.is_empty() {
-      return "Error: Empty input".to_string();
+    return "Error: Empty input".to_string();
   }
   let len = input_code.len();
   let idx = index.min(len.saturating_sub(1));
   let start = if idx > 0 {
-      input_code[..idx].rfind('\n').map_or(0, |pos| pos + 1)
+    input_code[..idx].rfind('\n').map_or(0, |pos| pos + 1)
   } else {
-      0
+    0
   };
   let end = input_code[idx..].find('\n').map_or(len, |pos| idx + pos);
   let ws = " ".repeat(idx.saturating_sub(start));
-  format!(
-      "{}\n{}^",
-      &input_code[start..end],
-      ws
-  )
+  format!("{}\n{}^", &input_code[start..end], ws)
 }
 macro_rules! genErr {
   ($text:expr, $pos:expr,$ln: expr, $input_code:expr) => {
@@ -209,12 +205,7 @@ impl<'a> JParser<'a> {
         }
       }
     } else {
-      return genErr!(
-        "Invalid number format",
-        self.pos,
-        self.ln,
-        self.input_code
-      );
+      return genErr!("Invalid number format", self.pos, self.ln, self.input_code);
     }
     if let Some(ch) = self.input_code[self.pos..].chars().next() {
       if ch == '.' {
@@ -267,14 +258,7 @@ impl<'a> JParser<'a> {
     }
     if !has_decimal && !has_exponent {
       num_str.parse::<i64>().map_or_else(
-        |_| {
-          genErr!(
-            "Invalid integer value",
-            self.pos,
-            self.ln,
-            self.input_code
-          )
-        },
+        |_| genErr!("Invalid integer value", self.pos, self.ln, self.input_code),
         |int_val| {
           Ok(Json {
             pos: start,
@@ -285,14 +269,7 @@ impl<'a> JParser<'a> {
       )
     } else {
       num_str.parse::<f64>().map_or_else(
-        |_| {
-          genErr!(
-            "Invalid numeric value",
-            self.pos,
-            self.ln,
-            self.input_code
-          )
-        },
+        |_| genErr!("Invalid numeric value", self.pos, self.ln, self.input_code),
         |float_val| {
           Ok(Json {
             pos: start,
@@ -485,12 +462,7 @@ impl<'a> JParser<'a> {
   fn parse_value(&mut self) -> JResult {
     self.skipws();
     if self.pos >= self.input_code.len() {
-      return genErr!(
-        "Unexpected end of text",
-        self.pos,
-        self.ln,
-        self.input_code
-      );
+      return genErr!("Unexpected end of text", self.pos, self.ln, self.input_code);
     }
     match self.input_code[self.pos..].chars().next() {
       Some('"') => self.parse_string(),
@@ -517,7 +489,7 @@ impl<'a> JParser<'a> {
     self.bss.push_str(
       r#".bss
   .lcomm errorMessage, 512
-  .lcomm errorCode, 4
+  .lcomm lastError, 4
   .lcomm STDOUT, 8
   .lcomm STDERR, 8
   .lcomm STDIN, 8
@@ -529,34 +501,26 @@ impl<'a> JParser<'a> {
       .extern_set
       .insert("SetConsoleCP, SetConsoleOutputCP".into());
     self.extern_set.insert("GetLastError".into());
-    self.extern_set.insert("MessageBoxW".into());
+    self.extern_set.insert("WriteConsoleW".into());
     self.extern_set.insert("FormatMessageW".into());
     self.extern_set.insert("GetStdHandle".into());
     let mut mainfunc = String::from(
       r#"_start:
-  sub rsp, 40
+  push rbp
+  mov rbp, rsp
+  sub rsp, 32
   mov ecx, 65001
   call SetConsoleCP
-  test rax, rax
-  jz display_error
   mov ecx, 65001
   call SetConsoleOutputCP
-  test rax, rax
-  jz display_error
   mov ecx, -10
   call GetStdHandle
-  test rax, rax
-  jz display_error
   mov [rip + STDIN], rax
   mov ecx, -11
   call GetStdHandle
-  test rax, rax
-  jz display_error
   mov [rip + STDOUT], rax
   mov ecx, -12
   call GetStdHandle
-  test rax, rax
-  jz display_error
   mov [rip + STDERR], rax
 "#,
     );
@@ -577,7 +541,7 @@ impl<'a> JParser<'a> {
   call ExitProcess
 display_error:
   call GetLastError
-  mov [rip + errorCode], eax
+  mov [rip + errorMessage], eax
   sub rsp, 32
   mov ecx, 0x1200
   xor edx, edx
@@ -588,16 +552,18 @@ display_error:
   mov qword ptr [rsp + 40], 512
   mov qword ptr [rsp + 48], 0
   call FormatMessageW
-  add rsp, 32
-  test rax, rax
+  add rsp, 16
+  test eax, eax
   jz exit_program
-  xor ecx, ecx
+  mov rcx, [rip + STDERR]
   lea rdx, [rip + errorMessage]
-  xor r8d, r8d
-  mov r9, 10h
-  call MessageBoxW
+  mov r8, 256
+  lea r9, [rsp + 32]
+  mov qword ptr [rsp + 40], 0
+  add rsp, 16
+  call WriteConsoleW
 exit_program:
-  mov ecx, [rip + errorCode]
+  mov ecx, [rip + lastError]
   call ExitProcess"#
     )?;
     Ok(())
@@ -750,7 +716,7 @@ exit_program:
               Json {
                 pos: args[0].pos,
                 ln: args[0].ln,
-                value: JValue::String(VKind::Var(n)),
+                value: JValue::String(VKind::Var(format!("[rip + {}]", n))),
               },
             );
           }
@@ -831,7 +797,7 @@ exit_program:
     };
     match result {
       VKind::Lit(l) => writeln!(function, "  mov rax, {}", l)?,
-      VKind::Var(v) => writeln!(function, "  mov rax, [rip + {}]", v)?,
+      VKind::Var(v) => writeln!(function, "  mov rax, {}", v)?,
     }
     for a in &args[2..args.len()] {
       let Ok(Json {
@@ -849,16 +815,16 @@ exit_program:
       };
       match result {
         VKind::Lit(l) => writeln!(function, "  add rax, {}", l)?,
-        VKind::Var(v) => writeln!(function, "  add rax, [rip + {}]", v)?,
+        VKind::Var(v) => writeln!(function, "  add rax, {}", v)?,
       }
     }
-    let assign_name = self.get_name();
-    writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
-    writeln!(function, "  mov rax, [rip + {}]", assign_name)?;
+    let name = self.get_name();
+    writeln!(self.bss, "  .lcomm {}, 8", name)?;
+    writeln!(function, "  mov rax, [rip + {}]", name)?;
     Ok(Json {
       pos: args[0].pos,
       ln: args[0].ln,
-      value: JValue::Int(VKind::Var(assign_name)),
+      value: JValue::Int(VKind::Var(format!("[rip + {}]", name))),
     })
   }
   fn minus(&mut self, args: &[Json], function: &mut String) -> JResult {
@@ -884,7 +850,7 @@ exit_program:
     };
     match result {
       VKind::Lit(l) => writeln!(function, "  mov rax, {}", l)?,
-      VKind::Var(v) => writeln!(function, "  mov rax, [rip + {}]", v)?,
+      VKind::Var(v) => writeln!(function, "  mov rax, {}", v)?,
     }
     for a in &args[2..args.len()] {
       let Ok(Json {
@@ -902,16 +868,16 @@ exit_program:
       };
       match result {
         VKind::Lit(l) => writeln!(function, "  sub rax, {}", l)?,
-        VKind::Var(v) => writeln!(function, "  sub rax, [rip + {}]", v)?,
+        VKind::Var(v) => writeln!(function, "  sub rax, {}", v)?,
       }
     }
-    let assign_name = self.get_name();
-    writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
-    writeln!(function, "  movq [rip + {}], rax", assign_name)?;
+    let name = self.get_name();
+    writeln!(self.bss, "  .lcomm {}, 8", name)?;
+    writeln!(function, "  movq [rip + {}], rax", name)?;
     Ok(Json {
       pos: args[0].pos,
       ln: args[0].ln,
-      value: JValue::Int(VKind::Var(assign_name)),
+      value: JValue::Int(VKind::Var(format!("[rip + {}]", name))),
     })
   }
   fn message(&mut self, args: &[Json], function: &mut String) -> JResult {
@@ -930,9 +896,9 @@ exit_program:
         ln: _,
         value: JValue::String(VKind::Lit(l)),
       } => {
-        let mn = self.get_name();
-        writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
-        mn
+        let name = self.get_name();
+        writeln!(self.data, "  {}: .string \"{}\"", name, l)?;
+        format!("[rip + {}]", name)
       }
       Json {
         pos: _,
@@ -955,9 +921,9 @@ exit_program:
         ln: _,
         value: JValue::String(VKind::Lit(l)),
       } => {
-        let mn = self.get_name();
-        writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
-        mn
+        let name = self.get_name();
+        writeln!(self.data, "  {}: .string \"{}\"", name, l)?;
+        format!("[rip + {}]", name)
       }
       Json {
         pos: _,
@@ -978,19 +944,19 @@ exit_program:
     writeln!(
       function,
       r#"  xor ecx, ecx
-  lea rdx, [rip + {}]
-  lea r8, [rip + {}]
+  lea rdx, {}
+  lea r8, {}
   xor r9d, r9d
   call MessageBoxA
   test eax, eax
   jz display_error
   mov [rip + {}], rax"#,
-      msg,title, retcode
+      msg, title, retcode
     )?;
     Ok(Json {
       pos: args[0].pos,
       ln: args[0].ln,
-      value: JValue::Int(VKind::Var(retcode)),
+      value: JValue::Int(VKind::Var(format!("[rip + {}]", retcode))),
     })
   }
 }
