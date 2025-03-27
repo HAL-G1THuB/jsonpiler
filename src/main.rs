@@ -126,12 +126,12 @@ impl<'a> JParser<'a> {
   fn obj_err(&self, text: &str, obj: &Json) -> JResult {
     genErr!(text, obj.pos, obj.ln, self.input_code)
   }
-  fn obj_ok(&self, val: JValue, obj: &Json) -> JResult {
-    Ok(Json {
+  fn obj_json(&self, val: JValue, obj: &Json) -> Json {
+    Json {
       pos: obj.pos,
       ln: obj.ln,
       value: val,
-    })
+    }
   }
   fn parse(&mut self, code: &'a str) -> JResult {
     self.input_code = code;
@@ -564,7 +564,7 @@ exit_program:
     for i in &func_list[2..] {
       self.eval(i, function)?;
     }
-    self.obj_ok(JValue::Function(VKind::Lit(params.clone())), &func_list[0])
+    Ok(self.obj_json(JValue::Function(VKind::Lit(params.clone())), &func_list[0]))
   }
   fn begin(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(
@@ -595,11 +595,7 @@ exit_program:
             writeln!(self.data, "  {}: .string \"{}\"", n, s)?;
             self.vars.insert(
               var_name.clone(),
-              Json {
-                pos: args[0].pos,
-                ln: args[0].ln,
-                value: JValue::String(VKind::Var(n)),
-              },
+              self.obj_json(JValue::String(VKind::Var(n)), &args[0]),
             );
           }
           _ => {
@@ -742,12 +738,6 @@ exit_program:
     })
   }
 }
-fn error_exit(text: String) -> ! {
-  let mut nu = String::new();
-  eprint!("{text}\nPress Enter to exit:");
-  let _ = io::stdin().read_line(&mut nu);
-  std::process::exit(1)
-}
 #[allow(dead_code)]
 impl Json {
   pub fn print_json(&self) -> fmt::Result {
@@ -845,6 +835,13 @@ impl Json {
     escaped
   }
 }
+fn error_exit(text: String) -> ! {
+  let mut nu = String::new();
+  eprint!("{text}\nPress Enter to exit:");
+  let _ = io::stdin().read_line(&mut nu);
+  std::process::exit(1)
+}
+
 fn main() -> ! {
   let args: Vec<String> = env::args().collect();
   if args.len() != 2 {
