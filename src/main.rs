@@ -80,7 +80,7 @@ struct JParser<'a> {
   data: String,
   bss: String,
   text: String,
-  ftable: HashMap<String, F<Self>>,
+  f_table: HashMap<String, F<Self>>,
   vars: HashMap<String, Json>,
   seed: usize,
   ln: usize,
@@ -94,64 +94,58 @@ impl<'a> JParser<'a> {
     self.pos += ch.len_utf8();
     Ok(ch)
   }
-  fn expect(&mut self, expected: char) -> Result<(), String> {
+  fn expect(&mut self, expected: char) -> JResult {
     if self.input_code[self.pos..].starts_with(expected) {
       self.next()?;
-      Ok(())
+      self.dummy()
     } else {
-      genErr!(
-        format!("Expected character '{}' not found.", expected),
-        self.pos,
-        self.ln,
-        self.input_code
-      )
+      self.parse_err(&format!("Expected character '{}' not found.", expected))
     }
   }
   fn get_name(&mut self) -> String {
     self.seed += 1;
     format!(".{:x}", self.seed)
   }
-  fn validate(
-    &self,
-    flag: bool,
-    name: String,
-    text: String,
-    pos: usize,
-    ln: usize,
-  ) -> Result<(), Box<dyn Error>> {
+  fn dummy(&self) -> JResult {
+    Ok(Json {
+      pos: 0,
+      ln: 0,
+      value: JValue::Null,
+    })
+  }
+  fn validate(&self, flag: bool, name: String, text: String, obj: &Json) -> JResult {
     if flag {
-      return genErr!(
-        format!("\"{name}\" requires {text} argument"),
-        pos,
-        ln,
-        self.input_code
-      );
-    };
-    Ok(())
+      self.obj_err(&format!("\"{name}\" requires {text} argument"), obj)
+    } else {
+      self.dummy()
+    }
+  }
+  fn parse_err(&self, text: &str) -> JResult {
+    genErr!(text, self.pos, self.ln, self.input_code)
+  }
+  fn obj_err(&self, text: &str, obj: &Json) -> JResult {
+    genErr!(text, obj.pos, obj.ln, self.input_code)
   }
   fn parse(&mut self, code: &'a str) -> JResult {
     self.input_code = code;
     let result = self.parse_value()?;
-    self.skipws();
+    self.skip_ws();
     if self.pos != self.input_code.len() {
-      genErr!(
-        "        Unexpected trailing characters",
-        self.pos,
-        self.ln,
-        self.input_code
-      )
+      self.parse_err("Unexpected trailing characters")
     } else {
       Ok(result)
     }
   }
-  fn skipws(&mut self) {
+  fn skip_ws(&mut self) {
     while self.pos < self.input_code.len() {
-      let c = self.input_code[self.pos..].chars().next().unwrap();
+      let Some(c) = self.input_code[self.pos..].chars().next() else {
+        break;
+      };
       if c.is_whitespace() {
         if c == '\n' {
           self.ln += 1;
         }
-        self.pos += c.len_utf8();
+        self.pos += c.len_utf8()
       } else {
         break;
       }
@@ -167,12 +161,7 @@ impl<'a> JParser<'a> {
         value: v,
       })
     } else {
-      genErr!(
-        format!("Faild to parse '{n}'"),
-        self.pos,
-        self.ln,
-        self.input_code
-      )
+      self.parse_err(&format!("Failed to parse '{n}'"))
     }
   }
   fn parse_number(&mut self) -> JResult {
@@ -188,12 +177,7 @@ impl<'a> JParser<'a> {
       num_str.push('0');
       self.next()?;
       if matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
-        return genErr!(
-          "          Leading zeros are not allowed in numbers",
-          self.pos,
-          self.ln,
-          self.input_code
-        );
+        return self.parse_err("Leading zeros are not allowed in numbers");
       }
     } else if matches!(self.input_code[self.pos..].chars().next(), Some('1'..='9')) {
       while let Some(ch) = self.input_code[self.pos..].chars().next() {
@@ -205,7 +189,7 @@ impl<'a> JParser<'a> {
         }
       }
     } else {
-      return genErr!("Invalid number format", self.pos, self.ln, self.input_code);
+      return self.parse_err("Invalid number format");
     }
     if let Some(ch) = self.input_code[self.pos..].chars().next() {
       if ch == '.' {
@@ -213,12 +197,7 @@ impl<'a> JParser<'a> {
         num_str.push(ch);
         self.next()?;
         if !matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
-          return genErr!(
-            "A digit is required after the decimal point",
-            self.pos,
-            self.ln,
-            self.input_code
-          );
+          return self.parse_err("A digit is required after the decimal point");
         }
         while let Some(ch) = self.input_code[self.pos..].chars().next() {
           if ch.is_ascii_digit() {
@@ -239,12 +218,7 @@ impl<'a> JParser<'a> {
           num_str.push(self.next()?);
         }
         if !matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
-          return genErr!(
-            "            A digit is required in the exponent part",
-            self.pos,
-            self.ln,
-            self.input_code
-          );
+          return self.parse_err("A digit is required in the exponent part");
         }
         while let Some(ch) = self.input_code[self.pos..].chars().next() {
           if ch.is_ascii_digit() {
@@ -258,7 +232,7 @@ impl<'a> JParser<'a> {
     }
     if !has_decimal && !has_exponent {
       num_str.parse::<i64>().map_or_else(
-        |_| genErr!("Invalid integer value", self.pos, self.ln, self.input_code),
+        |_| self.parse_err("Invalid integer value"),
         |int_val| {
           Ok(Json {
             pos: start,
@@ -269,7 +243,7 @@ impl<'a> JParser<'a> {
       )
     } else {
       num_str.parse::<f64>().map_or_else(
-        |_| genErr!("Invalid numeric value", self.pos, self.ln, self.input_code),
+        |_| self.parse_err("Invalid numeric value"),
         |float_val| {
           Ok(Json {
             pos: start,
@@ -282,12 +256,7 @@ impl<'a> JParser<'a> {
   }
   fn parse_string(&mut self) -> JResult {
     if !self.input_code[self.pos..].starts_with('\"') {
-      return genErr!(
-        "        Missing opening quotation for string",
-        self.pos,
-        self.ln,
-        self.input_code
-      );
+      return self.parse_err("Missing opening quotation for string");
     }
     let start = self.pos;
     self.pos += 1;
@@ -320,151 +289,107 @@ impl<'a> JParser<'a> {
                   if c.is_ascii_hexdigit() {
                     hex.push(c);
                   } else {
-                    return genErr!("Invalid hex digit", self.pos, self.ln, self.input_code);
+                    return self.parse_err("Invalid hex digit");
                   }
                 } else {
-                  return genErr!("Faild read hex", self.pos, self.ln, self.input_code);
+                  return self.parse_err("Failed read hex");
                 }
               }
               let cp =
-                u32::from_str_radix(&hex, 16).map_err(|_| String::from("Invalid codepoint"))?;
+                u32::from_str_radix(&hex, 16).map_err(|_| String::from("Invalid code point"))?;
               if (0xD800..=0xDFFF).contains(&cp) {
-                return genErr!("Invalid unicode", self.pos, self.ln, self.input_code);
+                return self.parse_err("Invalid unicode");
               }
               result.push(std::char::from_u32(cp).ok_or("Invalid unicode")?);
             }
             _ => {
-              return genErr!(
-                "                Invalid escape sequense",
-                self.pos,
-                self.ln,
-                self.input_code
-              );
+              return self.parse_err("Invalid escape sequence");
             }
           }
         }
         c if c < '\u{20}' => {
-          return genErr!(
-            "            Invalid control character",
-            self.pos,
-            self.ln,
-            self.input_code
-          );
+          return self.parse_err("Invalid control character");
         }
         _ => result.push(c),
       }
     }
-    genErr!(
-      "String is not properly terminated",
-      self.pos,
-      self.ln,
-      self.input_code
-    )
+    self.parse_err("String is not properly terminated")
   }
   fn parse_array(&mut self) -> JResult {
-    let startpos = self.pos;
-    let startln = self.ln;
+    let start_pos = self.pos;
+    let start_ln = self.ln;
     let mut array = Vec::new();
     self.expect('[')?;
-    self.skipws();
+    self.skip_ws();
     if self.input_code[self.pos..].starts_with(']') {
       self.pos += 1;
       return Ok(Json {
-        pos: startpos,
-        ln: startln,
+        pos: start_pos,
+        ln: start_ln,
         value: JValue::Array(VKind::Lit(array)),
       });
     }
     loop {
       array.push(self.parse_value()?);
-      self.skipws();
       if self.input_code[self.pos..].starts_with(']') {
         self.pos += 1;
         return Ok(Json {
-          pos: startpos,
-          ln: startln,
+          pos: start_pos,
+          ln: start_ln,
           value: JValue::Array(VKind::Lit(array)),
         });
       } else if self.input_code[self.pos..].starts_with(',') {
         self.pos += 1;
-        self.skipws();
       } else {
-        return genErr!(
-          "          Invalid array separator",
-          self.pos,
-          self.ln,
-          self.input_code
-        );
+        return self.parse_err("Invalid array separator");
       }
     }
   }
   fn parse_object(&mut self) -> JResult {
-    let startpos = self.pos;
-    let startln = self.ln;
+    let start_pos = self.pos;
+    let start_ln = self.ln;
     let mut object = HashMap::new();
     self.expect('{')?;
-    self.skipws();
+    self.skip_ws();
     if self.input_code[self.pos..].starts_with('}') {
       self.pos += 1;
       return Ok(Json {
-        pos: startpos,
-        ln: startln,
+        pos: start_pos,
+        ln: start_ln,
         value: JValue::Object(VKind::Lit(object)),
       });
     }
     loop {
-      let key = match self.parse_string()? {
-        Json {
-          pos: _,
-          ln: _,
-          value: JValue::String(VKind::Lit(s)),
-        } => s,
-        Json {
-          pos: invalid_pos,
-          ln: invalid_ln,
-          value: _,
-        } => {
-          return genErr!(
-            "            Keys must be strings",
-            invalid_pos,
-            invalid_ln,
-            self.input_code
-          );
-        }
+      let key = self.parse_string()?;
+      let JValue::String(VKind::Lit(s)) = key.value else {
+        return self.obj_err("Keys must be strings", &key);
       };
-      self.skipws();
+      self.skip_ws();
       self.expect(':')?;
-      self.skipws();
       let value = self.parse_value()?;
-      object.insert(key, value);
-      self.skipws();
+      object.insert(s, value);
       if self.input_code[self.pos..].starts_with('}') {
         self.pos += 1;
         return Ok(Json {
-          pos: startpos,
-          ln: startln,
+          pos: start_pos,
+          ln: start_ln,
           value: JValue::Object(VKind::Lit(object)),
         });
       }
       if self.input_code[self.pos..].starts_with(',') {
         self.pos += 1;
-        self.skipws();
+        self.skip_ws();
       } else {
-        return genErr!(
-          "          Invalid object separator",
-          self.pos,
-          self.ln,
-          self.input_code
-        );
+        return self.parse_err("Invalid object separator");
       }
     }
   }
   fn parse_value(&mut self) -> JResult {
-    self.skipws();
+    self.skip_ws();
     if self.pos >= self.input_code.len() {
-      return genErr!("Unexpected end of text", self.pos, self.ln, self.input_code);
+      return self.parse_err("Unexpected end of text");
     }
-    match self.input_code[self.pos..].chars().next() {
+    let result = match self.input_code[self.pos..].chars().next() {
       Some('"') => self.parse_string(),
       Some('{') => self.parse_object(),
       Some('[') => self.parse_array(),
@@ -472,18 +397,20 @@ impl<'a> JParser<'a> {
       Some('f') => self.parse_name("false", JValue::Bool(VKind::Lit(false))),
       Some('n') => self.parse_name("null", JValue::Null),
       _ => self.parse_number(),
-    }
+    };
+    self.skip_ws();
+    result
   }
   pub fn build(&mut self, parsed: Json, filename: &str) -> Result<(), Box<dyn Error>> {
-    self.ftable.insert("=".into(), JParser::setvar as F<Self>);
-    self.ftable.insert("$".into(), JParser::getvar as F<Self>);
-    self.ftable.insert("+".into(), JParser::plus as F<Self>);
-    self.ftable.insert("-".into(), JParser::minus as F<Self>);
+    self.f_table.insert("=".into(), JParser::setvar as F<Self>);
+    self.f_table.insert("$".into(), JParser::getvar as F<Self>);
+    self.f_table.insert("+".into(), JParser::plus as F<Self>);
+    self.f_table.insert("-".into(), JParser::minus as F<Self>);
     self
-      .ftable
+      .f_table
       .insert("message".into(), JParser::message as F<Self>);
     self
-      .ftable
+      .f_table
       .insert("begin".into(), JParser::begin as F<Self>);
     self.data.push_str(".data\n");
     self.bss.push_str(
@@ -502,7 +429,7 @@ impl<'a> JParser<'a> {
     self.extern_set.insert("MessageBoxW".into());
     self.extern_set.insert("FormatMessageW".into());
     self.extern_set.insert("GetStdHandle".into());
-    let mut mainfunc = String::from(
+    let mut main_func = String::from(
       r#"_start:
   sub rsp, 40
   mov ecx, 65001
@@ -530,7 +457,7 @@ impl<'a> JParser<'a> {
   mov QWORD PTR [rip + STDERR], rax
 "#,
     );
-    self.eval(&parsed, &mut mainfunc)?;
+    self.eval(&parsed, &mut main_func)?;
     let mut file = File::create(filename)?;
     writeln!(file, ".intel_syntax noprefix")?;
     writeln!(file, ".global start")?;
@@ -540,7 +467,7 @@ impl<'a> JParser<'a> {
     write!(file, "{}", self.data)?;
     write!(file, "{}", self.bss)?;
     write!(file, "{}", self.text)?;
-    write!(file, "{}", mainfunc)?;
+    write!(file, "{}", main_func)?;
     writeln!(
       file,
       r#"  xor ecx, ecx
@@ -574,39 +501,32 @@ exit_program:
   }
   fn eval(&mut self, parsed: &Json, function: &mut String) -> JResult {
     let Json {
-      pos: listpos,
-      ln: listln,
+      pos: _,
+      ln: _,
       value: JValue::Array(VKind::Lit(list)),
     } = parsed
     else {
       return Ok(parsed.clone());
     };
     if list.is_empty() {
-      return genErr!(
+      return self.obj_err(
         "An procedure was expected, but an empty list was provided",
-        *listpos,
-        listln,
-        self.input_code
+        parsed,
       );
     };
     match &list[0] {
       Json {
-        pos: cmdpos,
-        ln: cmdln,
+        pos: _,
+        ln: _,
         value: JValue::String(VKind::Lit(cmd)),
       } => {
         if cmd == "lambda" {
           return Ok(parsed.clone());
         }
-        if let Some(func) = self.ftable.get(cmd.as_str()) {
+        if let Some(func) = self.f_table.get(cmd.as_str()) {
           return func(self, list, function);
         }
-        genErr!(
-          format!("Undefined function: {}", cmd),
-          *cmdpos,
-          cmdln,
-          self.input_code
-        )
+        self.obj_err(&format!("Undefined function: {}", cmd), &list[0])
       }
       _ => {
         let mut func_buffer = String::new();
@@ -623,11 +543,9 @@ exit_program:
       value: JValue::Array(VKind::Lit(func_list)),
     } = &parsed
     else {
-      return genErr!(
+      return self.obj_err(
         "Only a lambda list or a string is allowed as the first element of a list",
-        parsed.pos,
-        parsed.ln,
-        self.input_code
+        parsed,
       );
     };
     let Json {
@@ -636,28 +554,19 @@ exit_program:
       value: JValue::String(VKind::Lit(cmd)),
     } = &parsed
     else {
-      return genErr!(
+      return self.obj_err(
         "Only a lambda list or a string is allowed as the first element of a list",
-        parsed.pos,
-        parsed.ln,
-        self.input_code
+        parsed,
       );
     };
     if cmd != "lambda" {
-      return genErr!(
+      return self.obj_err(
         "Only a lambda list or a string is allowed as the first element of a list",
-        parsed.pos,
-        parsed.ln,
-        self.input_code
+        parsed,
       );
     }
     if func_list.len() < 3 {
-      return genErr!(
-        "        Invalid function defintion",
-        parsed.pos,
-        parsed.ln,
-        self.input_code
-      );
+      return self.obj_err("Invalid function definition", parsed);
     };
     let Json {
       pos: _,
@@ -665,11 +574,9 @@ exit_program:
       value: JValue::Array(VKind::Lit(params)),
     } = &func_list[1]
     else {
-      return genErr!(
+      return self.obj_err(
         "The second element of a lambda list must be an argument list",
-        func_list[1].pos,
-        func_list[1].ln,
-        self.input_code
+        &func_list[1],
       );
     };
     for i in &func_list[2..] {
@@ -686,8 +593,7 @@ exit_program:
       args.len() == 1,
       "begin".into(),
       "at least one".into(),
-      args[0].pos,
-      args[0].ln,
+      &args[0],
     )?;
     let mut result = Json {
       pos: 0,
@@ -701,13 +607,7 @@ exit_program:
     Ok(result)
   }
   fn setvar(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.validate(
-      args.len() != 3,
-      "=".into(),
-      "two".into(),
-      args[0].pos,
-      args[0].ln,
-    )?;
+    self.validate(args.len() != 3, "=".into(), "two".into(), &args[0])?;
     if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       let value = self.eval(&args[2], function)?;
       if value.value.is_lit() {
@@ -725,12 +625,7 @@ exit_program:
             );
           }
           _ => {
-            return genErr!(
-              "              Assignment to an unimplemented type",
-              args[0].pos,
-              args[0].ln,
-              self.input_code
-            );
+            return self.obj_err("Assignment to an unimplemented type", &args[0]);
           }
         }
       } else {
@@ -742,85 +637,49 @@ exit_program:
         value: JValue::Null,
       })
     } else {
-      genErr!(
+      self.obj_err(
         "Variable names must be compile-time fixed strings",
-        args[0].pos,
-        args[0].ln,
-        self.input_code
+        &args[0],
       )
     }
   }
   fn getvar(&mut self, args: &[Json], _: &mut String) -> JResult {
-    self.validate(
-      args.len() != 2,
-      "$".into(),
-      "one".into(),
-      args[0].pos,
-      args[0].ln,
-    )?;
+    self.validate(args.len() != 2, "$".into(), "one".into(), &args[0])?;
     if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       if let Some(value) = self.vars.get(var_name) {
         Ok(value.clone())
       } else {
-        genErr!(
-          &format!("Undefined variables: '{}'", var_name),
-          args[0].pos,
-          args[0].ln,
-          self.input_code
-        )
+        self.obj_err(&format!("Undefined variables: '{}'", var_name), &args[0])
       }
     } else {
-      genErr!(
+      self.obj_err(
         "Variable names must be compile-time fixed strings",
-        args[0].pos,
-        args[0].ln,
-        self.input_code
+        &args[0],
       )
     }
   }
   fn plus(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.validate(
-      args.len() == 1,
-      "+".into(),
-      "at least one".into(),
-      args[0].pos,
-      args[0].ln,
-    )?;
+    self.validate(args.len() == 1, "+".into(), "at least one".into(), &args[0])?;
     let Ok(Json {
       pos: _,
       ln: _,
       value: JValue::Int(result),
     }) = self.eval(&args[1], function)
     else {
-      return genErr!(
-        "        '+' requires integer operands",
-        args[0].pos,
-        args[0].ln,
-        self.input_code
-      );
+      return self.obj_err("'+' requires integer operands", &args[0]);
     };
     match result {
       VKind::Lit(l) => writeln!(function, "  mov rax, {}", l)?,
       VKind::Var(v) => writeln!(function, "  mov rax, QWORD PTR [rip + {}]", v)?,
     }
     for a in &args[2..args.len()] {
-      let Ok(Json {
-        pos: _,
-        ln: _,
-        value: JValue::Int(result),
-      }) = self.eval(a, function)
-      else {
-        return genErr!(
-          "          '+' requires integer operands",
-          args[0].pos,
-          args[0].ln,
-          self.input_code
-        );
+      match self.eval(a, function)?.value {
+        JValue::Int(VKind::Lit(l)) => writeln!(function, "  add rax, {}", l)?,
+        JValue::Int(VKind::Var(v)) => writeln!(function, "  add rax, QWORD PTR [rip + {}]", v)?,
+        _ => {
+          return self.obj_err("'+' requires integer operands", &args[0]);
+        }
       };
-      match result {
-        VKind::Lit(l) => writeln!(function, "  add rax, {}", l)?,
-        VKind::Var(v) => writeln!(function, "  add rax, QWORD PTR [rip + {}]", v)?,
-      }
     }
     let assign_name = self.get_name();
     writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
@@ -832,43 +691,17 @@ exit_program:
     })
   }
   fn minus(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.validate(
-      args.len() == 1,
-      "-".into(),
-      "at least one".into(),
-      args[0].pos,
-      args[0].ln,
-    )?;
-    let Ok(Json {
-      pos: _,
-      ln: _,
-      value: JValue::Int(result),
-    }) = self.eval(&args[1], function)
-    else {
-      return genErr!(
-        "        '-' requires integer operands",
-        args[0].pos,
-        args[0].ln,
-        self.input_code
-      );
+    self.validate(args.len() == 1, "-".into(), "at least one".into(), &args[0])?;
+    let JValue::Int(result) = self.eval(&args[1], function)?.value else {
+      return self.obj_err("'-' requires integer operands", &args[0]);
     };
     match result {
       VKind::Lit(l) => writeln!(function, "  mov rax, {}", l)?,
       VKind::Var(v) => writeln!(function, "  mov rax, QWORD PTR [rip + {}]", v)?,
     }
     for a in &args[2..args.len()] {
-      let Ok(Json {
-        pos: _,
-        ln: _,
-        value: JValue::Int(result),
-      }) = self.eval(a, function)
-      else {
-        return genErr!(
-          "          '-' requires integer operands",
-          args[0].pos,
-          args[0].ln,
-          self.input_code
-        );
+      let JValue::Int(result) = self.eval(a, function)?.value else {
+        return self.obj_err("'-' requires integer operands", &args[0]);
       };
       match result {
         VKind::Lit(l) => writeln!(function, "  sub rax, {}", l)?,
@@ -885,62 +718,29 @@ exit_program:
     })
   }
   fn message(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.validate(
-      args.len() != 3,
-      "message".into(),
-      "two".into(),
-      args[0].pos,
-      args[0].ln,
-    )?;
-    let arg1 = self.eval(&args[1], function)?;
+    self.validate(args.len() != 3, "message".into(), "two".into(), &args[0])?;
+    let arg1 = self.eval(&args[1], function)?.value;
     self.extern_set.insert(String::from("MessageBoxA"));
     let title = match arg1 {
-      Json {
-        pos: _,
-        ln: _,
-        value: JValue::String(VKind::Lit(l)),
-      } => {
+      JValue::String(VKind::Lit(l)) => {
         let mn = self.get_name();
         writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
         mn
       }
-      Json {
-        pos: _,
-        ln: _,
-        value: JValue::String(VKind::Var(v)),
-      } => v,
+      JValue::String(VKind::Var(v)) => v,
       _ => {
-        return genErr!(
-          "The first argument of message must be a string",
-          args[1].pos,
-          args[1].ln,
-          self.input_code
-        );
+        return self.obj_err("The first argument of message must be a string", &args[1]);
       }
     };
-    let arg2 = self.eval(&args[2], function)?;
-    let msg = match arg2 {
-      Json {
-        pos: _,
-        ln: _,
-        value: JValue::String(VKind::Lit(l)),
-      } => {
+    let msg = match self.eval(&args[2], function)?.value {
+      JValue::String(VKind::Lit(l)) => {
         let mn = self.get_name();
         writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
         mn
       }
-      Json {
-        pos: _,
-        ln: _,
-        value: JValue::String(VKind::Var(v)),
-      } => v,
+      JValue::String(VKind::Var(v)) => v,
       _ => {
-        return genErr!(
-          "The second argument of message must be a string",
-          args[2].pos,
-          args[2].ln,
-          self.input_code
-        );
+        return self.obj_err("The second argument of message must be a string", &args[2]);
       }
     };
     let retcode = self.get_name();
