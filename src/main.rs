@@ -518,9 +518,9 @@ exit_program:
       }
       _ => {
         let mut func_buffer = String::new();
-        let funcvalue = self.eval_lambda(parsed, &mut func_buffer)?;
+        let func_value = self.eval_lambda(parsed, &mut func_buffer)?;
         self.text.push_str(&func_buffer);
-        Ok(funcvalue)
+        Ok(func_value)
       }
     }
   }
