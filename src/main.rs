@@ -20,12 +20,12 @@ fn get_error_line(input_code: &str, index: &usize) -> String {
   format!("{}\n{ws} A\n{ws}/|\\n{ws}+ | \n", &input_code[start..end])
 }
 macro_rules! genErr {
-  ($text:expr, $pos:expr, $input_code:expr) => {
+  ($text:expr, $pos:expr,$ln: expr, $input_code:expr) => {
     Err(
       format!(
-        "{}\nError occurred at byte: {}\nError position:\n{}",
+        "{}\nError occurred on line: {}\nError position:\n{}",
         $text,
-        &(*$pos + 1),
+        &$ln,
         get_error_line($input_code, $pos)
       )
       .into(),
@@ -35,6 +35,7 @@ macro_rules! genErr {
 #[derive(Debug, Clone)]
 struct Json {
   pub pos: usize,
+  pub ln: usize,
   pub value: JValue,
 }
 #[derive(Debug, Clone)]
@@ -78,6 +79,7 @@ struct JParser<'a> {
   ftable: HashMap<String, F<Self>>,
   vars: HashMap<String, Json>,
   seed: usize,
+  ln: usize,
 }
 impl<'a> JParser<'a> {
   fn next(&mut self) -> Result<char, String> {
@@ -96,6 +98,7 @@ impl<'a> JParser<'a> {
       genErr!(
         format!("Expected character '{}' not found.", expected),
         &self.pos,
+        &self.ln,
         self.input_code
       )
     }
@@ -110,11 +113,13 @@ impl<'a> JParser<'a> {
     name: String,
     text: String,
     pos: &usize,
+    ln: &usize,
   ) -> Result<(), Box<dyn Error>> {
     if flag {
       return genErr!(
         format!("\"{name}\" requires {text} argument"),
         pos,
+        ln,
         self.input_code
       );
     };
@@ -125,16 +130,27 @@ impl<'a> JParser<'a> {
     let result = self.parse_value()?;
     self.skipws();
     if self.pos != self.input_code.len() {
-      genErr!("Unexpected trailing characters", &self.pos, self.input_code)
+      genErr!(
+        "Unexpected trailing characters",
+        &self.pos,
+        &self.ln,
+        self.input_code
+      )
     } else {
       Ok(result)
     }
   }
   fn skipws(&mut self) {
-    if let Some(non_ws_pos) = self.input_code[self.pos..].find(|c: char| !c.is_whitespace()) {
-      self.pos += non_ws_pos;
-    } else {
-      self.pos = self.input_code.len();
+    while self.pos < self.input_code.len() {
+      let c = self.input_code[self.pos..].chars().next().unwrap();
+      if c.is_whitespace() {
+        if c == '\n' {
+          self.ln += 1;
+        }
+        self.pos += c.len_utf8();
+      } else {
+        break;
+      }
     }
   }
   fn parse_name(&mut self, n: &str, v: JValue) -> JResult {
@@ -143,10 +159,16 @@ impl<'a> JParser<'a> {
       self.pos += n.len();
       Ok(Json {
         pos: start,
+        ln: self.ln,
         value: v,
       })
     } else {
-      genErr!(format!("Faild to parse '{n}'"), &self.pos, self.input_code)
+      genErr!(
+        format!("Faild to parse '{n}'"),
+        &self.pos,
+        &self.ln,
+        self.input_code
+      )
     }
   }
   fn parse_number(&mut self) -> JResult {
@@ -165,6 +187,7 @@ impl<'a> JParser<'a> {
         return genErr!(
           "Leading zeros are not allowed in numbers",
           &self.pos,
+          self.ln,
           self.input_code
         );
       }
@@ -178,7 +201,12 @@ impl<'a> JParser<'a> {
         }
       }
     } else {
-      return genErr!("Invalid number format", &self.pos, self.input_code);
+      return genErr!(
+        "Invalid number format",
+        &self.pos,
+        &self.ln,
+        self.input_code
+      );
     }
     if let Some(ch) = self.input_code[self.pos..].chars().next() {
       if ch == '.' {
@@ -189,6 +217,7 @@ impl<'a> JParser<'a> {
           return genErr!(
             "A digit is required after the decimal point",
             &self.pos,
+            &self.ln,
             self.input_code
           );
         }
@@ -214,6 +243,7 @@ impl<'a> JParser<'a> {
           return genErr!(
             "A digit is required in the exponent part",
             &self.pos,
+            &self.ln,
             self.input_code
           );
         }
@@ -229,20 +259,36 @@ impl<'a> JParser<'a> {
     }
     if !has_decimal && !has_exponent {
       num_str.parse::<i64>().map_or_else(
-        |_| genErr!("Invalid integer value", &self.pos, self.input_code),
+        |_| {
+          genErr!(
+            "Invalid integer value",
+            &self.pos,
+            &self.ln,
+            self.input_code
+          )
+        },
         |int_val| {
           Ok(Json {
             pos: start,
+            ln: self.ln,
             value: JValue::Int(VKind::Lit(int_val)),
           })
         },
       )
     } else {
       num_str.parse::<f64>().map_or_else(
-        |_| genErr!("Invalid numeric value", &self.pos, self.input_code),
+        |_| {
+          genErr!(
+            "Invalid numeric value",
+            &self.pos,
+            &self.ln,
+            self.input_code
+          )
+        },
         |float_val| {
           Ok(Json {
             pos: start,
+            ln: self.ln,
             value: JValue::Float(VKind::Lit(float_val)),
           })
         },
@@ -254,6 +300,7 @@ impl<'a> JParser<'a> {
       return genErr!(
         "Missing opening quotation for string",
         &self.pos,
+        &self.ln,
         self.input_code
       );
     }
@@ -266,6 +313,7 @@ impl<'a> JParser<'a> {
         '\"' => {
           return Ok(Json {
             pos: start,
+            ln: self.ln,
             value: JValue::String(VKind::Lit(result)),
           });
         }
@@ -287,24 +335,36 @@ impl<'a> JParser<'a> {
                   if c.is_ascii_hexdigit() {
                     hex.push(c);
                   } else {
-                    return genErr!("Invalid hex digit", &self.pos, self.input_code);
+                    return genErr!("Invalid hex digit", &self.pos, &self.ln, self.input_code);
                   }
                 } else {
-                  return genErr!("Faild read hex", &self.pos, self.input_code);
+                  return genErr!("Faild read hex", &self.pos, &self.ln, self.input_code);
                 }
               }
               let cp =
                 u32::from_str_radix(&hex, 16).map_err(|_| String::from("Invalid codepoint"))?;
               if (0xD800..=0xDFFF).contains(&cp) {
-                return genErr!("Invalid unicode", &self.pos, self.input_code);
+                return genErr!("Invalid unicode", &self.pos, &self.ln, self.input_code);
               }
               result.push(std::char::from_u32(cp).ok_or("Invalid unicode")?);
             }
-            _ => return genErr!("Invalid escape sequense", &self.pos, self.input_code),
+            _ => {
+              return genErr!(
+                "Invalid escape sequense",
+                &self.pos,
+                &self.ln,
+                self.input_code
+              );
+            }
           }
         }
         c if c < '\u{20}' => {
-          return genErr!("Invalid control character", &self.pos, self.input_code);
+          return genErr!(
+            "Invalid control character",
+            &self.pos,
+            &self.ln,
+            self.input_code
+          );
         }
         _ => result.push(c),
       }
@@ -312,18 +372,21 @@ impl<'a> JParser<'a> {
     genErr!(
       "String is not properly terminated",
       &self.pos,
+      &self.ln,
       self.input_code
     )
   }
   fn parse_array(&mut self) -> JResult {
-    let start = self.pos;
+    let startpos = self.pos;
+    let startln = self.ln;
     let mut array = Vec::new();
     self.expect('[')?;
     self.skipws();
     if self.input_code[self.pos..].starts_with(']') {
       self.pos += 1;
       return Ok(Json {
-        pos: start,
+        pos: startpos,
+        ln: startln,
         value: JValue::Array(VKind::Lit(array)),
       });
     }
@@ -333,26 +396,34 @@ impl<'a> JParser<'a> {
       if self.input_code[self.pos..].starts_with(']') {
         self.pos += 1;
         return Ok(Json {
-          pos: start,
+          pos: startpos,
+          ln: startln,
           value: JValue::Array(VKind::Lit(array)),
         });
       } else if self.input_code[self.pos..].starts_with(',') {
         self.pos += 1;
         self.skipws();
       } else {
-        return genErr!("Invalid array separator", &self.pos, self.input_code);
+        return genErr!(
+          "Invalid array separator",
+          &self.pos,
+          &self.ln,
+          self.input_code
+        );
       }
     }
   }
   fn parse_object(&mut self) -> JResult {
-    let start = self.pos;
+    let startpos = self.pos;
+    let startln = self.ln;
     let mut object = HashMap::new();
     self.expect('{')?;
     self.skipws();
     if self.input_code[self.pos..].starts_with('}') {
       self.pos += 1;
       return Ok(Json {
-        pos: start,
+        pos: startpos,
+        ln: startln,
         value: JValue::Object(VKind::Lit(object)),
       });
     }
@@ -360,12 +431,21 @@ impl<'a> JParser<'a> {
       let key = match self.parse_string()? {
         Json {
           pos: _,
+          ln: _,
           value: JValue::String(VKind::Lit(s)),
         } => s,
         Json {
           pos: invalid_pos,
+          ln: invalid_ln,
           value: _,
-        } => return genErr!("Keys must be strings", &invalid_pos, self.input_code),
+        } => {
+          return genErr!(
+            "Keys must be strings",
+            &invalid_pos,
+            &invalid_ln,
+            self.input_code
+          );
+        }
       };
       self.skipws();
       self.expect(':')?;
@@ -376,7 +456,8 @@ impl<'a> JParser<'a> {
       if self.input_code[self.pos..].starts_with('}') {
         self.pos += 1;
         return Ok(Json {
-          pos: start,
+          pos: startpos,
+          ln: startln,
           value: JValue::Object(VKind::Lit(object)),
         });
       }
@@ -384,14 +465,24 @@ impl<'a> JParser<'a> {
         self.pos += 1;
         self.skipws();
       } else {
-        return genErr!("Invalid object separator", &self.pos, self.input_code);
+        return genErr!(
+          "Invalid object separator",
+          &self.pos,
+          &self.ln,
+          self.input_code
+        );
       }
     }
   }
   fn parse_value(&mut self) -> JResult {
     self.skipws();
     if self.pos >= self.input_code.len() {
-      return genErr!("Unexpected end of text", &self.pos, self.input_code);
+      return genErr!(
+        "Unexpected end of text",
+        &self.pos,
+        &self.ln,
+        self.input_code
+      );
     }
     match self.input_code[self.pos..].chars().next() {
       Some('"') => self.parse_string(),
@@ -408,8 +499,12 @@ impl<'a> JParser<'a> {
     self.ftable.insert("$".into(), JParser::getvar as F<Self>);
     self.ftable.insert("+".into(), JParser::plus as F<Self>);
     self.ftable.insert("-".into(), JParser::minus as F<Self>);
-    self.ftable.insert("message".into(), JParser::message as F<Self>);
-    self.ftable.insert("begin".into(), JParser::begin as F<Self>);
+    self
+      .ftable
+      .insert("message".into(), JParser::message as F<Self>);
+    self
+      .ftable
+      .insert("begin".into(), JParser::begin as F<Self>);
     self.data.push_str(".section .data\n");
     self.bss.push_str(
       r#".section .bss
@@ -422,7 +517,9 @@ impl<'a> JParser<'a> {
     );
     self.text.push_str(".section .text\n");
     self.extern_set.insert("ExitProcess".into());
-    self.extern_set.insert("SetConsoleCP, SetConsoleOutputCP".into());
+    self
+      .extern_set
+      .insert("SetConsoleCP, SetConsoleOutputCP".into());
     self.extern_set.insert("GetLastError".into());
     self.extern_set.insert("WriteConsoleW".into());
     self.extern_set.insert("FormatMessageW".into());
@@ -492,6 +589,7 @@ exit_program:
   fn eval(&mut self, parsed: &Json, function: &mut String) -> JResult {
     let Json {
       pos: listpos,
+      ln: listln,
       value: JValue::Array(VKind::Lit(list)),
     } = parsed
     else {
@@ -501,12 +599,14 @@ exit_program:
       return genErr!(
         "An procedure was expected, but an empty list was provided",
         listpos,
+        listln,
         self.input_code
       );
     };
     match &list[0] {
       Json {
         pos: cmdpos,
+        ln: cmdln,
         value: JValue::String(VKind::Lit(cmd)),
       } => {
         if cmd == "lambda" {
@@ -518,6 +618,7 @@ exit_program:
         genErr!(
           format!("Undefined function: {}", cmd),
           cmdpos,
+          cmdln,
           self.input_code
         )
       }
@@ -531,45 +632,57 @@ exit_program:
   }
   fn eval_lambda(&mut self, parsed: &Json, function: &mut String) -> JResult {
     let Json {
-      pos: func_list_pos,
+      pos: _,
+      ln: _,
       value: JValue::Array(VKind::Lit(func_list)),
     } = &parsed
     else {
       return genErr!(
         "Only a lambda list or a string is allowed as the first element of a list",
         &parsed.pos,
+        &parsed.ln,
         self.input_code
       );
     };
     let Json {
-      pos: cmdpos,
+      pos: _,
+      ln: _,
       value: JValue::String(VKind::Lit(cmd)),
     } = &parsed
     else {
       return genErr!(
         "Only a lambda list or a string is allowed as the first element of a list",
-        &func_list_pos,
+        &parsed.pos,
+        &parsed.ln,
         self.input_code
       );
     };
     if cmd != "lambda" {
       return genErr!(
         "Only a lambda list or a string is allowed as the first element of a list",
-        cmdpos,
+        &parsed.pos,
+        &parsed.ln,
         self.input_code
       );
     }
     if func_list.len() < 3 {
-      return genErr!("Invalid function defintion", func_list_pos, self.input_code);
+      return genErr!(
+        "Invalid function defintion",
+        &parsed.pos,
+        &parsed.ln,
+        self.input_code
+      );
     };
     let Json {
       pos: _,
+      ln: _,
       value: JValue::Array(VKind::Lit(params)),
     } = &func_list[1]
     else {
       return genErr!(
         "The second element of a lambda list must be an argument list",
-        func_list_pos,
+        &func_list[1].pos,
+        &func_list[1].ln,
         self.input_code
       );
     };
@@ -578,6 +691,7 @@ exit_program:
     }
     Ok(Json {
       pos: 1,
+      ln: 1,
       value: JValue::Function(VKind::Lit(params.clone())),
     })
   }
@@ -587,9 +701,11 @@ exit_program:
       "begin".into(),
       "at least one".into(),
       &args[0].pos,
+      &args[0].ln,
     )?;
     let mut result = Json {
       pos: 0,
+      ln: 0,
       value: JValue::Null,
     };
     for a in &args[1..] {
@@ -599,7 +715,13 @@ exit_program:
     Ok(result)
   }
   fn setvar(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.validate(args.len() != 3, "=".into(), "two".into(), &args[0].pos)?;
+    self.validate(
+      args.len() != 3,
+      "=".into(),
+      "two".into(),
+      &args[0].pos,
+      &args[0].ln,
+    )?;
     if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       let value = self.eval(&args[2], function)?;
       if value.value.is_lit() {
@@ -611,6 +733,7 @@ exit_program:
               var_name.clone(),
               Json {
                 pos: args[0].pos,
+                ln: args[0].ln,
                 value: JValue::String(VKind::Var(n)),
               },
             );
@@ -619,6 +742,7 @@ exit_program:
             return genErr!(
               "Assignment to an unimplemented type",
               &args[0].pos,
+              &args[0].ln,
               self.input_code
             );
           }
@@ -628,18 +752,26 @@ exit_program:
       }
       Ok(Json {
         pos: args[0].pos,
+        ln: args[0].ln,
         value: JValue::Null,
       })
     } else {
       genErr!(
         "Variable names must be compile-time fixed strings",
         &args[0].pos,
-        ""
+        &args[0].ln,
+        self.input_code
       )
     }
   }
   fn getvar(&mut self, args: &[Json], _: &mut String) -> JResult {
-    self.validate(args.len() != 2, "$".into(), "one".into(), &args[0].pos)?;
+    self.validate(
+      args.len() != 2,
+      "$".into(),
+      "one".into(),
+      &args[0].pos,
+      &args[0].ln,
+    )?;
     if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       if let Some(value) = self.vars.get(var_name) {
         Ok(value.clone())
@@ -647,6 +779,7 @@ exit_program:
         genErr!(
           &format!("Undefined variables: '{}'", var_name),
           &args[0].pos,
+          &args[0].ln,
           self.input_code
         )
       }
@@ -654,6 +787,7 @@ exit_program:
       genErr!(
         "Variable names must be compile-time fixed strings",
         &args[0].pos,
+        &args[0].ln,
         self.input_code
       )
     }
@@ -664,15 +798,18 @@ exit_program:
       "+".into(),
       "at least one".into(),
       &args[0].pos,
+      &args[0].ln,
     )?;
     let Ok(Json {
       pos: _,
+      ln: _,
       value: JValue::Int(result),
     }) = self.eval(&args[1], function)
     else {
       return genErr!(
         "'+' requires integer operands",
         &args[0].pos,
+        &args[0].ln,
         self.input_code
       );
     };
@@ -683,12 +820,14 @@ exit_program:
     for a in &args[2..args.len()] {
       let Ok(Json {
         pos: _,
+        ln: _,
         value: JValue::Int(result),
       }) = self.eval(a, function)
       else {
         return genErr!(
           "'+' requires integer operands",
           &args[0].pos,
+          &args[0].ln,
           self.input_code
         );
       };
@@ -702,6 +841,7 @@ exit_program:
     writeln!(function, "  mov rax, [rip + {}]", assign_name)?;
     Ok(Json {
       pos: args[0].pos,
+      ln: args[0].ln,
       value: JValue::Int(VKind::Var(assign_name)),
     })
   }
@@ -711,15 +851,18 @@ exit_program:
       "-".into(),
       "at least one".into(),
       &args[0].pos,
+      &args[0].ln,
     )?;
     let Ok(Json {
       pos: _,
+      ln: _,
       value: JValue::Int(result),
     }) = self.eval(&args[1], function)
     else {
       return genErr!(
         "'-' requires integer operands",
         &args[0].pos,
+        &args[0].ln,
         self.input_code
       );
     };
@@ -730,12 +873,14 @@ exit_program:
     for a in &args[2..args.len()] {
       let Ok(Json {
         pos: _,
+        ln: _,
         value: JValue::Int(result),
       }) = self.eval(a, function)
       else {
         return genErr!(
           "'-' requires integer operands",
           &args[0].pos,
+          &args[0].ln,
           self.input_code
         );
       };
@@ -749,6 +894,7 @@ exit_program:
     writeln!(function, "  movq [rip + {}], rax", assign_name)?;
     Ok(Json {
       pos: args[0].pos,
+      ln: args[0].ln,
       value: JValue::Int(VKind::Var(assign_name)),
     })
   }
@@ -758,12 +904,14 @@ exit_program:
       "message".into(),
       "two".into(),
       &args[0].pos,
+      &args[0].ln,
     )?;
     let parsed1 = self.eval(&args[1], function)?;
     self.extern_set.insert(String::from("MessageBoxA"));
     let title = match parsed1 {
       Json {
         pos: _,
+        ln: _,
         value: JValue::String(VKind::Lit(l)),
       } => {
         let mn = self.get_name();
@@ -772,12 +920,14 @@ exit_program:
       }
       Json {
         pos: _,
+        ln: _,
         value: JValue::String(VKind::Var(v)),
       } => v,
       _ => {
         return genErr!(
           "The first argument of message must be a string",
           &args[1].pos,
+          &args[1].ln,
           self.input_code
         );
       }
@@ -786,6 +936,7 @@ exit_program:
     let msg = match parsed2 {
       Json {
         pos: _,
+        ln: _,
         value: JValue::String(VKind::Lit(l)),
       } => {
         let mn = self.get_name();
@@ -794,12 +945,14 @@ exit_program:
       }
       Json {
         pos: _,
+        ln: _,
         value: JValue::String(VKind::Var(v)),
       } => v,
       _ => {
         return genErr!(
           "The second argument of message must be a string",
           &args[2].pos,
+          &args[2].ln,
           self.input_code
         );
       }
@@ -820,6 +973,7 @@ exit_program:
     )?;
     Ok(Json {
       pos: args[0].pos,
+      ln: args[0].ln,
       value: JValue::Int(VKind::Var(retcode)),
     })
   }
