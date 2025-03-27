@@ -587,29 +587,23 @@ exit_program:
   fn setvar(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(args.len() != 3, "=".into(), "two".into(), &args[0])?;
     if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
-      let value = self.eval(&args[2], function)?;
-      if value.value.is_lit() {
-        match value.value {
-          JValue::String(VKind::Lit(s)) => {
-            let n = self.get_name();
-            writeln!(self.data, "  {}: .string \"{}\"", n, s)?;
-            self.vars.insert(
-              var_name.clone(),
-              self.obj_json(JValue::String(VKind::Var(n)), &args[0]),
-            );
-          }
-          _ => {
-            return self.obj_err("Assignment to an unimplemented type", &args[0]);
-          }
-        }
-      } else {
-        self.vars.insert(var_name.clone(), value);
+      let result = self.eval(&args[2], function)?;
+      if !result.value.is_lit() {
+        self.vars.insert(var_name.clone(), result.clone());
+        return Ok(result);
       }
-      Ok(Json {
-        pos: args[0].pos,
-        ln: args[0].ln,
-        value: JValue::Null,
-      })
+      match result.value {
+        JValue::String(VKind::Lit(s)) => {
+          let n = self.get_name();
+          writeln!(self.data, "  {n}: .string \"{s}\"")?;
+          self.vars.insert(
+            var_name.clone(),
+            self.obj_json(JValue::String(VKind::Var(n.clone())), &args[0]),
+          );
+          Ok(self.obj_json(JValue::String(VKind::Var(n)), &args[0]))
+        }
+        _ => self.obj_err("Assignment to an unimplemented type", &args[2]),
+      }
     } else {
       self.obj_err(
         "Variable names must be compile-time fixed strings",
@@ -623,7 +617,7 @@ exit_program:
       if let Some(value) = self.vars.get(var_name) {
         Ok(value.clone())
       } else {
-        self.obj_err(&format!("Undefined variables: '{}'", var_name), &args[0])
+        self.obj_err(&format!("Undefined variables: '{}'", var_name), &args[1])
       }
     } else {
       self.obj_err(
@@ -643,25 +637,25 @@ exit_program:
       return self.obj_err("'+' requires integer operands", &args[0]);
     };
     match result {
-      VKind::Lit(l) => writeln!(function, "  mov rax, {}", l)?,
-      VKind::Var(v) => writeln!(function, "  mov rax, QWORD PTR [rip + {}]", v)?,
+      VKind::Lit(l) => writeln!(function, "  mov rax, {l}")?,
+      VKind::Var(v) => writeln!(function, "  mov rax, QWORD PTR [rip + {v}]")?,
     }
     for a in &args[2..args.len()] {
       match self.eval(a, function)?.value {
-        JValue::Int(VKind::Lit(l)) => writeln!(function, "  add rax, {}", l)?,
-        JValue::Int(VKind::Var(v)) => writeln!(function, "  add rax, QWORD PTR [rip + {}]", v)?,
+        JValue::Int(VKind::Lit(l)) => writeln!(function, "  add rax, {l}")?,
+        JValue::Int(VKind::Var(v)) => writeln!(function, "  add rax, QWORD PTR [rip + {v}]")?,
         _ => {
           return self.obj_err("'+' requires integer operands", &args[0]);
         }
       };
     }
-    let assign_name = self.get_name();
-    writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
-    writeln!(function, "  mov rax, QWORD PTR [rip + {}]", assign_name)?;
+    let ret = self.get_name();
+    writeln!(self.bss, "  .lcomm {}, 8", ret)?;
+    writeln!(function, "  mov QWORD PTR [rip + {}], rax", ret)?;
     Ok(Json {
       pos: args[0].pos,
       ln: args[0].ln,
-      value: JValue::Int(VKind::Var(assign_name)),
+      value: JValue::Int(VKind::Var(ret)),
     })
   }
   fn minus(&mut self, args: &[Json], function: &mut String) -> JResult {
@@ -670,25 +664,25 @@ exit_program:
       return self.obj_err("'-' requires integer operands", &args[0]);
     };
     match result {
-      VKind::Lit(l) => writeln!(function, "  mov rax, {}", l)?,
-      VKind::Var(v) => writeln!(function, "  mov rax, QWORD PTR [rip + {}]", v)?,
+      VKind::Lit(l) => writeln!(function, "  mov rax, {l}")?,
+      VKind::Var(v) => writeln!(function, "  mov rax, QWORD PTR [rip + {v}]")?,
     }
     for a in &args[2..args.len()] {
       let JValue::Int(result) = self.eval(a, function)?.value else {
         return self.obj_err("'-' requires integer operands", &args[0]);
       };
       match result {
-        VKind::Lit(l) => writeln!(function, "  sub rax, {}", l)?,
-        VKind::Var(v) => writeln!(function, "  sub rax, QWORD PTR [rip + {}]", v)?,
+        VKind::Lit(l) => writeln!(function, "  sub rax, {l}")?,
+        VKind::Var(v) => writeln!(function, "  sub rax, QWORD PTR [rip + {v}]")?,
       }
     }
-    let assign_name = self.get_name();
-    writeln!(self.bss, "  .lcomm {}, 8", assign_name)?;
-    writeln!(function, "  mov QWORD PTR [rip + {}], rax", assign_name)?;
+    let ret = self.get_name();
+    writeln!(self.bss, "  .lcomm {ret}, 8")?;
+    writeln!(function, "  mov QWORD PTR [rip + {ret}], rax")?;
     Ok(Json {
       pos: args[0].pos,
       ln: args[0].ln,
-      value: JValue::Int(VKind::Var(assign_name)),
+      value: JValue::Int(VKind::Var(ret)),
     })
   }
   fn message(&mut self, args: &[Json], function: &mut String) -> JResult {
@@ -697,9 +691,9 @@ exit_program:
     self.extern_set.insert("MessageBoxA".into());
     let title = match arg1 {
       JValue::String(VKind::Lit(l)) => {
-        let mn = self.get_name();
-        writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
-        mn
+        let name = self.get_name();
+        writeln!(self.data, "  {name}: .string \"{l}\"")?;
+        name
       }
       JValue::String(VKind::Var(v)) => v,
       _ => {
@@ -708,9 +702,9 @@ exit_program:
     };
     let msg = match self.eval(&args[2], function)?.value {
       JValue::String(VKind::Lit(l)) => {
-        let mn = self.get_name();
-        writeln!(self.data, "  {}: .string \"{}\"", mn, l)?;
-        mn
+        let name = self.get_name();
+        writeln!(self.data, "  {name}: .string \"{l}\"")?;
+        name
       }
       JValue::String(VKind::Var(v)) => v,
       _ => {
@@ -718,24 +712,19 @@ exit_program:
       }
     };
     let retcode = self.get_name();
-    writeln!(self.bss, "  .lcomm {}, 8", retcode)?;
+    writeln!(self.bss, "  .lcomm {retcode}, 8")?;
     writeln!(
       function,
       r#"  xor ecx, ecx
-  lea rdx, QWORD PTR [rip + {}]
-  lea r8, QWORD PTR [rip + {}]
+  lea rdx, QWORD PTR [rip + {msg}]
+  lea r8, QWORD PTR [rip + {title}]
   xor r9d, r9d
   call MessageBoxA
   test eax, eax
   jz display_error
-  mov QWORD PTR [rip + {}], rax"#,
-      msg, title, retcode
+  mov QWORD PTR [rip + {retcode}], rax"#,
     )?;
-    Ok(Json {
-      pos: args[0].pos,
-      ln: args[0].ln,
-      value: JValue::Int(VKind::Var(retcode)),
-    })
+    Ok(self.obj_json(JValue::Int(VKind::Var(retcode)), &args[0]))
   }
 }
 #[allow(dead_code)]
@@ -743,7 +732,7 @@ impl Json {
   pub fn print_json(&self) -> fmt::Result {
     let mut output = String::new();
     if self.write_json(&mut output).is_ok() {
-      println!("{}", output);
+      println!("{output}");
     }
     Ok(())
   }
@@ -755,23 +744,23 @@ impl Json {
           true => write!(out, "true"),
           false => write!(out, "false"),
         },
-        VKind::Var(v) => write!(out, "({}: bool)", v),
+        VKind::Var(v) => write!(out, "({v}: bool)"),
       },
       JValue::Int(maybe_i) => match maybe_i {
-        VKind::Lit(i) => write!(out, "{}", i),
-        VKind::Var(v) => write!(out, "({}: int)", v),
+        VKind::Lit(i) => write!(out, "{i}"),
+        VKind::Var(v) => write!(out, "({v}: int)"),
       },
       JValue::Float(maybe_f) => match maybe_f {
-        VKind::Lit(f) => write!(out, "{}", f),
-        VKind::Var(v) => write!(out, "({}: float)", v),
+        VKind::Lit(f) => write!(out, "{f}"),
+        VKind::Var(v) => write!(out, "({v}: float)"),
       },
       JValue::String(maybe_s) => match maybe_s {
         VKind::Lit(s) => write!(out, "\"{}\"", self.escape_string(s)),
-        VKind::Var(v) => write!(out, "({}: string)", v),
+        VKind::Var(v) => write!(out, "({v}: string)"),
       },
       JValue::Array(maybe_a) => match maybe_a {
         VKind::Var(v) => {
-          write!(out, "({}: array)", v)
+          write!(out, "({v}: array)")
         }
         VKind::Lit(a) => {
           out.write_str("[")?;
@@ -786,7 +775,7 @@ impl Json {
       },
       JValue::Function(maybe_fn) => match maybe_fn {
         VKind::Var(v) => {
-          write!(out, "({}: function)", v)
+          write!(out, "({v}: function)")
         }
         VKind::Lit(f) => {
           out.write_str("(")?;
@@ -801,7 +790,7 @@ impl Json {
       },
       JValue::Object(maybe_o) => match maybe_o {
         VKind::Var(v) => {
-          write!(out, "({}: array)", v)
+          write!(out, "({v}: array)")
         }
         VKind::Lit(o) => {
           out.write_str("{")?;
@@ -841,7 +830,6 @@ fn error_exit(text: String) -> ! {
   let _ = io::stdin().read_line(&mut nu);
   std::process::exit(1)
 }
-
 fn main() -> ! {
   let args: Vec<String> = env::args().collect();
   if args.len() != 2 {
