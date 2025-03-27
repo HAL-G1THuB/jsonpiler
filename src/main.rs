@@ -892,9 +892,9 @@ exit_program:
       args[0].pos,
       args[0].ln,
     )?;
-    let parsed1 = self.eval(&args[1], function)?;
+    let arg1 = self.eval(&args[1], function)?;
     self.extern_set.insert(String::from("MessageBoxA"));
-    let title = match parsed1 {
+    let title = match arg1 {
       Json {
         pos: _,
         ln: _,
@@ -918,8 +918,8 @@ exit_program:
         );
       }
     };
-    let parsed2 = self.eval(&args[2], function)?;
-    let msg = match parsed2 {
+    let arg2 = self.eval(&args[2], function)?;
+    let msg = match arg2 {
       Json {
         pos: _,
         ln: _,
