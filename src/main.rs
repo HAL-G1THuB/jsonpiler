@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::fmt::{self, Write as _};
@@ -76,7 +76,6 @@ impl JValue {
 struct JParser<'a> {
   input_code: &'a str,
   pos: usize,
-  extern_set: HashSet<String>,
   data: String,
   bss: String,
   text: String,
@@ -99,12 +98,12 @@ impl<'a> JParser<'a> {
       self.next()?;
       self.dummy()
     } else {
-      self.parse_err(&format!("Expected character '{}' not found.", expected))
+      self.parse_err(&format!("Expected character '{expected}' not found."))
     }
   }
   fn get_name(&mut self) -> String {
     self.seed += 1;
-    format!(".{:x}", self.seed)
+    format!("_{:x}", self.seed)
   }
   fn dummy(&self) -> JResult {
     Ok(Json {
@@ -428,15 +427,11 @@ impl<'a> JParser<'a> {
 "#,
     );
     self.text.push_str(".text\n");
-    self.extern_set.insert("ExitProcess".into());
-    self.extern_set.insert("SetConsoleCP".into());
-    self.extern_set.insert("GetLastError".into());
-    self.extern_set.insert("MessageBoxW".into());
-    self.extern_set.insert("FormatMessageW".into());
-    self.extern_set.insert("GetStdHandle".into());
     let mut main_func = String::from(
       r#"_start:
-  sub rsp, 40
+  push rbp
+  mov rbp, rsp
+  sub rsp, 32
   mov ecx, 65001
   call SetConsoleCP
   test rax, rax
@@ -464,26 +459,22 @@ impl<'a> JParser<'a> {
     );
     let result = self.eval(&parsed, &mut main_func)?;
     let mut file = File::create(filename)?;
-    writeln!(file, ".intel_syntax noprefix")?;
-    writeln!(file, ".global start")?;
-    for inc in &self.extern_set {
-      writeln!(file, ".extern {}", inc)?;
-    }
+    writeln!(file, ".intel_syntax noprefix\n.globl _start")?;
     write!(file, "{}", self.data)?;
     write!(file, "{}", self.bss)?;
     write!(file, "{}", self.text)?;
-    write!(file, "{}", main_func)?;
+    write!(file, "{main_func}")?;
     writeln!(
       file,
       r#"  xor ecx, ecx
   call ExitProcess
 display_error:
   call GetLastError
-  mov DWORD PTR [rip + errorCode], eax
+  mov rbx, rax
   sub rsp, 32
   mov ecx, 0x1200
   xor edx, edx
-  mov r8d, eax
+  mov r8, rbx
   xor r9d, r9d
   lea rax, QWORD PTR [rip + errorMessage]
   mov [rsp + 32], rax
@@ -499,7 +490,7 @@ display_error:
   mov r9, 0x10
   call MessageBoxW
 exit_program:
-  mov ecx, DWORD PTR [rip + errorCode]
+  mov rcx, rbx
   call ExitProcess"#
     )?;
     Ok(result)
@@ -522,7 +513,7 @@ exit_program:
         if let Some(func) = self.f_table.get(cmd.as_str()) {
           func(self, list.as_slice(), function)
         } else {
-          self.obj_err(&format!("Undefined function: {}", cmd), &list[0])
+          self.obj_err(&format!("Undefined function: {cmd}"), &list[0])
         }
       }
       _ => {
@@ -688,7 +679,6 @@ exit_program:
   fn message(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(args.len() != 3, "message".into(), "two".into(), &args[0])?;
     let arg1 = self.eval(&args[1], function)?.value;
-    self.extern_set.insert("MessageBoxA".into());
     let title = match arg1 {
       JValue::String(VKind::Lit(l)) => {
         let name = self.get_name();
@@ -711,8 +701,8 @@ exit_program:
         return self.obj_err("The second argument of message must be a string", &args[2]);
       }
     };
-    let retcode = self.get_name();
-    writeln!(self.bss, "  .lcomm {retcode}, 8")?;
+    let ret = self.get_name();
+    writeln!(self.bss, "  .lcomm {ret}, 8")?;
     writeln!(
       function,
       r#"  xor ecx, ecx
@@ -722,9 +712,9 @@ exit_program:
   call MessageBoxA
   test eax, eax
   jz display_error
-  mov QWORD PTR [rip + {retcode}], rax"#,
+  mov QWORD PTR [rip + {ret}], rax"#,
     )?;
-    Ok(self.obj_json(JValue::Int(VKind::Var(retcode)), &args[0]))
+    Ok(self.obj_json(JValue::Int(VKind::Var(ret)), &args[0]))
   }
 }
 #[allow(dead_code)]
@@ -846,7 +836,7 @@ fn main() -> ! {
   {
     parsed
       .print_json()
-      .unwrap_or_else(|e| error_exit(format!("Couldn't print json: {}", e)));
+      .unwrap_or_else(|e| error_exit(format!("Couldn't print json: {e}")));
   }
   let json_file = Path::new(&args[1])
     .file_stem()
@@ -858,7 +848,7 @@ fn main() -> ! {
     .build(parsed, &asm_file)
     .unwrap_or_else(|e| error_exit(format!("CompileError: {e}")));
   if !Command::new("gcc")
-    .args([&asm_file, "-o", &exe_file, "-nostartfiles"])
+    .args([&asm_file, "-o", &exe_file, "-nostartfiles", "-luser32", "-lkernel32"])
     .status()
     .unwrap_or_else(|e| error_exit(format!("Failed to assemble or link: {e}")))
     .success()
