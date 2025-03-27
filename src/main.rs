@@ -8,16 +8,24 @@ use std::path::Path;
 use std::process::Command;
 type JResult = Result<Json, Box<dyn Error>>;
 type F<T> = fn(&mut T, &[Json], &mut String) -> JResult;
-fn get_error_line(input_code: &str, index: &usize) -> String {
-  if *index >= input_code.len() {
-    return String::from("End of File");
+fn get_error_line(input_code: &str, index: usize) -> String {
+  if input_code.is_empty() {
+      return "Error: Empty input".to_string();
   }
-  let start = input_code[..*index].rfind('\n').map_or(0, |pos| pos + 1);
-  let end = input_code[*index..]
-    .find('\n')
-    .map_or(input_code.len(), |pos| index + pos);
-  let ws = " ".repeat(index - start);
-  format!("{}\n{ws} A\n{ws}/|\\n{ws}+ | \n", &input_code[start..end])
+  let len = input_code.len();
+  let idx = index.min(len.saturating_sub(1));
+  let start = if idx > 0 {
+      input_code[..idx].rfind('\n').map_or(0, |pos| pos + 1)
+  } else {
+      0
+  };
+  let end = input_code[idx..].find('\n').map_or(len, |pos| idx + pos);
+  let ws = " ".repeat(idx.saturating_sub(start));
+  format!(
+      "{}\n{}^",
+      &input_code[start..end],
+      ws
+  )
 }
 macro_rules! genErr {
   ($text:expr, $pos:expr,$ln: expr, $input_code:expr) => {
@@ -25,7 +33,7 @@ macro_rules! genErr {
       format!(
         "{}\nError occurred on line: {}\nError position:\n{}",
         $text,
-        &$ln,
+        $ln + 1,
         get_error_line($input_code, $pos)
       )
       .into(),
@@ -97,8 +105,8 @@ impl<'a> JParser<'a> {
     } else {
       genErr!(
         format!("Expected character '{}' not found.", expected),
-        &self.pos,
-        &self.ln,
+        self.pos,
+        self.ln,
         self.input_code
       )
     }
@@ -112,8 +120,8 @@ impl<'a> JParser<'a> {
     flag: bool,
     name: String,
     text: String,
-    pos: &usize,
-    ln: &usize,
+    pos: usize,
+    ln: usize,
   ) -> Result<(), Box<dyn Error>> {
     if flag {
       return genErr!(
@@ -132,8 +140,8 @@ impl<'a> JParser<'a> {
     if self.pos != self.input_code.len() {
       genErr!(
         "Unexpected trailing characters",
-        &self.pos,
-        &self.ln,
+        self.pos,
+        self.ln,
         self.input_code
       )
     } else {
@@ -165,8 +173,8 @@ impl<'a> JParser<'a> {
     } else {
       genErr!(
         format!("Faild to parse '{n}'"),
-        &self.pos,
-        &self.ln,
+        self.pos,
+        self.ln,
         self.input_code
       )
     }
@@ -186,7 +194,7 @@ impl<'a> JParser<'a> {
       if matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
         return genErr!(
           "Leading zeros are not allowed in numbers",
-          &self.pos,
+          self.pos,
           self.ln,
           self.input_code
         );
@@ -203,8 +211,8 @@ impl<'a> JParser<'a> {
     } else {
       return genErr!(
         "Invalid number format",
-        &self.pos,
-        &self.ln,
+        self.pos,
+        self.ln,
         self.input_code
       );
     }
@@ -216,8 +224,8 @@ impl<'a> JParser<'a> {
         if !matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
           return genErr!(
             "A digit is required after the decimal point",
-            &self.pos,
-            &self.ln,
+            self.pos,
+            self.ln,
             self.input_code
           );
         }
@@ -242,8 +250,8 @@ impl<'a> JParser<'a> {
         if !matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
           return genErr!(
             "A digit is required in the exponent part",
-            &self.pos,
-            &self.ln,
+            self.pos,
+            self.ln,
             self.input_code
           );
         }
@@ -262,8 +270,8 @@ impl<'a> JParser<'a> {
         |_| {
           genErr!(
             "Invalid integer value",
-            &self.pos,
-            &self.ln,
+            self.pos,
+            self.ln,
             self.input_code
           )
         },
@@ -280,8 +288,8 @@ impl<'a> JParser<'a> {
         |_| {
           genErr!(
             "Invalid numeric value",
-            &self.pos,
-            &self.ln,
+            self.pos,
+            self.ln,
             self.input_code
           )
         },
@@ -299,8 +307,8 @@ impl<'a> JParser<'a> {
     if !self.input_code[self.pos..].starts_with('\"') {
       return genErr!(
         "Missing opening quotation for string",
-        &self.pos,
-        &self.ln,
+        self.pos,
+        self.ln,
         self.input_code
       );
     }
@@ -335,24 +343,24 @@ impl<'a> JParser<'a> {
                   if c.is_ascii_hexdigit() {
                     hex.push(c);
                   } else {
-                    return genErr!("Invalid hex digit", &self.pos, &self.ln, self.input_code);
+                    return genErr!("Invalid hex digit", self.pos, self.ln, self.input_code);
                   }
                 } else {
-                  return genErr!("Faild read hex", &self.pos, &self.ln, self.input_code);
+                  return genErr!("Faild read hex", self.pos, self.ln, self.input_code);
                 }
               }
               let cp =
                 u32::from_str_radix(&hex, 16).map_err(|_| String::from("Invalid codepoint"))?;
               if (0xD800..=0xDFFF).contains(&cp) {
-                return genErr!("Invalid unicode", &self.pos, &self.ln, self.input_code);
+                return genErr!("Invalid unicode", self.pos, self.ln, self.input_code);
               }
               result.push(std::char::from_u32(cp).ok_or("Invalid unicode")?);
             }
             _ => {
               return genErr!(
                 "Invalid escape sequense",
-                &self.pos,
-                &self.ln,
+                self.pos,
+                self.ln,
                 self.input_code
               );
             }
@@ -361,8 +369,8 @@ impl<'a> JParser<'a> {
         c if c < '\u{20}' => {
           return genErr!(
             "Invalid control character",
-            &self.pos,
-            &self.ln,
+            self.pos,
+            self.ln,
             self.input_code
           );
         }
@@ -371,8 +379,8 @@ impl<'a> JParser<'a> {
     }
     genErr!(
       "String is not properly terminated",
-      &self.pos,
-      &self.ln,
+      self.pos,
+      self.ln,
       self.input_code
     )
   }
@@ -406,8 +414,8 @@ impl<'a> JParser<'a> {
       } else {
         return genErr!(
           "Invalid array separator",
-          &self.pos,
-          &self.ln,
+          self.pos,
+          self.ln,
           self.input_code
         );
       }
@@ -441,8 +449,8 @@ impl<'a> JParser<'a> {
         } => {
           return genErr!(
             "Keys must be strings",
-            &invalid_pos,
-            &invalid_ln,
+            invalid_pos,
+            invalid_ln,
             self.input_code
           );
         }
@@ -467,8 +475,8 @@ impl<'a> JParser<'a> {
       } else {
         return genErr!(
           "Invalid object separator",
-          &self.pos,
-          &self.ln,
+          self.pos,
+          self.ln,
           self.input_code
         );
       }
@@ -479,8 +487,8 @@ impl<'a> JParser<'a> {
     if self.pos >= self.input_code.len() {
       return genErr!(
         "Unexpected end of text",
-        &self.pos,
-        &self.ln,
+        self.pos,
+        self.ln,
         self.input_code
       );
     }
@@ -598,7 +606,7 @@ exit_program:
     if list.is_empty() {
       return genErr!(
         "An procedure was expected, but an empty list was provided",
-        listpos,
+        *listpos,
         listln,
         self.input_code
       );
@@ -617,7 +625,7 @@ exit_program:
         }
         genErr!(
           format!("Undefined function: {}", cmd),
-          cmdpos,
+          *cmdpos,
           cmdln,
           self.input_code
         )
@@ -639,8 +647,8 @@ exit_program:
     else {
       return genErr!(
         "Only a lambda list or a string is allowed as the first element of a list",
-        &parsed.pos,
-        &parsed.ln,
+        parsed.pos,
+        parsed.ln,
         self.input_code
       );
     };
@@ -652,24 +660,24 @@ exit_program:
     else {
       return genErr!(
         "Only a lambda list or a string is allowed as the first element of a list",
-        &parsed.pos,
-        &parsed.ln,
+        parsed.pos,
+        parsed.ln,
         self.input_code
       );
     };
     if cmd != "lambda" {
       return genErr!(
         "Only a lambda list or a string is allowed as the first element of a list",
-        &parsed.pos,
-        &parsed.ln,
+        parsed.pos,
+        parsed.ln,
         self.input_code
       );
     }
     if func_list.len() < 3 {
       return genErr!(
         "Invalid function defintion",
-        &parsed.pos,
-        &parsed.ln,
+        parsed.pos,
+        parsed.ln,
         self.input_code
       );
     };
@@ -681,8 +689,8 @@ exit_program:
     else {
       return genErr!(
         "The second element of a lambda list must be an argument list",
-        &func_list[1].pos,
-        &func_list[1].ln,
+        func_list[1].pos,
+        func_list[1].ln,
         self.input_code
       );
     };
@@ -700,8 +708,8 @@ exit_program:
       args.len() == 1,
       "begin".into(),
       "at least one".into(),
-      &args[0].pos,
-      &args[0].ln,
+      args[0].pos,
+      args[0].ln,
     )?;
     let mut result = Json {
       pos: 0,
@@ -719,8 +727,8 @@ exit_program:
       args.len() != 3,
       "=".into(),
       "two".into(),
-      &args[0].pos,
-      &args[0].ln,
+      args[0].pos,
+      args[0].ln,
     )?;
     if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       let value = self.eval(&args[2], function)?;
@@ -741,8 +749,8 @@ exit_program:
           _ => {
             return genErr!(
               "Assignment to an unimplemented type",
-              &args[0].pos,
-              &args[0].ln,
+              args[0].pos,
+              args[0].ln,
               self.input_code
             );
           }
@@ -758,8 +766,8 @@ exit_program:
     } else {
       genErr!(
         "Variable names must be compile-time fixed strings",
-        &args[0].pos,
-        &args[0].ln,
+        args[0].pos,
+        args[0].ln,
         self.input_code
       )
     }
@@ -769,8 +777,8 @@ exit_program:
       args.len() != 2,
       "$".into(),
       "one".into(),
-      &args[0].pos,
-      &args[0].ln,
+      args[0].pos,
+      args[0].ln,
     )?;
     if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       if let Some(value) = self.vars.get(var_name) {
@@ -778,16 +786,16 @@ exit_program:
       } else {
         genErr!(
           &format!("Undefined variables: '{}'", var_name),
-          &args[0].pos,
-          &args[0].ln,
+          args[0].pos,
+          args[0].ln,
           self.input_code
         )
       }
     } else {
       genErr!(
         "Variable names must be compile-time fixed strings",
-        &args[0].pos,
-        &args[0].ln,
+        args[0].pos,
+        args[0].ln,
         self.input_code
       )
     }
@@ -797,8 +805,8 @@ exit_program:
       args.len() == 1,
       "+".into(),
       "at least one".into(),
-      &args[0].pos,
-      &args[0].ln,
+      args[0].pos,
+      args[0].ln,
     )?;
     let Ok(Json {
       pos: _,
@@ -808,8 +816,8 @@ exit_program:
     else {
       return genErr!(
         "'+' requires integer operands",
-        &args[0].pos,
-        &args[0].ln,
+        args[0].pos,
+        args[0].ln,
         self.input_code
       );
     };
@@ -826,8 +834,8 @@ exit_program:
       else {
         return genErr!(
           "'+' requires integer operands",
-          &args[0].pos,
-          &args[0].ln,
+          args[0].pos,
+          args[0].ln,
           self.input_code
         );
       };
@@ -850,8 +858,8 @@ exit_program:
       args.len() == 1,
       "-".into(),
       "at least one".into(),
-      &args[0].pos,
-      &args[0].ln,
+      args[0].pos,
+      args[0].ln,
     )?;
     let Ok(Json {
       pos: _,
@@ -861,8 +869,8 @@ exit_program:
     else {
       return genErr!(
         "'-' requires integer operands",
-        &args[0].pos,
-        &args[0].ln,
+        args[0].pos,
+        args[0].ln,
         self.input_code
       );
     };
@@ -879,8 +887,8 @@ exit_program:
       else {
         return genErr!(
           "'-' requires integer operands",
-          &args[0].pos,
-          &args[0].ln,
+          args[0].pos,
+          args[0].ln,
           self.input_code
         );
       };
@@ -903,8 +911,8 @@ exit_program:
       args.len() != 3,
       "message".into(),
       "two".into(),
-      &args[0].pos,
-      &args[0].ln,
+      args[0].pos,
+      args[0].ln,
     )?;
     let parsed1 = self.eval(&args[1], function)?;
     self.extern_set.insert(String::from("MessageBoxA"));
@@ -926,8 +934,8 @@ exit_program:
       _ => {
         return genErr!(
           "The first argument of message must be a string",
-          &args[1].pos,
-          &args[1].ln,
+          args[1].pos,
+          args[1].ln,
           self.input_code
         );
       }
@@ -951,8 +959,8 @@ exit_program:
       _ => {
         return genErr!(
           "The second argument of message must be a string",
-          &args[2].pos,
-          &args[2].ln,
+          args[2].pos,
+          args[2].ln,
           self.input_code
         );
       }
