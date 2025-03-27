@@ -7,7 +7,7 @@ use std::io::{self, Write as _};
 use std::path::Path;
 use std::process::Command;
 type JResult = Result<Json, Box<dyn Error>>;
-type FType<T> = fn(&mut T, &[Json], &mut String) -> JResult;
+type F<T> = fn(&mut T, &[Json], &mut String) -> JResult;
 fn get_error_line(input_code: &str, index: &usize) -> String {
   if *index >= input_code.len() {
     return String::from("End of File");
@@ -67,6 +67,7 @@ impl JValue {
     }
   }
 }
+#[derive(Default)]
 struct JParser<'a> {
   input_code: &'a str,
   pos: usize,
@@ -74,32 +75,12 @@ struct JParser<'a> {
   data: String,
   bss: String,
   text: String,
-  func_table: HashMap<String, FType<Self>>,
+  ftable: HashMap<String, F<Self>>,
   vars: HashMap<String, Json>,
   seed: usize,
 }
 impl<'a> JParser<'a> {
-  pub fn new(code: &'a str) -> Self {
-    let mut table = HashMap::new();
-    table.insert(String::from("="), JParser::f_setvar as FType<Self>);
-    table.insert(String::from("$"), JParser::f_getvar as FType<Self>);
-    table.insert(String::from("+"), JParser::f_plus as FType<Self>);
-    table.insert(String::from("-"), JParser::f_minus as FType<Self>);
-    table.insert(String::from("message"), JParser::f_message as FType<Self>);
-    table.insert(String::from("begin"), JParser::f_begin as FType<Self>);
-    Self {
-      input_code: code,
-      extern_set: HashSet::new(),
-      data: String::from(".section .data\n"),
-      bss: String::from(".section .bss\n"),
-      text: String::from(".section .text\n"),
-      func_table: table,
-      vars: HashMap::new(),
-      pos: 0,
-      seed: 0,
-    }
-  }
-  fn next_char(&mut self) -> Result<char, String> {
+  fn next(&mut self) -> Result<char, String> {
     let ch = self.input_code[self.pos..]
       .chars()
       .next()
@@ -109,7 +90,7 @@ impl<'a> JParser<'a> {
   }
   fn expect(&mut self, expected: char) -> Result<(), String> {
     if self.input_code[self.pos..].starts_with(expected) {
-      self.next_char()?;
+      self.next()?;
       Ok(())
     } else {
       genErr!(
@@ -139,7 +120,8 @@ impl<'a> JParser<'a> {
     };
     Ok(())
   }
-  fn parse(&mut self) -> JResult {
+  fn parse(&mut self, code: &'a str) -> JResult {
+    self.input_code = code;
     let result = self.parse_value()?;
     self.skipws();
     if self.pos != self.input_code.len() {
@@ -172,15 +154,13 @@ impl<'a> JParser<'a> {
     let mut num_str = String::new();
     let mut has_decimal = false;
     let mut has_exponent = false;
-
     if self.input_code[self.pos..].starts_with('-') {
       num_str.push('-');
-      self.next_char()?;
+      self.next()?;
     }
-
     if self.input_code[self.pos..].starts_with('0') {
       num_str.push('0');
-      self.next_char()?;
+      self.next()?;
       if matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
         return genErr!(
           "Leading zeros are not allowed in numbers",
@@ -192,7 +172,7 @@ impl<'a> JParser<'a> {
       while let Some(ch) = self.input_code[self.pos..].chars().next() {
         if ch.is_ascii_digit() {
           num_str.push(ch);
-          self.next_char()?;
+          self.next()?;
         } else {
           break;
         }
@@ -200,12 +180,11 @@ impl<'a> JParser<'a> {
     } else {
       return genErr!("Invalid number format", &self.pos, self.input_code);
     }
-
     if let Some(ch) = self.input_code[self.pos..].chars().next() {
       if ch == '.' {
         has_decimal = true;
         num_str.push(ch);
-        self.next_char()?;
+        self.next()?;
         if !matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
           return genErr!(
             "A digit is required after the decimal point",
@@ -216,7 +195,7 @@ impl<'a> JParser<'a> {
         while let Some(ch) = self.input_code[self.pos..].chars().next() {
           if ch.is_ascii_digit() {
             num_str.push(ch);
-            self.next_char()?;
+            self.next()?;
           } else {
             break;
           }
@@ -227,9 +206,9 @@ impl<'a> JParser<'a> {
       if ch == 'e' || ch == 'E' {
         has_exponent = true;
         num_str.push(ch);
-        self.next_char()?;
+        self.next()?;
         if matches!(self.input_code[self.pos..].chars().next(), Some('+' | '-')) {
-          num_str.push(self.next_char()?);
+          num_str.push(self.next()?);
         }
         if !matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
           return genErr!(
@@ -241,7 +220,7 @@ impl<'a> JParser<'a> {
         while let Some(ch) = self.input_code[self.pos..].chars().next() {
           if ch.is_ascii_digit() {
             num_str.push(ch);
-            self.next_char()?;
+            self.next()?;
           } else {
             break;
           }
@@ -282,7 +261,7 @@ impl<'a> JParser<'a> {
     self.pos += 1;
     let mut result = String::new();
     while self.pos < self.input_code.len() {
-      let c = self.next_char()?;
+      let c = self.next()?;
       match c {
         '\"' => {
           return Ok(Json {
@@ -291,7 +270,7 @@ impl<'a> JParser<'a> {
           });
         }
         '\\' => {
-          let escaped = self.next_char()?;
+          let escaped = self.next()?;
           match escaped {
             'n' => result.push('\n'),
             't' => result.push('\t'),
@@ -304,7 +283,7 @@ impl<'a> JParser<'a> {
             'u' => {
               let mut hex = String::new();
               for _ in 0..4 {
-                if let Ok(c) = self.next_char() {
+                if let Ok(c) = self.next() {
                   if c.is_ascii_hexdigit() {
                     hex.push(c);
                   } else {
@@ -424,23 +403,30 @@ impl<'a> JParser<'a> {
       _ => self.parse_number(),
     }
   }
-  pub fn build(&mut self, parsed: Json, filename: &String) -> Result<(), Box<dyn Error>> {
-    self.extern_set.insert(String::from("ExitProcess"));
-    self
-      .extern_set
-      .insert(String::from("SetConsoleCP, SetConsoleOutputCP"));
-    self.extern_set.insert(String::from("GetLastError"));
-    self.extern_set.insert(String::from("WriteConsoleW"));
-    self.extern_set.insert(String::from("FormatMessageW"));
-    self.extern_set.insert(String::from("GetStdHandle"));
+  pub fn build(&mut self, parsed: Json, filename: &str) -> Result<(), Box<dyn Error>> {
+    self.ftable.insert("=".into(), JParser::setvar as F<Self>);
+    self.ftable.insert("$".into(), JParser::getvar as F<Self>);
+    self.ftable.insert("+".into(), JParser::plus as F<Self>);
+    self.ftable.insert("-".into(), JParser::minus as F<Self>);
+    self.ftable.insert("message".into(), JParser::message as F<Self>);
+    self.ftable.insert("begin".into(), JParser::begin as F<Self>);
+    self.data.push_str(".section .data\n");
     self.bss.push_str(
-      r#"  .lcomm errorMessage, 512
+      r#".section .bss
+  .lcomm errorMessage, 512
   .lcomm lastError, 4
   .lcomm STDOUT, 8
   .lcomm STDERR, 8
   .lcomm STDIN, 8
 "#,
     );
+    self.text.push_str(".section .text\n");
+    self.extern_set.insert("ExitProcess".into());
+    self.extern_set.insert("SetConsoleCP, SetConsoleOutputCP".into());
+    self.extern_set.insert("GetLastError".into());
+    self.extern_set.insert("WriteConsoleW".into());
+    self.extern_set.insert("FormatMessageW".into());
+    self.extern_set.insert("GetStdHandle".into());
     let mut mainfunc = String::from(
       r#"_start:
   sub rsp, 40
@@ -526,7 +512,7 @@ exit_program:
         if cmd == "lambda" {
           return Ok(parsed.clone());
         }
-        if let Some(func) = self.func_table.get(cmd.as_str()) {
+        if let Some(func) = self.ftable.get(cmd.as_str()) {
           return func(self, list, function);
         }
         genErr!(
@@ -595,7 +581,7 @@ exit_program:
       value: JValue::Function(VKind::Lit(params.clone())),
     })
   }
-  fn f_begin(&mut self, args: &[Json], function: &mut String) -> JResult {
+  fn begin(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(
       args.len() == 1,
       "begin".into(),
@@ -612,7 +598,7 @@ exit_program:
     }
     Ok(result)
   }
-  fn f_setvar(&mut self, args: &[Json], function: &mut String) -> JResult {
+  fn setvar(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(args.len() != 3, "=".into(), "two".into(), &args[0].pos)?;
     if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       let value = self.eval(&args[2], function)?;
@@ -652,7 +638,7 @@ exit_program:
       )
     }
   }
-  fn f_getvar(&mut self, args: &[Json], _: &mut String) -> JResult {
+  fn getvar(&mut self, args: &[Json], _: &mut String) -> JResult {
     self.validate(args.len() != 2, "$".into(), "one".into(), &args[0].pos)?;
     if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       if let Some(value) = self.vars.get(var_name) {
@@ -672,7 +658,7 @@ exit_program:
       )
     }
   }
-  fn f_plus(&mut self, args: &[Json], function: &mut String) -> JResult {
+  fn plus(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(
       args.len() == 1,
       "+".into(),
@@ -719,7 +705,7 @@ exit_program:
       value: JValue::Int(VKind::Var(assign_name)),
     })
   }
-  fn f_minus(&mut self, args: &[Json], function: &mut String) -> JResult {
+  fn minus(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(
       args.len() == 1,
       "-".into(),
@@ -766,7 +752,7 @@ exit_program:
       value: JValue::Int(VKind::Var(assign_name)),
     })
   }
-  fn f_message(&mut self, args: &[Json], function: &mut String) -> JResult {
+  fn message(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(
       args.len() != 3,
       "message".into(),
@@ -949,9 +935,9 @@ fn main() -> ! {
   }
   let input_code = fs::read_to_string(&args[1])
     .unwrap_or_else(|errmsg| error_exit(format!("Failed to read file: {errmsg}")));
-  let mut parser = JParser::new(&input_code);
+  let mut parser = JParser::default();
   let parsed = parser
-    .parse()
+    .parse(&input_code)
     .unwrap_or_else(|errmsg| error_exit(format!("ParseError: {errmsg}")));
   #[cfg(debug_assertions)]
   {
