@@ -10,7 +10,7 @@ type JResult = Result<Json, Box<dyn Error>>;
 type F<T> = fn(&mut T, &[Json], &mut String) -> JResult;
 fn get_error_line(input_code: &str, index: usize) -> String {
   if input_code.is_empty() {
-    return "Error: Empty input".to_string();
+    return "Error: Empty input".into();
   }
   let len = input_code.len();
   let idx = index.min(len.saturating_sub(1));
@@ -21,21 +21,18 @@ fn get_error_line(input_code: &str, index: usize) -> String {
   };
   let end = input_code[idx..].find('\n').map_or(len, |pos| idx + pos);
   let ws = " ".repeat(idx.saturating_sub(start));
-  format!("{}\n{}^", &input_code[start..end], ws)
+  format!("Error position:\n{}\n{}^", &input_code[start..end], ws)
 }
-macro_rules! genErr {
-  ($text:expr, $pos:expr,$ln: expr, $input_code:expr) => {
+fn format_err (text:&str, pos:usize,ln: usize, input_code: &str) -> JResult {
     Err(
       format!(
-        "{}\nError occurred on line: {}\nError position:\n{}",
-        $text,
-        $ln + 1,
-        get_error_line($input_code, $pos)
+        "{text}\nError occurred on line: {}\nError position:{}",
+        ln + 1,
+        get_error_line(input_code, pos)
       )
       .into(),
     )
-  };
-}
+  }
 #[derive(Debug, Clone)]
 struct Json {
   pub pos: usize,
@@ -76,13 +73,13 @@ impl JValue {
 struct JParser<'a> {
   input_code: &'a str,
   pos: usize,
+  seed: usize,
+  ln: usize,
   data: String,
   bss: String,
   text: String,
   f_table: HashMap<String, F<Self>>,
   vars: HashMap<String, Json>,
-  seed: usize,
-  ln: usize,
 }
 impl<'a> JParser<'a> {
   fn next(&mut self) -> Result<char, String> {
@@ -112,7 +109,7 @@ impl<'a> JParser<'a> {
       value: JValue::Null,
     })
   }
-  fn validate(&self, flag: bool, name: String, text: String, obj: &Json) -> JResult {
+  fn validate(&self, flag: bool, name: &str, text: &str, obj: &Json) -> JResult {
     if flag {
       self.obj_err(&format!("\"{name}\" requires {text} argument"), obj)
     } else {
@@ -120,10 +117,10 @@ impl<'a> JParser<'a> {
     }
   }
   fn parse_err(&self, text: &str) -> JResult {
-    genErr!(text, self.pos, self.ln, self.input_code)
+    format_err(text, self.pos, self.ln, self.input_code)
   }
   fn obj_err(&self, text: &str, obj: &Json) -> JResult {
-    genErr!(text, obj.pos, obj.ln, self.input_code)
+    format_err(text, obj.pos, obj.ln, self.input_code)
   }
   fn obj_json(&self, val: JValue, obj: &Json) -> Json {
     Json {
@@ -406,8 +403,8 @@ impl<'a> JParser<'a> {
     result
   }
   pub fn build(&mut self, parsed: Json, filename: &str) -> JResult {
-    self.f_table.insert("=".into(), JParser::setvar as F<Self>);
-    self.f_table.insert("$".into(), JParser::getvar as F<Self>);
+    self.f_table.insert("=".into(), JParser::set_var as F<Self>);
+    self.f_table.insert("$".into(), JParser::get_var as F<Self>);
     self.f_table.insert("+".into(), JParser::plus as F<Self>);
     self.f_table.insert("-".into(), JParser::minus as F<Self>);
     self
@@ -559,8 +556,8 @@ exit_program:
   fn begin(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(
       args.len() == 1,
-      "begin".into(),
-      "at least one".into(),
+      "begin",
+      "at least one",
       &args[0],
     )?;
     let mut result = Json {
@@ -574,8 +571,8 @@ exit_program:
     }
     Ok(result)
   }
-  fn setvar(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.validate(args.len() != 3, "=".into(), "two".into(), &args[0])?;
+  fn set_var(&mut self, args: &[Json], function: &mut String) -> JResult {
+    self.validate(args.len() != 3, "=", "two", &args[0])?;
     if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       let result = self.eval(&args[2], function)?;
       if !result.value.is_lit() {
@@ -601,8 +598,8 @@ exit_program:
       )
     }
   }
-  fn getvar(&mut self, args: &[Json], _: &mut String) -> JResult {
-    self.validate(args.len() != 2, "$".into(), "one".into(), &args[0])?;
+  fn get_var(&mut self, args: &[Json], _: &mut String) -> JResult {
+    self.validate(args.len() != 2, "$", "one", &args[0])?;
     if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
       if let Some(value) = self.vars.get(var_name) {
         Ok(value.clone())
@@ -617,7 +614,7 @@ exit_program:
     }
   }
   fn plus(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.validate(args.len() == 1, "+".into(), "at least one".into(), &args[0])?;
+    self.validate(args.len() == 1, "+", "at least one", &args[0])?;
     let Ok(Json {
       pos: _,
       ln: _,
@@ -640,8 +637,8 @@ exit_program:
       };
     }
     let ret = self.get_name();
-    writeln!(self.bss, "  .lcomm {}, 8", ret)?;
-    writeln!(function, "  mov QWORD PTR [rip + {}], rax", ret)?;
+    writeln!(self.bss, "  .lcomm {ret}, 8")?;
+    writeln!(function, "  mov QWORD PTR [rip + {ret}], rax")?;
     Ok(Json {
       pos: args[0].pos,
       ln: args[0].ln,
@@ -649,7 +646,7 @@ exit_program:
     })
   }
   fn minus(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.validate(args.len() == 1, "-".into(), "at least one".into(), &args[0])?;
+    self.validate(args.len() == 1, "-", "at least one", &args[0])?;
     let JValue::Int(result) = self.eval(&args[1], function)?.value else {
       return self.obj_err("'-' requires integer operands", &args[0]);
     };
@@ -676,7 +673,7 @@ exit_program:
     })
   }
   fn message(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.validate(args.len() != 3, "message".into(), "two".into(), &args[0])?;
+    self.validate(args.len() != 3, "message", "two", &args[0])?;
     let arg1 = self.eval(&args[1], function)?.value;
     let title = match arg1 {
       JValue::String(VKind::Lit(l)) => {
