@@ -420,7 +420,6 @@ impl<'a> JParser<'a> {
     self.bss.push_str(
       r#".bss
   .lcomm errorMessage, 512
-  .lcomm errorCode, 4
   .lcomm STDOUT, 8
   .lcomm STDERR, 8
   .lcomm STDIN, 8
