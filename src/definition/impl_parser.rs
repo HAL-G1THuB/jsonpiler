@@ -31,15 +31,12 @@ impl<'a> JParser<'a> {
     }
   }
   fn skip_ws(&mut self) {
-    while self.pos < self.input_code.len() {
-      let Some(c) = self.input_code[self.pos..].chars().next() else {
-        break;
-      };
+    while let Some(c) = self.input_code[self.pos..].chars().next() {
       if c.is_whitespace() {
         if c == '\n' {
           self.ln += 1;
         }
-        self.pos += c.len_utf8()
+        self.pos += c.len_utf8();
       } else {
         break;
       }
