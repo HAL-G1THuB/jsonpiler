@@ -1,5 +1,5 @@
+use crate::definition::{JResult, Json, JValue};
 use std::io;
-use crate::definition::JResult;
 pub fn format_err(text: &str, index: usize, ln: usize, input_code: &str) -> JResult {
   if input_code.is_empty() {
     return Err("Error: Empty input".into());
@@ -22,4 +22,11 @@ pub fn error_exit(text: &str) -> ! {
   eprint!("{text}\nPress Enter to exit:");
   let _ = io::stdin().read_line(&mut nu);
   std::process::exit(1)
+}
+pub fn dummy() -> JResult {
+  Ok(Json {
+    pos: 0,
+    ln: 0,
+    value: JValue::Null,
+  })
 }

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::error::Error;
-mod impl_jparser;
+use super::utility::format_err;
+mod impl_parser;
+mod impl_compiler;
 mod impl_json;
 mod impl_jvalue;
 pub type JResult = Result<Json, Box<dyn Error>>;
@@ -39,3 +41,17 @@ pub struct JParser<'a> {
   f_table: HashMap<String, F<Self>>,
   vars: HashMap<String, Json>,
 }
+impl JParser<'_>{
+  fn obj_err(&self, text: &str, obj: &Json) -> JResult {
+    format_err(text, obj.pos, obj.ln, self.input_code)
+  }
+  fn obj_json(&self, val: JValue, obj: &Json) -> Json {
+    Json {
+      pos: obj.pos,
+      ln: obj.ln,
+      value: val,
+    }}
+  fn parse_err(&self, text: &str) -> JResult {
+    format_err(text, self.pos, self.ln, self.input_code)
+  }
+  }
