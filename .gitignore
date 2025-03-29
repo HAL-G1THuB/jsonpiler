@@ -2,5 +2,7 @@
 /.history
 /input.exe
 /input.s
+/input.json
+/input.obj
 /ignore/
 /.vscode/
