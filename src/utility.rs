@@ -1,4 +1,4 @@
-use crate::definition::{JResult, Json, JValue};
+use crate::definition::{JResult, JValue, Json};
 use std::io;
 pub fn format_err(text: &str, index: usize, ln: usize, input_code: &str) -> JResult {
   if input_code.is_empty() {
