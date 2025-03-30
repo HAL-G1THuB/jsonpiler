@@ -20,6 +20,8 @@ This program converts a program written in JSON into GNU Assembly, compiles it, 
 
 - user32.dll
 
+- ucrtbase.dll
+
 ## Installation & Usage
 
 ```bash
