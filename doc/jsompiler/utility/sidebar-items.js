@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["dummy","error_exit","format_err"]};
