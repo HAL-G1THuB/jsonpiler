@@ -291,10 +291,13 @@
 <a href="#290" id="290">290</a>
 <a href="#291" id="291">291</a>
 <a href="#292" id="292">292</a>
-<a href="#293" id="293">293</a></pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::<span class="kw">super</span>::utility::dummy;
-<span class="kw">use super</span>::{JParser, JResult, JValue, Json, VKind};
+<a href="#293" id="293">293</a>
+<a href="#294" id="294">294</a>
+<a href="#295" id="295">295</a>
+<a href="#296" id="296">296</a></pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::<span class="kw">super</span>::utility::dummy;
+<span class="kw">use super</span>::{Jsompiler, JResult, JValue, Json, VKind};
 <span class="kw">use </span>std::collections::HashMap;
-<span class="kw">impl</span>&lt;<span class="lifetime">'a</span>&gt; JParser&lt;<span class="lifetime">'a</span>&gt; {
+<span class="kw">impl</span>&lt;<span class="lifetime">'a</span>&gt; Jsompiler&lt;<span class="lifetime">'a</span>&gt; {
   <span class="kw">fn </span>next(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;char, String&gt; {
     <span class="kw">let </span>ch = <span class="self">self</span>.input_code[<span class="self">self</span>.pos..]
       .chars()
@@ -454,6 +457,9 @@
             ln: <span class="self">self</span>.ln,
             value: JValue::String(VKind::Lit(result)),
           });
+        }
+        <span class="string">'\n' </span>=&gt; {
+          <span class="self">self</span>.parse_err(<span class="string">"Invalid line breaks in strings"</span>)<span class="question-mark">?</span>;
         }
         <span class="string">'\\' </span>=&gt; {
           <span class="kw">let </span>escaped = <span class="self">self</span>.next()<span class="question-mark">?</span>;

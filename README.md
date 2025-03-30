@@ -4,13 +4,21 @@ Jsompiler is a compiler for the JSON syntax programming language.
 
 This program converts a program written in JSON into GNU Assembly, compiles it, and executes the result.
 
-🚨 **This program runs only on Windows!** 🚨
+🚨 **This program runs only on Windows(x64)!** 🚨
 
 ## Prerequisites
 
 **Make sure the following tools are installed and included in your PATH environment variable:**
 
-- gcc
+- ld (MinGW-w64)
+
+- as (MinGW-w64)
+
+**The following DLLs must be located in C:\System32 for this program to run.**
+
+- kernel32.dll
+
+- user32.dll
 
 ## Installation & Usage
 

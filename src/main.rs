@@ -1,4 +1,4 @@
-use jsompiler::{definition::JParser, utility::error_exit};
+use jsompiler::{definition::Jsompiler, utility::error_exit};
 use std::{env, fs, path::Path, process::Command};
 fn main() -> ! {
   #[cfg(not(target_os = "windows"))]
@@ -10,8 +10,8 @@ fn main() -> ! {
   }
   let input_code = fs::read_to_string(&args[1])
     .unwrap_or_else(|e| error_exit(&format!("Failed to read file: {e}")));
-  let mut parser = JParser::default();
-  let parsed = parser
+  let mut jsompiler = Jsompiler::default();
+  let parsed = jsompiler
     .parse(&input_code)
     .unwrap_or_else(|e| error_exit(&format!("ParseError: {e}")));
   #[cfg(debug_assertions)]
@@ -25,7 +25,7 @@ fn main() -> ! {
   let obj_file = format!("{json_file}.obj");
   let exe_file = format!("{json_file}.exe");
   let asm_file = format!("{json_file}.s");
-  parser
+  jsompiler
     .build(parsed, &asm_file)
     .unwrap_or_else(|e| error_exit(&format!("CompileError: {e}")));
   if !Command::new("as")
@@ -44,6 +44,7 @@ fn main() -> ! {
       "-LC:/Windows/System32",
       "-luser32",
       "-lkernel32",
+      "-lc"
     ])
     .status()
     .unwrap_or_else(|e| error_exit(&format!("Failed to link: {e}")))

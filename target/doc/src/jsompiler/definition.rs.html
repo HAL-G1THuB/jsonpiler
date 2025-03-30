@@ -88,7 +88,7 @@
   Function(VKind&lt;Vec&lt;Json&gt;&gt;),
 }
 <span class="attr">#[derive(Default)]
-</span><span class="kw">pub struct </span>JParser&lt;<span class="lifetime">'a</span>&gt; {
+</span><span class="kw">pub struct </span>Jsompiler&lt;<span class="lifetime">'a</span>&gt; {
   input_code: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>str,
   pos: usize,
   seed: usize,
@@ -99,7 +99,7 @@
   f_table: HashMap&lt;String, F&lt;<span class="self">Self</span>&gt;&gt;,
   vars: HashMap&lt;String, Json&gt;,
 }
-<span class="kw">impl </span>JParser&lt;<span class="lifetime">'_</span>&gt; {
+<span class="kw">impl </span>Jsompiler&lt;<span class="lifetime">'_</span>&gt; {
   <span class="kw">fn </span>obj_err(<span class="kw-2">&amp;</span><span class="self">self</span>, text: <span class="kw-2">&amp;</span>str, obj: <span class="kw-2">&amp;</span>Json) -&gt; JResult {
     format_err(text, obj.pos, obj.ln, <span class="self">self</span>.input_code)
   }

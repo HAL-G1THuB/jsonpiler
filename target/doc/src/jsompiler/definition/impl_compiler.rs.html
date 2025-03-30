@@ -323,11 +323,11 @@
 <a href="#322" id="322">322</a>
 <a href="#323" id="323">323</a>
 <a href="#324" id="324">324</a></pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::<span class="kw">super</span>::utility::dummy;
-<span class="kw">use super</span>::{F, JParser, JResult, JValue, Json, VKind};
+<span class="kw">use super</span>::{F, Jsompiler, JResult, JValue, Json, VKind};
 <span class="kw">use </span>std::fmt::Write <span class="kw">as _</span>;
 <span class="kw">use </span>std::fs::File;
 <span class="kw">use </span>std::io::Write <span class="kw">as _</span>;
-<span class="kw">impl </span>JParser&lt;<span class="lifetime">'_</span>&gt; {
+<span class="kw">impl </span>Jsompiler&lt;<span class="lifetime">'_</span>&gt; {
   <span class="kw">fn </span>get_name(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; String {
     <span class="self">self</span>.seed += <span class="number">1</span>;
     <span class="macro">format!</span>(<span class="string">"_{:x}"</span>, <span class="self">self</span>.seed)
@@ -341,16 +341,16 @@
   }
   <span class="kw">pub fn </span>build(<span class="kw-2">&amp;mut </span><span class="self">self</span>, parsed: Json, filename: <span class="kw-2">&amp;</span>str) -&gt; JResult {
     <span class="self">self</span>.seed = <span class="number">0</span>;
-    <span class="self">self</span>.f_table.insert(<span class="string">"="</span>.into(), JParser::set_var <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
-    <span class="self">self</span>.f_table.insert(<span class="string">"$"</span>.into(), JParser::get_var <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
-    <span class="self">self</span>.f_table.insert(<span class="string">"+"</span>.into(), JParser::plus <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
-    <span class="self">self</span>.f_table.insert(<span class="string">"-"</span>.into(), JParser::minus <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
+    <span class="self">self</span>.f_table.insert(<span class="string">"="</span>.into(), Jsompiler::set_var <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
+    <span class="self">self</span>.f_table.insert(<span class="string">"$"</span>.into(), Jsompiler::get_var <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
+    <span class="self">self</span>.f_table.insert(<span class="string">"+"</span>.into(), Jsompiler::plus <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
+    <span class="self">self</span>.f_table.insert(<span class="string">"-"</span>.into(), Jsompiler::minus <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
     <span class="self">self
       </span>.f_table
-      .insert(<span class="string">"message"</span>.into(), JParser::message <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
+      .insert(<span class="string">"message"</span>.into(), Jsompiler::message <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
     <span class="self">self
       </span>.f_table
-      .insert(<span class="string">"begin"</span>.into(), JParser::begin <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
+      .insert(<span class="string">"begin"</span>.into(), Jsompiler::begin <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
     <span class="self">self</span>.data.push_str(<span class="string">".data\n"</span>);
     <span class="self">self</span>.bss.push_str(
       <span class="string">r#".bss

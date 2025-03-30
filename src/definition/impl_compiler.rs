@@ -1,9 +1,9 @@
 use super::super::utility::dummy;
-use super::{F, JParser, JResult, JValue, Json, VKind};
+use super::{F, Jsompiler, JResult, JValue, Json, VKind};
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::Write as _;
-impl JParser<'_> {
+impl Jsompiler<'_> {
   fn get_name(&mut self) -> String {
     self.seed += 1;
     format!("_{:x}", self.seed)
@@ -17,16 +17,16 @@ impl JParser<'_> {
   }
   pub fn build(&mut self, parsed: Json, filename: &str) -> JResult {
     self.seed = 0;
-    self.f_table.insert("=".into(), JParser::set_var as F<Self>);
-    self.f_table.insert("$".into(), JParser::get_var as F<Self>);
-    self.f_table.insert("+".into(), JParser::plus as F<Self>);
-    self.f_table.insert("-".into(), JParser::minus as F<Self>);
+    self.f_table.insert("=".into(), Jsompiler::set_var as F<Self>);
+    self.f_table.insert("$".into(), Jsompiler::get_var as F<Self>);
+    self.f_table.insert("+".into(), Jsompiler::plus as F<Self>);
+    self.f_table.insert("-".into(), Jsompiler::minus as F<Self>);
     self
       .f_table
-      .insert("message".into(), JParser::message as F<Self>);
+      .insert("message".into(), Jsompiler::message as F<Self>);
     self
       .f_table
-      .insert("begin".into(), JParser::begin as F<Self>);
+      .insert("begin".into(), Jsompiler::begin as F<Self>);
     self.data.push_str(".data\n");
     self.bss.push_str(
       r#".bss

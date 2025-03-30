@@ -1,7 +1,7 @@
 use super::super::utility::dummy;
-use super::{JParser, JResult, JValue, Json, VKind};
+use super::{Jsompiler, JResult, JValue, Json, VKind};
 use std::collections::HashMap;
-impl<'a> JParser<'a> {
+impl<'a> Jsompiler<'a> {
   fn next(&mut self) -> Result<char, String> {
     let ch = self.input_code[self.pos..]
       .chars()
@@ -161,6 +161,9 @@ impl<'a> JParser<'a> {
             ln: self.ln,
             value: JValue::String(VKind::Lit(result)),
           });
+        }
+        '\n' => {
+          self.parse_err("Invalid line breaks in strings")?;
         }
         '\\' => {
           let escaped = self.next()?;

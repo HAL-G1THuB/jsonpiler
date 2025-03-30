@@ -30,7 +30,7 @@ pub enum JValue {
   Function(VKind<Vec<Json>>),
 }
 #[derive(Default)]
-pub struct JParser<'a> {
+pub struct Jsompiler<'a> {
   input_code: &'a str,
   pos: usize,
   seed: usize,
@@ -41,7 +41,7 @@ pub struct JParser<'a> {
   f_table: HashMap<String, F<Self>>,
   vars: HashMap<String, Json>,
 }
-impl JParser<'_> {
+impl Jsompiler<'_> {
   fn obj_err(&self, text: &str, obj: &Json) -> JResult {
     format_err(text, obj.pos, obj.ln, self.input_code)
   }
