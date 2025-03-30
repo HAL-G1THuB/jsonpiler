@@ -5,7 +5,6 @@ edition = "2024"
 description = "a Json syntax programming language for Windows"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/HAL-G1THub/jsompiler.git"
-[dependencies]
 [[bin]]
 name = "jsompiler"
 path = "src/main.rs"

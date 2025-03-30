@@ -1,5 +1,5 @@
 use super::super::utility::dummy;
-use super::{Jsompiler, JResult, JValue, Json, VKind};
+use super::{JResult, JValue, Jsompiler, Json, VKind};
 use std::collections::HashMap;
 impl<'a> Jsompiler<'a> {
   fn next(&mut self) -> Result<char, String> {

@@ -13,19 +13,21 @@
 <a href="#12" id="12">12</a>
 <a href="#13" id="13">13</a>
 <a href="#14" id="14">14</a>
-<a href="#15" id="15">15</a></pre></div><pre class="rust"><code><span class="kw">use super</span>::{JValue, VKind};
+<a href="#15" id="15">15</a>
+<a href="#16" id="16">16</a></pre></div><pre class="rust"><code><span class="kw">use super</span>::{JValue, VKind};
 <span class="kw">impl </span>JValue {
   <span class="kw">pub fn </span>is_lit(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
-    <span class="kw">match </span><span class="self">self </span>{
-      JValue::Null =&gt; <span class="bool-val">true</span>,
-      JValue::Bool(v) =&gt; <span class="macro">matches!</span>(v, VKind::Lit(<span class="kw">_</span>)),
-      JValue::Int(v) =&gt; <span class="macro">matches!</span>(v, VKind::Lit(<span class="kw">_</span>)),
-      JValue::Float(v) =&gt; <span class="macro">matches!</span>(v, VKind::Lit(<span class="kw">_</span>)),
-      JValue::String(v) =&gt; <span class="macro">matches!</span>(v, VKind::Lit(<span class="kw">_</span>)),
-      JValue::Array(v) =&gt; <span class="macro">matches!</span>(v, VKind::Lit(<span class="kw">_</span>)),
-      JValue::Object(v) =&gt; <span class="macro">matches!</span>(v, VKind::Lit(<span class="kw">_</span>)),
-      JValue::Function(v) =&gt; <span class="macro">matches!</span>(v, VKind::Lit(<span class="kw">_</span>)),
-    }
-  }
+    <span class="macro">matches!</span>(
+      <span class="self">self</span>,
+      JValue::Null
+        | JValue::Bool(VKind::Lit(<span class="kw">_</span>))
+        | JValue::Int(VKind::Lit(<span class="kw">_</span>))
+        | JValue::Float(VKind::Lit(<span class="kw">_</span>))
+        | JValue::String(VKind::Lit(<span class="kw">_</span>))
+        | JValue::Array(VKind::Lit(<span class="kw">_</span>))
+        | JValue::Object(VKind::Lit(<span class="kw">_</span>))
+    )
+    <span class="comment">//function isn't literal
+  </span>}
 }
 </code></pre></div></section></main></body></html>

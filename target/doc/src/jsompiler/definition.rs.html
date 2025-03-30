@@ -64,7 +64,7 @@
 <span class="kw">mod </span>impl_jvalue;
 <span class="kw">mod </span>impl_parser;
 <span class="kw">pub type </span>JResult = <span class="prelude-ty">Result</span>&lt;Json, Box&lt;<span class="kw">dyn </span>Error&gt;&gt;;
-<span class="kw">pub type </span>F&lt;T&gt; = <span class="kw">fn</span>(<span class="kw-2">&amp;mut </span>T, <span class="kw-2">&amp;</span>[Json], <span class="kw-2">&amp;mut </span>String) -&gt; JResult;
+<span class="kw">pub type </span>JFunc&lt;T&gt; = <span class="kw">fn</span>(<span class="kw-2">&amp;mut </span>T, <span class="kw-2">&amp;</span>[Json], <span class="kw-2">&amp;mut </span>String) -&gt; JResult;
 <span class="attr">#[derive(Debug, Clone)]
 </span><span class="kw">pub struct </span>Json {
   <span class="kw">pub </span>pos: usize,
@@ -85,7 +85,7 @@
   String(VKind&lt;String&gt;),
   Array(VKind&lt;Vec&lt;Json&gt;&gt;),
   Object(VKind&lt;HashMap&lt;String, Json&gt;&gt;),
-  Function(VKind&lt;Vec&lt;Json&gt;&gt;),
+  Function(String, Vec&lt;Json&gt;),
 }
 <span class="attr">#[derive(Default)]
 </span><span class="kw">pub struct </span>Jsompiler&lt;<span class="lifetime">'a</span>&gt; {
@@ -96,8 +96,8 @@
   data: String,
   bss: String,
   text: String,
-  f_table: HashMap&lt;String, F&lt;<span class="self">Self</span>&gt;&gt;,
-  vars: HashMap&lt;String, Json&gt;,
+  f_table: HashMap&lt;String, JFunc&lt;<span class="self">Self</span>&gt;&gt;,
+  globals: HashMap&lt;String, Json&gt;,
 }
 <span class="kw">impl </span>Jsompiler&lt;<span class="lifetime">'_</span>&gt; {
   <span class="kw">fn </span>obj_err(<span class="kw-2">&amp;</span><span class="self">self</span>, text: <span class="kw-2">&amp;</span>str, obj: <span class="kw-2">&amp;</span>Json) -&gt; JResult {

@@ -1,5 +1,5 @@
-use super::super::utility::dummy;
-use super::{F, Jsompiler, JResult, JValue, Json, VKind};
+use super::super::utility::{dummy, en64};
+use super::{JFunc, JResult, JValue, Jsompiler, Json, VKind};
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::Write as _;
@@ -17,16 +17,24 @@ impl Jsompiler<'_> {
   }
   pub fn build(&mut self, parsed: Json, filename: &str) -> JResult {
     self.seed = 0;
-    self.f_table.insert("=".into(), Jsompiler::set_var as F<Self>);
-    self.f_table.insert("$".into(), Jsompiler::get_var as F<Self>);
-    self.f_table.insert("+".into(), Jsompiler::plus as F<Self>);
-    self.f_table.insert("-".into(), Jsompiler::minus as F<Self>);
     self
       .f_table
-      .insert("message".into(), Jsompiler::message as F<Self>);
+      .insert("=".into(), Jsompiler::set_var as JFunc<Self>);
     self
       .f_table
-      .insert("begin".into(), Jsompiler::begin as F<Self>);
+      .insert("$".into(), Jsompiler::get_var as JFunc<Self>);
+    self
+      .f_table
+      .insert("+".into(), Jsompiler::plus as JFunc<Self>);
+    self
+      .f_table
+      .insert("-".into(), Jsompiler::minus as JFunc<Self>);
+    self
+      .f_table
+      .insert("message".into(), Jsompiler::message as JFunc<Self>);
+    self
+      .f_table
+      .insert("begin".into(), Jsompiler::begin as JFunc<Self>);
     self.data.push_str(".data\n");
     self.bss.push_str(
       r#".bss
@@ -36,9 +44,9 @@ impl Jsompiler<'_> {
   .lcomm STDIN, 8
 "#,
     );
-    self.text.push_str(".text\n");
     let mut main_func = String::from(
-      r#"_start:
+      r#".text
+_start:
   push rbp
   mov rbp, rsp
   sub rsp, 32
@@ -68,14 +76,8 @@ impl Jsompiler<'_> {
 "#,
     );
     let result = self.eval(&parsed, &mut main_func)?;
-    let mut file = File::create(filename)?;
-    writeln!(file, ".intel_syntax noprefix\n.globl _start")?;
-    write!(file, "{}", self.data)?;
-    write!(file, "{}", self.bss)?;
-    write!(file, "{}", self.text)?;
-    write!(file, "{main_func}")?;
     writeln!(
-      file,
+      main_func,
       r#"  xor ecx, ecx
   call ExitProcess
 display_error:
@@ -103,6 +105,12 @@ exit_program:
   mov rcx, rbx
   call ExitProcess"#
     )?;
+    let mut file = File::create(filename)?;
+    writeln!(file, ".intel_syntax noprefix\n.globl _start")?;
+    write!(file, "{}", self.data)?;
+    write!(file, "{}", self.bss)?;
+    write!(file, "{main_func}")?;
+    write!(file, "{}", self.text)?;
     Ok(result)
   }
   fn eval(&mut self, parsed: &Json, function: &mut String) -> JResult {
@@ -126,35 +134,34 @@ exit_program:
           self.obj_err(&format!("Undefined function: {cmd}"), &list[0])
         }
       }
-      _ => {
-        let mut func_buffer = String::new();
-        let func_value = self.eval_lambda(parsed, &mut func_buffer)?;
+      JValue::Array(VKind::Lit(func_list)) => {
+        let mut func_buffer = String::new(); //TODO
+        let JValue::Function(n, _params) = self.eval_lambda(func_list, &mut func_buffer)?.value
+        else {
+          unreachable!()
+        };
         self.text.push_str(&func_buffer);
-        Ok(func_value)
+        writeln!(function, "call {}", n)?;
+        dummy()
       }
+      _ => self.obj_err(
+        "Only a lambda list or a string is allowed as the first element of a list",
+        parsed,
+      ),
     }
   }
-  fn eval_lambda(&mut self, parsed: &Json, function: &mut String) -> JResult {
-    let JValue::Array(VKind::Lit(func_list)) = &parsed.value else {
-      return self.obj_err(
-        "Only a lambda list or a string is allowed as the first element of a list",
-        parsed,
-      );
-    };
-    let JValue::String(VKind::Lit(cmd)) = &func_list[0].value else {
-      return self.obj_err(
-        "Only a lambda list or a string is allowed as the first element of a list",
-        parsed,
-      );
-    };
-    if cmd != "lambda" {
-      return self.obj_err(
-        "Only a lambda list or a string is allowed as the first element of a list",
-        parsed,
-      );
+  fn eval_lambda(&mut self, func_list: &[Json], function: &mut String) -> JResult {
+    match &func_list[0].value {
+      JValue::String(VKind::Lit(v)) if v == "lambda" => (),
+      _ => {
+        return self.obj_err(
+          "Only \"lambda\" is allowed as the first element of a lambda list",
+          &func_list[0],
+        );
+      }
     }
     if func_list.len() < 3 {
-      return self.obj_err("Invalid function definition", parsed);
+      return self.obj_err("Invalid function definition", &func_list[0]);
     };
     let JValue::Array(VKind::Lit(params)) = &func_list[1].value else {
       return self.obj_err(
@@ -162,64 +169,80 @@ exit_program:
         &func_list[1],
       );
     };
+    if !params.is_empty() {
+      todo!("Arguments not supported at present")
+    }
+    let n = self.get_name();
+    writeln!(
+      function,
+      r#"{n}:
+  push rbp
+  mov rbp, rsp
+  sub rsp, 32"#
+    )?;
     for i in &func_list[2..] {
       self.eval(i, function)?;
     }
-    Ok(self.obj_json(JValue::Function(VKind::Lit(params.clone())), &func_list[0]))
+    writeln!(
+      function,
+      r#"  add rsp, 32
+  mov rsp, rbp
+  pop rbp
+  ret"#,
+    )?;
+    Ok(self.obj_json(JValue::Function(n, params.clone()), &func_list[0]))
   }
   fn begin(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(args.len() == 1, "begin", "at least one", &args[0])?;
-    let mut result = Json {
-      pos: 0,
-      ln: 0,
-      value: JValue::Null,
-    };
+    let mut result = dummy()?;
     for a in &args[1..] {
-      a.print_json()?;
       result = self.eval(a, function)?
     }
     Ok(result)
   }
   fn set_var(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(args.len() != 3, "=", "two", &args[0])?;
-    if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
-      let result = self.eval(&args[2], function)?;
-      if !result.value.is_lit() {
-        self.vars.insert(var_name.clone(), result.clone());
-        return Ok(result);
-      }
-      match result.value {
-        JValue::String(VKind::Lit(s)) => {
-          let n = self.get_name();
-          writeln!(self.data, "  {n}: .string \"{s}\"")?;
-          self.vars.insert(
-            var_name.clone(),
-            self.obj_json(JValue::String(VKind::Var(n.clone())), &args[0]),
-          );
-          Ok(self.obj_json(JValue::String(VKind::Var(n)), &args[0]))
-        }
-        _ => self.obj_err("Assignment to an unimplemented type", &args[2]),
-      }
-    } else {
-      self.obj_err(
+    let JValue::String(VKind::Lit(var_name)) = &args[1].value else {
+      return self.obj_err(
         "Variable names must be compile-time fixed strings",
-        &args[0],
-      )
+        &args[1],
+      );
+    };
+    let result = self.eval(&args[2], function)?;
+    if !result.value.is_lit() {
+      self
+        .globals
+        .insert(format!("\"{}\"", en64(var_name.as_bytes())), result.clone());
+      return Ok(result);
+    }
+    match result.value {
+      JValue::String(VKind::Lit(s)) => {
+        let n = format!("\"{}\"", en64(var_name.as_bytes()));
+        writeln!(self.data, "  {n}: .string \"{s}\"")?;
+        self.globals.insert(
+          n.clone(),
+          self.obj_json(JValue::String(VKind::Var(n.clone())), &args[0]),
+        );
+        Ok(self.obj_json(JValue::String(VKind::Var(n)), &args[0]))
+      }
+      _ => self.obj_err("Assignment to an unimplemented type", &args[2]),
     }
   }
   fn get_var(&mut self, args: &[Json], _: &mut String) -> JResult {
     self.validate(args.len() != 2, "$", "one", &args[0])?;
-    if let JValue::String(VKind::Lit(var_name)) = &args[1].value {
-      if let Some(value) = self.vars.get(var_name) {
-        Ok(value.clone())
-      } else {
-        self.obj_err(&format!("Undefined variables: '{}'", var_name), &args[1])
-      }
-    } else {
-      self.obj_err(
+    let JValue::String(VKind::Lit(var_name)) = &args[1].value else {
+      return self.obj_err(
         "Variable names must be compile-time fixed strings",
-        &args[0],
-      )
+        &args[1],
+      );
+    };
+    if let Some(value) = self
+      .globals
+      .get(&format!("\"{}\"", en64(var_name.as_bytes())))
+    {
+      Ok(value.clone())
+    } else {
+      self.obj_err(&format!("Undefined variables: '{var_name}'"), &args[1])
     }
   }
   fn plus(&mut self, args: &[Json], function: &mut String) -> JResult {

@@ -44,7 +44,7 @@ fn main() -> ! {
       "-LC:/Windows/System32",
       "-luser32",
       "-lkernel32",
-      "-lucrtbase"
+      "-lucrtbase",
     ])
     .status()
     .unwrap_or_else(|e| error_exit(&format!("Failed to link: {e}")))

@@ -6,7 +6,7 @@ mod impl_json;
 mod impl_jvalue;
 mod impl_parser;
 pub type JResult = Result<Json, Box<dyn Error>>;
-pub type F<T> = fn(&mut T, &[Json], &mut String) -> JResult;
+pub type JFunc<T> = fn(&mut T, &[Json], &mut String) -> JResult;
 #[derive(Debug, Clone)]
 pub struct Json {
   pub pos: usize,
@@ -27,7 +27,7 @@ pub enum JValue {
   String(VKind<String>),
   Array(VKind<Vec<Json>>),
   Object(VKind<HashMap<String, Json>>),
-  Function(VKind<Vec<Json>>),
+  Function(String, Vec<Json>),
 }
 #[derive(Default)]
 pub struct Jsompiler<'a> {
@@ -38,8 +38,8 @@ pub struct Jsompiler<'a> {
   data: String,
   bss: String,
   text: String,
-  f_table: HashMap<String, F<Self>>,
-  vars: HashMap<String, Json>,
+  f_table: HashMap<String, JFunc<Self>>,
+  globals: HashMap<String, Json>,
 }
 impl Jsompiler<'_> {
   fn obj_err(&self, text: &str, obj: &Json) -> JResult {

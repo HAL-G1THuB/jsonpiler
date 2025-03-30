@@ -322,8 +322,31 @@
 <a href="#321" id="321">321</a>
 <a href="#322" id="322">322</a>
 <a href="#323" id="323">323</a>
-<a href="#324" id="324">324</a></pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::<span class="kw">super</span>::utility::dummy;
-<span class="kw">use super</span>::{F, Jsompiler, JResult, JValue, Json, VKind};
+<a href="#324" id="324">324</a>
+<a href="#325" id="325">325</a>
+<a href="#326" id="326">326</a>
+<a href="#327" id="327">327</a>
+<a href="#328" id="328">328</a>
+<a href="#329" id="329">329</a>
+<a href="#330" id="330">330</a>
+<a href="#331" id="331">331</a>
+<a href="#332" id="332">332</a>
+<a href="#333" id="333">333</a>
+<a href="#334" id="334">334</a>
+<a href="#335" id="335">335</a>
+<a href="#336" id="336">336</a>
+<a href="#337" id="337">337</a>
+<a href="#338" id="338">338</a>
+<a href="#339" id="339">339</a>
+<a href="#340" id="340">340</a>
+<a href="#341" id="341">341</a>
+<a href="#342" id="342">342</a>
+<a href="#343" id="343">343</a>
+<a href="#344" id="344">344</a>
+<a href="#345" id="345">345</a>
+<a href="#346" id="346">346</a>
+<a href="#347" id="347">347</a></pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::<span class="kw">super</span>::utility::{dummy, en64};
+<span class="kw">use super</span>::{JFunc, JResult, JValue, Jsompiler, Json, VKind};
 <span class="kw">use </span>std::fmt::Write <span class="kw">as _</span>;
 <span class="kw">use </span>std::fs::File;
 <span class="kw">use </span>std::io::Write <span class="kw">as _</span>;
@@ -341,16 +364,24 @@
   }
   <span class="kw">pub fn </span>build(<span class="kw-2">&amp;mut </span><span class="self">self</span>, parsed: Json, filename: <span class="kw-2">&amp;</span>str) -&gt; JResult {
     <span class="self">self</span>.seed = <span class="number">0</span>;
-    <span class="self">self</span>.f_table.insert(<span class="string">"="</span>.into(), Jsompiler::set_var <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
-    <span class="self">self</span>.f_table.insert(<span class="string">"$"</span>.into(), Jsompiler::get_var <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
-    <span class="self">self</span>.f_table.insert(<span class="string">"+"</span>.into(), Jsompiler::plus <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
-    <span class="self">self</span>.f_table.insert(<span class="string">"-"</span>.into(), Jsompiler::minus <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
     <span class="self">self
       </span>.f_table
-      .insert(<span class="string">"message"</span>.into(), Jsompiler::message <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
+      .insert(<span class="string">"="</span>.into(), Jsompiler::set_var <span class="kw">as </span>JFunc&lt;<span class="self">Self</span>&gt;);
     <span class="self">self
       </span>.f_table
-      .insert(<span class="string">"begin"</span>.into(), Jsompiler::begin <span class="kw">as </span>F&lt;<span class="self">Self</span>&gt;);
+      .insert(<span class="string">"$"</span>.into(), Jsompiler::get_var <span class="kw">as </span>JFunc&lt;<span class="self">Self</span>&gt;);
+    <span class="self">self
+      </span>.f_table
+      .insert(<span class="string">"+"</span>.into(), Jsompiler::plus <span class="kw">as </span>JFunc&lt;<span class="self">Self</span>&gt;);
+    <span class="self">self
+      </span>.f_table
+      .insert(<span class="string">"-"</span>.into(), Jsompiler::minus <span class="kw">as </span>JFunc&lt;<span class="self">Self</span>&gt;);
+    <span class="self">self
+      </span>.f_table
+      .insert(<span class="string">"message"</span>.into(), Jsompiler::message <span class="kw">as </span>JFunc&lt;<span class="self">Self</span>&gt;);
+    <span class="self">self
+      </span>.f_table
+      .insert(<span class="string">"begin"</span>.into(), Jsompiler::begin <span class="kw">as </span>JFunc&lt;<span class="self">Self</span>&gt;);
     <span class="self">self</span>.data.push_str(<span class="string">".data\n"</span>);
     <span class="self">self</span>.bss.push_str(
       <span class="string">r#".bss
@@ -360,9 +391,9 @@
   .lcomm STDIN, 8
 "#</span>,
     );
-    <span class="self">self</span>.text.push_str(<span class="string">".text\n"</span>);
     <span class="kw">let </span><span class="kw-2">mut </span>main_func = String::from(
-      <span class="string">r#"_start:
+      <span class="string">r#".text
+_start:
   push rbp
   mov rbp, rsp
   sub rsp, 32
@@ -392,14 +423,8 @@
 "#</span>,
     );
     <span class="kw">let </span>result = <span class="self">self</span>.eval(<span class="kw-2">&amp;</span>parsed, <span class="kw-2">&amp;mut </span>main_func)<span class="question-mark">?</span>;
-    <span class="kw">let </span><span class="kw-2">mut </span>file = File::create(filename)<span class="question-mark">?</span>;
-    <span class="macro">writeln!</span>(file, <span class="string">".intel_syntax noprefix\n.globl _start"</span>)<span class="question-mark">?</span>;
-    <span class="macro">write!</span>(file, <span class="string">"{}"</span>, <span class="self">self</span>.data)<span class="question-mark">?</span>;
-    <span class="macro">write!</span>(file, <span class="string">"{}"</span>, <span class="self">self</span>.bss)<span class="question-mark">?</span>;
-    <span class="macro">write!</span>(file, <span class="string">"{}"</span>, <span class="self">self</span>.text)<span class="question-mark">?</span>;
-    <span class="macro">write!</span>(file, <span class="string">"{main_func}"</span>)<span class="question-mark">?</span>;
     <span class="macro">writeln!</span>(
-      file,
+      main_func,
       <span class="string">r#"  xor ecx, ecx
   call ExitProcess
 display_error:
@@ -427,6 +452,12 @@ exit_program:
   mov rcx, rbx
   call ExitProcess"#
     </span>)<span class="question-mark">?</span>;
+    <span class="kw">let </span><span class="kw-2">mut </span>file = File::create(filename)<span class="question-mark">?</span>;
+    <span class="macro">writeln!</span>(file, <span class="string">".intel_syntax noprefix\n.globl _start"</span>)<span class="question-mark">?</span>;
+    <span class="macro">write!</span>(file, <span class="string">"{}"</span>, <span class="self">self</span>.data)<span class="question-mark">?</span>;
+    <span class="macro">write!</span>(file, <span class="string">"{}"</span>, <span class="self">self</span>.bss)<span class="question-mark">?</span>;
+    <span class="macro">write!</span>(file, <span class="string">"{main_func}"</span>)<span class="question-mark">?</span>;
+    <span class="macro">write!</span>(file, <span class="string">"{}"</span>, <span class="self">self</span>.text)<span class="question-mark">?</span>;
     <span class="prelude-val">Ok</span>(result)
   }
   <span class="kw">fn </span>eval(<span class="kw-2">&amp;mut </span><span class="self">self</span>, parsed: <span class="kw-2">&amp;</span>Json, function: <span class="kw-2">&amp;mut </span>String) -&gt; JResult {
@@ -450,35 +481,34 @@ exit_program:
           <span class="self">self</span>.obj_err(<span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"Undefined function: {cmd}"</span>), <span class="kw-2">&amp;</span>list[<span class="number">0</span>])
         }
       }
-      <span class="kw">_ </span>=&gt; {
-        <span class="kw">let </span><span class="kw-2">mut </span>func_buffer = String::new();
-        <span class="kw">let </span>func_value = <span class="self">self</span>.eval_lambda(parsed, <span class="kw-2">&amp;mut </span>func_buffer)<span class="question-mark">?</span>;
+      JValue::Array(VKind::Lit(func_list)) =&gt; {
+        <span class="kw">let </span><span class="kw-2">mut </span>func_buffer = String::new(); <span class="comment">//TODO
+        </span><span class="kw">let </span>JValue::Function(n, _params) = <span class="self">self</span>.eval_lambda(func_list, <span class="kw-2">&amp;mut </span>func_buffer)<span class="question-mark">?</span>.value
+        <span class="kw">else </span>{
+          <span class="macro">unreachable!</span>()
+        };
         <span class="self">self</span>.text.push_str(<span class="kw-2">&amp;</span>func_buffer);
-        <span class="prelude-val">Ok</span>(func_value)
+        <span class="macro">writeln!</span>(function, <span class="string">"call {}"</span>, n)<span class="question-mark">?</span>;
+        dummy()
       }
+      <span class="kw">_ </span>=&gt; <span class="self">self</span>.obj_err(
+        <span class="string">"Only a lambda list or a string is allowed as the first element of a list"</span>,
+        parsed,
+      ),
     }
   }
-  <span class="kw">fn </span>eval_lambda(<span class="kw-2">&amp;mut </span><span class="self">self</span>, parsed: <span class="kw-2">&amp;</span>Json, function: <span class="kw-2">&amp;mut </span>String) -&gt; JResult {
-    <span class="kw">let </span>JValue::Array(VKind::Lit(func_list)) = <span class="kw-2">&amp;</span>parsed.value <span class="kw">else </span>{
-      <span class="kw">return </span><span class="self">self</span>.obj_err(
-        <span class="string">"Only a lambda list or a string is allowed as the first element of a list"</span>,
-        parsed,
-      );
-    };
-    <span class="kw">let </span>JValue::String(VKind::Lit(cmd)) = <span class="kw-2">&amp;</span>func_list[<span class="number">0</span>].value <span class="kw">else </span>{
-      <span class="kw">return </span><span class="self">self</span>.obj_err(
-        <span class="string">"Only a lambda list or a string is allowed as the first element of a list"</span>,
-        parsed,
-      );
-    };
-    <span class="kw">if </span>cmd != <span class="string">"lambda" </span>{
-      <span class="kw">return </span><span class="self">self</span>.obj_err(
-        <span class="string">"Only a lambda list or a string is allowed as the first element of a list"</span>,
-        parsed,
-      );
+  <span class="kw">fn </span>eval_lambda(<span class="kw-2">&amp;mut </span><span class="self">self</span>, func_list: <span class="kw-2">&amp;</span>[Json], function: <span class="kw-2">&amp;mut </span>String) -&gt; JResult {
+    <span class="kw">match </span><span class="kw-2">&amp;</span>func_list[<span class="number">0</span>].value {
+      JValue::String(VKind::Lit(v)) <span class="kw">if </span>v == <span class="string">"lambda" </span>=&gt; (),
+      <span class="kw">_ </span>=&gt; {
+        <span class="kw">return </span><span class="self">self</span>.obj_err(
+          <span class="string">"Only \"lambda\" is allowed as the first element of a lambda list"</span>,
+          <span class="kw-2">&amp;</span>func_list[<span class="number">0</span>],
+        );
+      }
     }
     <span class="kw">if </span>func_list.len() &lt; <span class="number">3 </span>{
-      <span class="kw">return </span><span class="self">self</span>.obj_err(<span class="string">"Invalid function definition"</span>, parsed);
+      <span class="kw">return </span><span class="self">self</span>.obj_err(<span class="string">"Invalid function definition"</span>, <span class="kw-2">&amp;</span>func_list[<span class="number">0</span>]);
     };
     <span class="kw">let </span>JValue::Array(VKind::Lit(params)) = <span class="kw-2">&amp;</span>func_list[<span class="number">1</span>].value <span class="kw">else </span>{
       <span class="kw">return </span><span class="self">self</span>.obj_err(
@@ -486,64 +516,80 @@ exit_program:
         <span class="kw-2">&amp;</span>func_list[<span class="number">1</span>],
       );
     };
+    <span class="kw">if </span>!params.is_empty() {
+      <span class="macro">todo!</span>(<span class="string">"Arguments not supported at present"</span>)
+    }
+    <span class="kw">let </span>n = <span class="self">self</span>.get_name();
+    <span class="macro">writeln!</span>(
+      function,
+      <span class="string">r#"{n}:
+  push rbp
+  mov rbp, rsp
+  sub rsp, 32"#
+    </span>)<span class="question-mark">?</span>;
     <span class="kw">for </span>i <span class="kw">in </span><span class="kw-2">&amp;</span>func_list[<span class="number">2</span>..] {
       <span class="self">self</span>.eval(i, function)<span class="question-mark">?</span>;
     }
-    <span class="prelude-val">Ok</span>(<span class="self">self</span>.obj_json(JValue::Function(VKind::Lit(params.clone())), <span class="kw-2">&amp;</span>func_list[<span class="number">0</span>]))
+    <span class="macro">writeln!</span>(
+      function,
+      <span class="string">r#"  add rsp, 32
+  mov rsp, rbp
+  pop rbp
+  ret"#</span>,
+    )<span class="question-mark">?</span>;
+    <span class="prelude-val">Ok</span>(<span class="self">self</span>.obj_json(JValue::Function(n, params.clone()), <span class="kw-2">&amp;</span>func_list[<span class="number">0</span>]))
   }
   <span class="kw">fn </span>begin(<span class="kw-2">&amp;mut </span><span class="self">self</span>, args: <span class="kw-2">&amp;</span>[Json], function: <span class="kw-2">&amp;mut </span>String) -&gt; JResult {
     <span class="self">self</span>.validate(args.len() == <span class="number">1</span>, <span class="string">"begin"</span>, <span class="string">"at least one"</span>, <span class="kw-2">&amp;</span>args[<span class="number">0</span>])<span class="question-mark">?</span>;
-    <span class="kw">let </span><span class="kw-2">mut </span>result = Json {
-      pos: <span class="number">0</span>,
-      ln: <span class="number">0</span>,
-      value: JValue::Null,
-    };
+    <span class="kw">let </span><span class="kw-2">mut </span>result = dummy()<span class="question-mark">?</span>;
     <span class="kw">for </span>a <span class="kw">in </span><span class="kw-2">&amp;</span>args[<span class="number">1</span>..] {
-      a.print_json()<span class="question-mark">?</span>;
       result = <span class="self">self</span>.eval(a, function)<span class="question-mark">?
     </span>}
     <span class="prelude-val">Ok</span>(result)
   }
   <span class="kw">fn </span>set_var(<span class="kw-2">&amp;mut </span><span class="self">self</span>, args: <span class="kw-2">&amp;</span>[Json], function: <span class="kw-2">&amp;mut </span>String) -&gt; JResult {
     <span class="self">self</span>.validate(args.len() != <span class="number">3</span>, <span class="string">"="</span>, <span class="string">"two"</span>, <span class="kw-2">&amp;</span>args[<span class="number">0</span>])<span class="question-mark">?</span>;
-    <span class="kw">if let </span>JValue::String(VKind::Lit(var_name)) = <span class="kw-2">&amp;</span>args[<span class="number">1</span>].value {
-      <span class="kw">let </span>result = <span class="self">self</span>.eval(<span class="kw-2">&amp;</span>args[<span class="number">2</span>], function)<span class="question-mark">?</span>;
-      <span class="kw">if </span>!result.value.is_lit() {
-        <span class="self">self</span>.vars.insert(var_name.clone(), result.clone());
-        <span class="kw">return </span><span class="prelude-val">Ok</span>(result);
-      }
-      <span class="kw">match </span>result.value {
-        JValue::String(VKind::Lit(s)) =&gt; {
-          <span class="kw">let </span>n = <span class="self">self</span>.get_name();
-          <span class="macro">writeln!</span>(<span class="self">self</span>.data, <span class="string">"  {n}: .string \"{s}\""</span>)<span class="question-mark">?</span>;
-          <span class="self">self</span>.vars.insert(
-            var_name.clone(),
-            <span class="self">self</span>.obj_json(JValue::String(VKind::Var(n.clone())), <span class="kw-2">&amp;</span>args[<span class="number">0</span>]),
-          );
-          <span class="prelude-val">Ok</span>(<span class="self">self</span>.obj_json(JValue::String(VKind::Var(n)), <span class="kw-2">&amp;</span>args[<span class="number">0</span>]))
-        }
-        <span class="kw">_ </span>=&gt; <span class="self">self</span>.obj_err(<span class="string">"Assignment to an unimplemented type"</span>, <span class="kw-2">&amp;</span>args[<span class="number">2</span>]),
-      }
-    } <span class="kw">else </span>{
-      <span class="self">self</span>.obj_err(
+    <span class="kw">let </span>JValue::String(VKind::Lit(var_name)) = <span class="kw-2">&amp;</span>args[<span class="number">1</span>].value <span class="kw">else </span>{
+      <span class="kw">return </span><span class="self">self</span>.obj_err(
         <span class="string">"Variable names must be compile-time fixed strings"</span>,
-        <span class="kw-2">&amp;</span>args[<span class="number">0</span>],
-      )
+        <span class="kw-2">&amp;</span>args[<span class="number">1</span>],
+      );
+    };
+    <span class="kw">let </span>result = <span class="self">self</span>.eval(<span class="kw-2">&amp;</span>args[<span class="number">2</span>], function)<span class="question-mark">?</span>;
+    <span class="kw">if </span>!result.value.is_lit() {
+      <span class="self">self
+        </span>.globals
+        .insert(<span class="macro">format!</span>(<span class="string">"\"{}\""</span>, en64(var_name.as_bytes())), result.clone());
+      <span class="kw">return </span><span class="prelude-val">Ok</span>(result);
+    }
+    <span class="kw">match </span>result.value {
+      JValue::String(VKind::Lit(s)) =&gt; {
+        <span class="kw">let </span>n = <span class="macro">format!</span>(<span class="string">"\"{}\""</span>, en64(var_name.as_bytes()));
+        <span class="macro">writeln!</span>(<span class="self">self</span>.data, <span class="string">"  {n}: .string \"{s}\""</span>)<span class="question-mark">?</span>;
+        <span class="self">self</span>.globals.insert(
+          n.clone(),
+          <span class="self">self</span>.obj_json(JValue::String(VKind::Var(n.clone())), <span class="kw-2">&amp;</span>args[<span class="number">0</span>]),
+        );
+        <span class="prelude-val">Ok</span>(<span class="self">self</span>.obj_json(JValue::String(VKind::Var(n)), <span class="kw-2">&amp;</span>args[<span class="number">0</span>]))
+      }
+      <span class="kw">_ </span>=&gt; <span class="self">self</span>.obj_err(<span class="string">"Assignment to an unimplemented type"</span>, <span class="kw-2">&amp;</span>args[<span class="number">2</span>]),
     }
   }
   <span class="kw">fn </span>get_var(<span class="kw-2">&amp;mut </span><span class="self">self</span>, args: <span class="kw-2">&amp;</span>[Json], <span class="kw">_</span>: <span class="kw-2">&amp;mut </span>String) -&gt; JResult {
     <span class="self">self</span>.validate(args.len() != <span class="number">2</span>, <span class="string">"$"</span>, <span class="string">"one"</span>, <span class="kw-2">&amp;</span>args[<span class="number">0</span>])<span class="question-mark">?</span>;
-    <span class="kw">if let </span>JValue::String(VKind::Lit(var_name)) = <span class="kw-2">&amp;</span>args[<span class="number">1</span>].value {
-      <span class="kw">if let </span><span class="prelude-val">Some</span>(value) = <span class="self">self</span>.vars.get(var_name) {
-        <span class="prelude-val">Ok</span>(value.clone())
-      } <span class="kw">else </span>{
-        <span class="self">self</span>.obj_err(<span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"Undefined variables: '{}'"</span>, var_name), <span class="kw-2">&amp;</span>args[<span class="number">1</span>])
-      }
-    } <span class="kw">else </span>{
-      <span class="self">self</span>.obj_err(
+    <span class="kw">let </span>JValue::String(VKind::Lit(var_name)) = <span class="kw-2">&amp;</span>args[<span class="number">1</span>].value <span class="kw">else </span>{
+      <span class="kw">return </span><span class="self">self</span>.obj_err(
         <span class="string">"Variable names must be compile-time fixed strings"</span>,
-        <span class="kw-2">&amp;</span>args[<span class="number">0</span>],
-      )
+        <span class="kw-2">&amp;</span>args[<span class="number">1</span>],
+      );
+    };
+    <span class="kw">if let </span><span class="prelude-val">Some</span>(value) = <span class="self">self
+      </span>.globals
+      .get(<span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"\"{}\""</span>, en64(var_name.as_bytes())))
+    {
+      <span class="prelude-val">Ok</span>(value.clone())
+    } <span class="kw">else </span>{
+      <span class="self">self</span>.obj_err(<span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"Undefined variables: '{var_name}'"</span>), <span class="kw-2">&amp;</span>args[<span class="number">1</span>])
     }
   }
   <span class="kw">fn </span>plus(<span class="kw-2">&amp;mut </span><span class="self">self</span>, args: <span class="kw-2">&amp;</span>[Json], function: <span class="kw-2">&amp;mut </span>String) -&gt; JResult {

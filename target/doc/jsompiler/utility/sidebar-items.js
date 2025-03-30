@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["dummy","error_exit","format_err"]};
+window.SIDEBAR_ITEMS = {"fn":["de64","dummy","en64","error_exit","format_err"]};

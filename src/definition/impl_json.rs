@@ -46,21 +46,16 @@ impl Json {
           out.write_str("]")
         }
       },
-      JValue::Function(maybe_fn) => match maybe_fn {
-        VKind::Var(v) => {
-          write!(out, "({v}: function)")
-        }
-        VKind::Lit(f) => {
-          out.write_str("(")?;
-          for (i, item) in f.iter().enumerate() {
-            if i > 0 {
-              out.write_str(", ")?;
-            }
-            item.write_json(out)?;
+      JValue::Function(name, params) => {
+        out.write_str(&format!("{}(", name))?;
+        for (i, item) in params.iter().enumerate() {
+          if i > 0 {
+            out.write_str(", ")?;
           }
-          out.write_str(": function)")
+          item.write_json(out)?;
         }
-      },
+        out.write_str(")")
+      }
       JValue::Object(maybe_o) => match maybe_o {
         VKind::Var(v) => {
           write!(out, "({v}: array)")
