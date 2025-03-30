@@ -1,4 +1,5 @@
-/target
+/target/**
+!target/doc/
 /.history
 /input.json
 /input.s
