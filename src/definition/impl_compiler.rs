@@ -126,7 +126,10 @@ exit_program:
     match &list[0].value {
       JValue::String(cmd) => {
         if cmd == "lambda" {
-          return Ok(parsed.clone());
+          let mut func_buffer = String::new(); //TODO
+          let result = Ok(self.eval_lambda(list, &mut func_buffer)?);
+          self.text.push_str(&func_buffer);
+          return result;
         }
         if let Some(func) = self.f_table.get(cmd.as_str()) {
           func(self, list.as_slice(), function)
@@ -213,13 +216,13 @@ exit_program:
     match &result.value {
       JValue::String(s) => {
         writeln!(self.data, "  {n}: .string \"{s}\"")?;
-        self.globals.insert(n.clone(), result.value);
-        Ok(self.obj_json(JValue::StringVar(n.clone()), &args[0]))
+        self.globals.insert(var_name.clone(), JValue::StringVar(n));
+        Ok(result)
       }
       JValue::StringVar(s) => {
         writeln!(self.data, "{n}: equ {s}")?;
-        self.globals.insert(n.clone(), result.value);
-        Ok(self.obj_json(JValue::StringVar(n), &args[0]))
+        self.globals.insert(var_name.clone(), JValue::StringVar(n));
+        Ok(result)
       }
       _ => self.obj_err("Assignment to an unimplemented type", &args[2]),
     }
@@ -232,10 +235,7 @@ exit_program:
         &args[1],
       );
     };
-    if let Some(value) = self
-      .globals
-      .get(&format!("\"{}\"", en64(var_name.as_bytes())))
-    {
+    if let Some(value) = self.globals.get(var_name) {
       Ok(self.obj_json(value.clone(), &args[0]))
     } else {
       self.obj_err(&format!("Undefined variables: '{var_name}'"), &args[1])
@@ -273,22 +273,22 @@ exit_program:
       JValue::IntVar(v) => writeln!(function, "  mov rax, QWORD PTR [rip + {v}]")?,
       _ => return self.obj_err("'-' requires integer operands", &args[0]),
     }
-      for a in &args[2..args.len()] {
-        match self.eval(a, function)?.value {
-          JValue::Int(l) => writeln!(function, "  sub rax, {l}")?,
-          JValue::IntVar(v) => writeln!(function, "  sub rax, QWORD PTR [rip + {v}]")?,
-          _ => {
-            return self.obj_err("'+' requires integer operands", &args[0]);
-          }
-        };
-      }
-      let ret = self.get_name();
-      writeln!(self.bss, "  .lcomm {ret}, 8")?;
-      writeln!(function, "  mov QWORD PTR [rip + {ret}], rax")?;
-      Ok(Json {
-        pos: args[0].pos,
-        ln: args[0].ln,
-        value: JValue::IntVar(ret),
+    for a in &args[2..args.len()] {
+      match self.eval(a, function)?.value {
+        JValue::Int(l) => writeln!(function, "  sub rax, {l}")?,
+        JValue::IntVar(v) => writeln!(function, "  sub rax, QWORD PTR [rip + {v}]")?,
+        _ => {
+          return self.obj_err("'+' requires integer operands", &args[0]);
+        }
+      };
+    }
+    let ret = self.get_name();
+    writeln!(self.bss, "  .lcomm {ret}, 8")?;
+    writeln!(function, "  mov QWORD PTR [rip + {ret}], rax")?;
+    Ok(Json {
+      pos: args[0].pos,
+      ln: args[0].ln,
+      value: JValue::IntVar(ret),
     })
   }
   fn message(&mut self, args: &[Json], function: &mut String) -> JResult {

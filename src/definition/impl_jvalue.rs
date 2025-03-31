@@ -11,6 +11,5 @@ impl JValue {
         | JValue::Array(_)
         | JValue::Object(_)
     )
-    //function isn't literal
   }
 }
