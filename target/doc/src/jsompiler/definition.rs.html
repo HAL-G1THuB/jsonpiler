@@ -56,7 +56,8 @@
 <a href="#55" id="55">55</a>
 <a href="#56" id="56">56</a>
 <a href="#57" id="57">57</a>
-<a href="#58" id="58">58</a></pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::utility::format_err;
+<a href="#58" id="58">58</a>
+<a href="#59" id="59">59</a></pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::utility::format_err;
 <span class="kw">use </span>std::collections::HashMap;
 <span class="kw">use </span>std::error::Error;
 <span class="kw">mod </span>impl_compiler;
@@ -72,20 +73,21 @@
   <span class="kw">pub </span>value: JValue,
 }
 <span class="attr">#[derive(Debug, Clone)]
-</span><span class="kw">pub enum </span>VKind&lt;T&gt; {
-  Var(String),
-  Lit(T),
-}
-<span class="attr">#[derive(Debug, Clone)]
 </span><span class="kw">pub enum </span>JValue {
   Null,
-  Bool(VKind&lt;bool&gt;),
-  Int(VKind&lt;i64&gt;),
-  Float(VKind&lt;f64&gt;),
-  String(VKind&lt;String&gt;),
-  Array(VKind&lt;Vec&lt;Json&gt;&gt;),
-  Object(VKind&lt;HashMap&lt;String, Json&gt;&gt;),
-  Function(String, Vec&lt;Json&gt;),
+  Bool(bool),
+  Int(i64),
+  Float(f64),
+  String(String),
+  Array(Vec&lt;Json&gt;),
+  Object(HashMap&lt;String, Json&gt;),
+  FuncVar(String, Vec&lt;Json&gt;),
+  BoolVar(String),
+  IntVar(String),
+  FloatVar(String),
+  StringVar(String),
+  ArrayVar(String),
+  ObjectVar(String),
 }
 <span class="attr">#[derive(Default)]
 </span><span class="kw">pub struct </span>Jsompiler&lt;<span class="lifetime">'a</span>&gt; {
@@ -97,7 +99,7 @@
   bss: String,
   text: String,
   f_table: HashMap&lt;String, JFunc&lt;<span class="self">Self</span>&gt;&gt;,
-  globals: HashMap&lt;String, Json&gt;,
+  globals: HashMap&lt;String, JValue&gt;,
 }
 <span class="kw">impl </span>Jsompiler&lt;<span class="lifetime">'_</span>&gt; {
   <span class="kw">fn </span>obj_err(<span class="kw-2">&amp;</span><span class="self">self</span>, text: <span class="kw-2">&amp;</span>str, obj: <span class="kw-2">&amp;</span>Json) -&gt; JResult {

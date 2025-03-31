@@ -1,15 +1,15 @@
-use super::{JValue, VKind};
+use super::JValue;
 impl JValue {
   pub fn is_lit(&self) -> bool {
     matches!(
       self,
       JValue::Null
-        | JValue::Bool(VKind::Lit(_))
-        | JValue::Int(VKind::Lit(_))
-        | JValue::Float(VKind::Lit(_))
-        | JValue::String(VKind::Lit(_))
-        | JValue::Array(VKind::Lit(_))
-        | JValue::Object(VKind::Lit(_))
+        | JValue::Bool(_)
+        | JValue::Int(_)
+        | JValue::Float(_)
+        | JValue::String(_)
+        | JValue::Array(_)
+        | JValue::Object(_)
     )
     //function isn't literal
   }

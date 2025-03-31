@@ -14,20 +14,21 @@ pub struct Json {
   pub value: JValue,
 }
 #[derive(Debug, Clone)]
-pub enum VKind<T> {
-  Var(String),
-  Lit(T),
-}
-#[derive(Debug, Clone)]
 pub enum JValue {
   Null,
-  Bool(VKind<bool>),
-  Int(VKind<i64>),
-  Float(VKind<f64>),
-  String(VKind<String>),
-  Array(VKind<Vec<Json>>),
-  Object(VKind<HashMap<String, Json>>),
-  Function(String, Vec<Json>),
+  Bool(bool),
+  Int(i64),
+  Float(f64),
+  String(String),
+  Array(Vec<Json>),
+  Object(HashMap<String, Json>),
+  FuncVar(String, Vec<Json>),
+  BoolVar(String),
+  IntVar(String),
+  FloatVar(String),
+  StringVar(String),
+  ArrayVar(String),
+  ObjectVar(String),
 }
 #[derive(Default)]
 pub struct Jsompiler<'a> {
@@ -39,7 +40,7 @@ pub struct Jsompiler<'a> {
   bss: String,
   text: String,
   f_table: HashMap<String, JFunc<Self>>,
-  globals: HashMap<String, Json>,
+  globals: HashMap<String, JValue>,
 }
 impl Jsompiler<'_> {
   fn obj_err(&self, text: &str, obj: &Json) -> JResult {

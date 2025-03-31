@@ -1,4 +1,4 @@
-use super::{JValue, Json, VKind};
+use super::{JValue, Json};
 use std::fmt::{self, Write};
 #[allow(dead_code)]
 impl Json {
@@ -12,41 +12,29 @@ impl Json {
   fn write_json(&self, out: &mut String) -> fmt::Result {
     match &self.value {
       JValue::Null => out.write_str("null"),
-      JValue::Bool(maybe_b) => match maybe_b {
-        VKind::Lit(b) => match b {
-          true => write!(out, "true"),
-          false => write!(out, "false"),
-        },
-        VKind::Var(v) => write!(out, "({v}: bool)"),
+      JValue::Bool(b) => match b {
+        true => write!(out, "true"),
+        false => write!(out, "false"),
       },
-      JValue::Int(maybe_i) => match maybe_i {
-        VKind::Lit(i) => write!(out, "{i}"),
-        VKind::Var(v) => write!(out, "({v}: int)"),
-      },
-      JValue::Float(maybe_f) => match maybe_f {
-        VKind::Lit(f) => write!(out, "{f}"),
-        VKind::Var(v) => write!(out, "({v}: float)"),
-      },
-      JValue::String(maybe_s) => match maybe_s {
-        VKind::Lit(s) => write!(out, "\"{}\"", self.escape_string(s)),
-        VKind::Var(v) => write!(out, "({v}: string)"),
-      },
-      JValue::Array(maybe_a) => match maybe_a {
-        VKind::Var(v) => {
-          write!(out, "({v}: array)")
-        }
-        VKind::Lit(a) => {
-          out.write_str("[")?;
-          for (i, item) in a.iter().enumerate() {
-            if i > 0 {
-              out.write_str(", ")?;
-            }
-            item.write_json(out)?;
+      JValue::BoolVar(bv) => write!(out, "({bv}: bool)"),
+      JValue::Int(i) => write!(out, "{i}"),
+      JValue::IntVar(v) => write!(out, "({v}: int)"),
+      JValue::Float(f) => write!(out, "{f}"),
+      JValue::FloatVar(v) => write!(out, "({v}: float)"),
+      JValue::String(s) => write!(out, "\"{}\"", self.escape_string(s)),
+      JValue::StringVar(v) => write!(out, "({v}: string)"),
+      JValue::Array(a) => {
+        out.write_str("[")?;
+        for (i, item) in a.iter().enumerate() {
+          if i > 0 {
+            out.write_str(", ")?;
           }
-          out.write_str("]")
+          item.write_json(out)?;
         }
-      },
-      JValue::Function(name, params) => {
+        out.write_str("]")
+      }
+      JValue::ArrayVar(v) => write!(out, "({v}: array)"),
+      JValue::FuncVar(name, params) => {
         out.write_str(&format!("{}(", name))?;
         for (i, item) in params.iter().enumerate() {
           if i > 0 {
@@ -56,22 +44,20 @@ impl Json {
         }
         out.write_str(")")
       }
-      JValue::Object(maybe_o) => match maybe_o {
-        VKind::Var(v) => {
-          write!(out, "({v}: array)")
-        }
-        VKind::Lit(o) => {
-          out.write_str("{")?;
-          for (i, (k, v)) in o.iter().enumerate() {
-            if i > 0 {
-              out.write_str(", ")?;
-            }
-            write!(out, "\"{}\": ", self.escape_string(k))?;
-            v.write_json(out)?;
+      JValue::Object(o) => {
+        out.write_str("{")?;
+        for (i, (k, v)) in o.iter().enumerate() {
+          if i > 0 {
+            out.write_str(", ")?;
           }
-          out.write_str("}")
+          write!(out, "\"{}\": ", self.escape_string(k))?;
+          v.write_json(out)?;
         }
-      },
+        out.write_str("}")
+      }
+      JValue::ObjectVar(v) => {
+        write!(out, "({v}: array)")
+      }
     }
   }
   fn escape_string(&self, s: &str) -> String {

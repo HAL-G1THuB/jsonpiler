@@ -1,5 +1,5 @@
 use super::super::utility::dummy;
-use super::{JResult, JValue, Jsompiler, Json, VKind};
+use super::{JResult, JValue, Jsompiler, Json};
 use std::collections::HashMap;
 impl<'a> Jsompiler<'a> {
   fn next(&mut self) -> Result<char, String> {
@@ -128,7 +128,7 @@ impl<'a> Jsompiler<'a> {
           Ok(Json {
             pos: start,
             ln: self.ln,
-            value: JValue::Int(VKind::Lit(int_val)),
+            value: JValue::Int(int_val),
           })
         },
       )
@@ -139,7 +139,7 @@ impl<'a> Jsompiler<'a> {
           Ok(Json {
             pos: start,
             ln: self.ln,
-            value: JValue::Float(VKind::Lit(float_val)),
+            value: JValue::Float(float_val),
           })
         },
       )
@@ -159,7 +159,7 @@ impl<'a> Jsompiler<'a> {
           return Ok(Json {
             pos: start,
             ln: self.ln,
-            value: JValue::String(VKind::Lit(result)),
+            value: JValue::String(result),
           });
         }
         '\n' => {
@@ -220,7 +220,7 @@ impl<'a> Jsompiler<'a> {
       return Ok(Json {
         pos: start_pos,
         ln: start_ln,
-        value: JValue::Array(VKind::Lit(array)),
+        value: JValue::Array(array),
       });
     }
     loop {
@@ -230,7 +230,7 @@ impl<'a> Jsompiler<'a> {
         return Ok(Json {
           pos: start_pos,
           ln: start_ln,
-          value: JValue::Array(VKind::Lit(array)),
+          value: JValue::Array(array),
         });
       } else if self.input_code[self.pos..].starts_with(',') {
         self.pos += 1;
@@ -250,12 +250,12 @@ impl<'a> Jsompiler<'a> {
       return Ok(Json {
         pos: start_pos,
         ln: start_ln,
-        value: JValue::Object(VKind::Lit(object)),
+        value: JValue::Object(object),
       });
     }
     loop {
       let key = self.parse_value()?;
-      let JValue::String(VKind::Lit(s)) = key.value else {
+      let JValue::String(s) = key.value else {
         return self.obj_err("Keys must be strings", &key);
       };
       self.expect(':')?;
@@ -266,7 +266,7 @@ impl<'a> Jsompiler<'a> {
         return Ok(Json {
           pos: start_pos,
           ln: start_ln,
-          value: JValue::Object(VKind::Lit(object)),
+          value: JValue::Object(object),
         });
       }
       if self.input_code[self.pos..].starts_with(',') {
@@ -285,8 +285,8 @@ impl<'a> Jsompiler<'a> {
       Some('"') => self.parse_string(),
       Some('{') => self.parse_object(),
       Some('[') => self.parse_array(),
-      Some('t') => self.parse_name("true", JValue::Bool(VKind::Lit(true))),
-      Some('f') => self.parse_name("false", JValue::Bool(VKind::Lit(false))),
+      Some('t') => self.parse_name("true", JValue::Bool(true)),
+      Some('f') => self.parse_name("false", JValue::Bool(false)),
       Some('n') => self.parse_name("null", JValue::Null),
       _ => self.parse_number(),
     };

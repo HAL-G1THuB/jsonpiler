@@ -1,5 +1,5 @@
 use super::super::utility::{dummy, en64};
-use super::{JFunc, JResult, JValue, Jsompiler, Json, VKind};
+use super::{JFunc, JResult, JValue, Jsompiler, Json};
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::Write as _;
@@ -114,7 +114,7 @@ exit_program:
     Ok(result)
   }
   fn eval(&mut self, parsed: &Json, function: &mut String) -> JResult {
-    let JValue::Array(VKind::Lit(list)) = &parsed.value else {
+    let JValue::Array(list) = &parsed.value else {
       return Ok(parsed.clone());
     };
     if list.is_empty() {
@@ -124,7 +124,7 @@ exit_program:
       );
     };
     match &list[0].value {
-      JValue::String(VKind::Lit(cmd)) => {
+      JValue::String(cmd) => {
         if cmd == "lambda" {
           return Ok(parsed.clone());
         }
@@ -134,9 +134,9 @@ exit_program:
           self.obj_err(&format!("Undefined function: {cmd}"), &list[0])
         }
       }
-      JValue::Array(VKind::Lit(func_list)) => {
+      JValue::Array(func_list) => {
         let mut func_buffer = String::new(); //TODO
-        let JValue::Function(n, _params) = self.eval_lambda(func_list, &mut func_buffer)?.value
+        let JValue::FuncVar(n, _params) = self.eval_lambda(func_list, &mut func_buffer)?.value
         else {
           unreachable!()
         };
@@ -152,7 +152,7 @@ exit_program:
   }
   fn eval_lambda(&mut self, func_list: &[Json], function: &mut String) -> JResult {
     match &func_list[0].value {
-      JValue::String(VKind::Lit(v)) if v == "lambda" => (),
+      JValue::String(v) if v == "lambda" => (),
       _ => {
         return self.obj_err(
           "Only \"lambda\" is allowed as the first element of a lambda list",
@@ -163,7 +163,7 @@ exit_program:
     if func_list.len() < 3 {
       return self.obj_err("Invalid function definition", &func_list[0]);
     };
-    let JValue::Array(VKind::Lit(params)) = &func_list[1].value else {
+    let JValue::Array(params) = &func_list[1].value else {
       return self.obj_err(
         "The second element of a lambda list must be an argument list",
         &func_list[1],
@@ -190,7 +190,7 @@ exit_program:
   pop rbp
   ret"#,
     )?;
-    Ok(self.obj_json(JValue::Function(n, params.clone()), &func_list[0]))
+    Ok(self.obj_json(JValue::FuncVar(n, params.clone()), &func_list[0]))
   }
   fn begin(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(args.len() == 1, "begin", "at least one", &args[0])?;
@@ -202,35 +202,31 @@ exit_program:
   }
   fn set_var(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(args.len() != 3, "=", "two", &args[0])?;
-    let JValue::String(VKind::Lit(var_name)) = &args[1].value else {
+    let JValue::String(var_name) = &args[1].value else {
       return self.obj_err(
         "Variable names must be compile-time fixed strings",
         &args[1],
       );
     };
     let result = self.eval(&args[2], function)?;
-    if !result.value.is_lit() {
-      self
-        .globals
-        .insert(format!("\"{}\"", en64(var_name.as_bytes())), result.clone());
-      return Ok(result);
-    }
-    match result.value {
-      JValue::String(VKind::Lit(s)) => {
-        let n = format!("\"{}\"", en64(var_name.as_bytes()));
+    let n = format!("\"{}\"", en64(var_name.as_bytes()));
+    match &result.value {
+      JValue::String(s) => {
         writeln!(self.data, "  {n}: .string \"{s}\"")?;
-        self.globals.insert(
-          n.clone(),
-          self.obj_json(JValue::String(VKind::Var(n.clone())), &args[0]),
-        );
-        Ok(self.obj_json(JValue::String(VKind::Var(n)), &args[0]))
+        self.globals.insert(n.clone(), result.value);
+        Ok(self.obj_json(JValue::StringVar(n.clone()), &args[0]))
+      }
+      JValue::StringVar(s) => {
+        writeln!(self.data, "{n}: equ {s}")?;
+        self.globals.insert(n.clone(), result.value);
+        Ok(self.obj_json(JValue::StringVar(n), &args[0]))
       }
       _ => self.obj_err("Assignment to an unimplemented type", &args[2]),
     }
   }
   fn get_var(&mut self, args: &[Json], _: &mut String) -> JResult {
     self.validate(args.len() != 2, "$", "one", &args[0])?;
-    let JValue::String(VKind::Lit(var_name)) = &args[1].value else {
+    let JValue::String(var_name) = &args[1].value else {
       return self.obj_err(
         "Variable names must be compile-time fixed strings",
         &args[1],
@@ -240,29 +236,22 @@ exit_program:
       .globals
       .get(&format!("\"{}\"", en64(var_name.as_bytes())))
     {
-      Ok(value.clone())
+      Ok(self.obj_json(value.clone(), &args[0]))
     } else {
       self.obj_err(&format!("Undefined variables: '{var_name}'"), &args[1])
     }
   }
   fn plus(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(args.len() == 1, "+", "at least one", &args[0])?;
-    let Ok(Json {
-      pos: _,
-      ln: _,
-      value: JValue::Int(result),
-    }) = self.eval(&args[1], function)
-    else {
-      return self.obj_err("'+' requires integer operands", &args[0]);
-    };
-    match result {
-      VKind::Lit(l) => writeln!(function, "  mov rax, {l}")?,
-      VKind::Var(v) => writeln!(function, "  mov rax, QWORD PTR [rip + {v}]")?,
+    match self.eval(&args[1], function)?.value {
+      JValue::Int(l) => writeln!(function, "  mov rax, {l}")?,
+      JValue::IntVar(v) => writeln!(function, "  mov rax, QWORD PTR [rip + {v}]")?,
+      _ => return self.obj_err("'+' requires integer operands", &args[0]),
     }
     for a in &args[2..args.len()] {
       match self.eval(a, function)?.value {
-        JValue::Int(VKind::Lit(l)) => writeln!(function, "  add rax, {l}")?,
-        JValue::Int(VKind::Var(v)) => writeln!(function, "  add rax, QWORD PTR [rip + {v}]")?,
+        JValue::Int(l) => writeln!(function, "  add rax, {l}")?,
+        JValue::IntVar(v) => writeln!(function, "  add rax, QWORD PTR [rip + {v}]")?,
         _ => {
           return self.obj_err("'+' requires integer operands", &args[0]);
         }
@@ -274,57 +263,55 @@ exit_program:
     Ok(Json {
       pos: args[0].pos,
       ln: args[0].ln,
-      value: JValue::Int(VKind::Var(ret)),
+      value: JValue::IntVar(ret),
     })
   }
   fn minus(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(args.len() == 1, "-", "at least one", &args[0])?;
-    let JValue::Int(result) = self.eval(&args[1], function)?.value else {
-      return self.obj_err("'-' requires integer operands", &args[0]);
-    };
-    match result {
-      VKind::Lit(l) => writeln!(function, "  mov rax, {l}")?,
-      VKind::Var(v) => writeln!(function, "  mov rax, QWORD PTR [rip + {v}]")?,
+    match self.eval(&args[1], function)?.value {
+      JValue::Int(l) => writeln!(function, "  mov rax, {l}")?,
+      JValue::IntVar(v) => writeln!(function, "  mov rax, QWORD PTR [rip + {v}]")?,
+      _ => return self.obj_err("'-' requires integer operands", &args[0]),
     }
-    for a in &args[2..args.len()] {
-      let JValue::Int(result) = self.eval(a, function)?.value else {
-        return self.obj_err("'-' requires integer operands", &args[0]);
-      };
-      match result {
-        VKind::Lit(l) => writeln!(function, "  sub rax, {l}")?,
-        VKind::Var(v) => writeln!(function, "  sub rax, QWORD PTR [rip + {v}]")?,
+      for a in &args[2..args.len()] {
+        match self.eval(a, function)?.value {
+          JValue::Int(l) => writeln!(function, "  sub rax, {l}")?,
+          JValue::IntVar(v) => writeln!(function, "  sub rax, QWORD PTR [rip + {v}]")?,
+          _ => {
+            return self.obj_err("'+' requires integer operands", &args[0]);
+          }
+        };
       }
-    }
-    let ret = self.get_name();
-    writeln!(self.bss, "  .lcomm {ret}, 8")?;
-    writeln!(function, "  mov QWORD PTR [rip + {ret}], rax")?;
-    Ok(Json {
-      pos: args[0].pos,
-      ln: args[0].ln,
-      value: JValue::Int(VKind::Var(ret)),
+      let ret = self.get_name();
+      writeln!(self.bss, "  .lcomm {ret}, 8")?;
+      writeln!(function, "  mov QWORD PTR [rip + {ret}], rax")?;
+      Ok(Json {
+        pos: args[0].pos,
+        ln: args[0].ln,
+        value: JValue::IntVar(ret),
     })
   }
   fn message(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(args.len() != 3, "message", "two", &args[0])?;
     let arg1 = self.eval(&args[1], function)?.value;
     let title = match arg1 {
-      JValue::String(VKind::Lit(l)) => {
+      JValue::String(l) => {
         let name = self.get_name();
         writeln!(self.data, "  {name}: .string \"{l}\"")?;
         name
       }
-      JValue::String(VKind::Var(v)) => v,
+      JValue::StringVar(v) => v,
       _ => {
         return self.obj_err("The first argument of message must be a string", &args[1]);
       }
     };
     let msg = match self.eval(&args[2], function)?.value {
-      JValue::String(VKind::Lit(l)) => {
+      JValue::String(l) => {
         let name = self.get_name();
         writeln!(self.data, "  {name}: .string \"{l}\"")?;
         name
       }
-      JValue::String(VKind::Var(v)) => v,
+      JValue::StringVar(v) => v,
       _ => {
         return self.obj_err("The second argument of message must be a string", &args[2]);
       }
@@ -342,6 +329,6 @@ exit_program:
   jz display_error
   mov QWORD PTR [rip + {ret}], rax"#,
     )?;
-    Ok(self.obj_json(JValue::Int(VKind::Var(ret)), &args[0]))
+    Ok(self.obj_json(JValue::IntVar(ret), &args[0]))
   }
 }

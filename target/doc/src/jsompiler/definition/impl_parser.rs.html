@@ -295,7 +295,7 @@
 <a href="#294" id="294">294</a>
 <a href="#295" id="295">295</a>
 <a href="#296" id="296">296</a></pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::<span class="kw">super</span>::utility::dummy;
-<span class="kw">use super</span>::{JResult, JValue, Jsompiler, Json, VKind};
+<span class="kw">use super</span>::{JResult, JValue, Jsompiler, Json};
 <span class="kw">use </span>std::collections::HashMap;
 <span class="kw">impl</span>&lt;<span class="lifetime">'a</span>&gt; Jsompiler&lt;<span class="lifetime">'a</span>&gt; {
   <span class="kw">fn </span>next(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;char, String&gt; {
@@ -424,7 +424,7 @@
           <span class="prelude-val">Ok</span>(Json {
             pos: start,
             ln: <span class="self">self</span>.ln,
-            value: JValue::Int(VKind::Lit(int_val)),
+            value: JValue::Int(int_val),
           })
         },
       )
@@ -435,7 +435,7 @@
           <span class="prelude-val">Ok</span>(Json {
             pos: start,
             ln: <span class="self">self</span>.ln,
-            value: JValue::Float(VKind::Lit(float_val)),
+            value: JValue::Float(float_val),
           })
         },
       )
@@ -455,7 +455,7 @@
           <span class="kw">return </span><span class="prelude-val">Ok</span>(Json {
             pos: start,
             ln: <span class="self">self</span>.ln,
-            value: JValue::String(VKind::Lit(result)),
+            value: JValue::String(result),
           });
         }
         <span class="string">'\n' </span>=&gt; {
@@ -516,7 +516,7 @@
       <span class="kw">return </span><span class="prelude-val">Ok</span>(Json {
         pos: start_pos,
         ln: start_ln,
-        value: JValue::Array(VKind::Lit(array)),
+        value: JValue::Array(array),
       });
     }
     <span class="kw">loop </span>{
@@ -526,7 +526,7 @@
         <span class="kw">return </span><span class="prelude-val">Ok</span>(Json {
           pos: start_pos,
           ln: start_ln,
-          value: JValue::Array(VKind::Lit(array)),
+          value: JValue::Array(array),
         });
       } <span class="kw">else if </span><span class="self">self</span>.input_code[<span class="self">self</span>.pos..].starts_with(<span class="string">','</span>) {
         <span class="self">self</span>.pos += <span class="number">1</span>;
@@ -546,12 +546,12 @@
       <span class="kw">return </span><span class="prelude-val">Ok</span>(Json {
         pos: start_pos,
         ln: start_ln,
-        value: JValue::Object(VKind::Lit(object)),
+        value: JValue::Object(object),
       });
     }
     <span class="kw">loop </span>{
       <span class="kw">let </span>key = <span class="self">self</span>.parse_value()<span class="question-mark">?</span>;
-      <span class="kw">let </span>JValue::String(VKind::Lit(s)) = key.value <span class="kw">else </span>{
+      <span class="kw">let </span>JValue::String(s) = key.value <span class="kw">else </span>{
         <span class="kw">return </span><span class="self">self</span>.obj_err(<span class="string">"Keys must be strings"</span>, <span class="kw-2">&amp;</span>key);
       };
       <span class="self">self</span>.expect(<span class="string">':'</span>)<span class="question-mark">?</span>;
@@ -562,7 +562,7 @@
         <span class="kw">return </span><span class="prelude-val">Ok</span>(Json {
           pos: start_pos,
           ln: start_ln,
-          value: JValue::Object(VKind::Lit(object)),
+          value: JValue::Object(object),
         });
       }
       <span class="kw">if </span><span class="self">self</span>.input_code[<span class="self">self</span>.pos..].starts_with(<span class="string">','</span>) {
@@ -581,8 +581,8 @@
       <span class="prelude-val">Some</span>(<span class="string">'"'</span>) =&gt; <span class="self">self</span>.parse_string(),
       <span class="prelude-val">Some</span>(<span class="string">'{'</span>) =&gt; <span class="self">self</span>.parse_object(),
       <span class="prelude-val">Some</span>(<span class="string">'['</span>) =&gt; <span class="self">self</span>.parse_array(),
-      <span class="prelude-val">Some</span>(<span class="string">'t'</span>) =&gt; <span class="self">self</span>.parse_name(<span class="string">"true"</span>, JValue::Bool(VKind::Lit(<span class="bool-val">true</span>))),
-      <span class="prelude-val">Some</span>(<span class="string">'f'</span>) =&gt; <span class="self">self</span>.parse_name(<span class="string">"false"</span>, JValue::Bool(VKind::Lit(<span class="bool-val">false</span>))),
+      <span class="prelude-val">Some</span>(<span class="string">'t'</span>) =&gt; <span class="self">self</span>.parse_name(<span class="string">"true"</span>, JValue::Bool(<span class="bool-val">true</span>)),
+      <span class="prelude-val">Some</span>(<span class="string">'f'</span>) =&gt; <span class="self">self</span>.parse_name(<span class="string">"false"</span>, JValue::Bool(<span class="bool-val">false</span>)),
       <span class="prelude-val">Some</span>(<span class="string">'n'</span>) =&gt; <span class="self">self</span>.parse_name(<span class="string">"null"</span>, JValue::Null),
       <span class="kw">_ </span>=&gt; <span class="self">self</span>.parse_number(),
     };

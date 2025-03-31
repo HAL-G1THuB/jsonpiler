@@ -78,21 +78,7 @@
 <a href="#77" id="77">77</a>
 <a href="#78" id="78">78</a>
 <a href="#79" id="79">79</a>
-<a href="#80" id="80">80</a>
-<a href="#81" id="81">81</a>
-<a href="#82" id="82">82</a>
-<a href="#83" id="83">83</a>
-<a href="#84" id="84">84</a>
-<a href="#85" id="85">85</a>
-<a href="#86" id="86">86</a>
-<a href="#87" id="87">87</a>
-<a href="#88" id="88">88</a>
-<a href="#89" id="89">89</a>
-<a href="#90" id="90">90</a>
-<a href="#91" id="91">91</a>
-<a href="#92" id="92">92</a>
-<a href="#93" id="93">93</a>
-<a href="#94" id="94">94</a></pre></div><pre class="rust"><code><span class="kw">use super</span>::{JValue, Json, VKind};
+<a href="#80" id="80">80</a></pre></div><pre class="rust"><code><span class="kw">use super</span>::{JValue, Json};
 <span class="kw">use </span>std::fmt::{<span class="self">self</span>, Write};
 <span class="attr">#[allow(dead_code)]
 </span><span class="kw">impl </span>Json {
@@ -106,41 +92,29 @@
   <span class="kw">fn </span>write_json(<span class="kw-2">&amp;</span><span class="self">self</span>, out: <span class="kw-2">&amp;mut </span>String) -&gt; fmt::Result {
     <span class="kw">match </span><span class="kw-2">&amp;</span><span class="self">self</span>.value {
       JValue::Null =&gt; out.write_str(<span class="string">"null"</span>),
-      JValue::Bool(maybe_b) =&gt; <span class="kw">match </span>maybe_b {
-        VKind::Lit(b) =&gt; <span class="kw">match </span>b {
-          <span class="bool-val">true </span>=&gt; <span class="macro">write!</span>(out, <span class="string">"true"</span>),
-          <span class="bool-val">false </span>=&gt; <span class="macro">write!</span>(out, <span class="string">"false"</span>),
-        },
-        VKind::Var(v) =&gt; <span class="macro">write!</span>(out, <span class="string">"({v}: bool)"</span>),
+      JValue::Bool(b) =&gt; <span class="kw">match </span>b {
+        <span class="bool-val">true </span>=&gt; <span class="macro">write!</span>(out, <span class="string">"true"</span>),
+        <span class="bool-val">false </span>=&gt; <span class="macro">write!</span>(out, <span class="string">"false"</span>),
       },
-      JValue::Int(maybe_i) =&gt; <span class="kw">match </span>maybe_i {
-        VKind::Lit(i) =&gt; <span class="macro">write!</span>(out, <span class="string">"{i}"</span>),
-        VKind::Var(v) =&gt; <span class="macro">write!</span>(out, <span class="string">"({v}: int)"</span>),
-      },
-      JValue::Float(maybe_f) =&gt; <span class="kw">match </span>maybe_f {
-        VKind::Lit(f) =&gt; <span class="macro">write!</span>(out, <span class="string">"{f}"</span>),
-        VKind::Var(v) =&gt; <span class="macro">write!</span>(out, <span class="string">"({v}: float)"</span>),
-      },
-      JValue::String(maybe_s) =&gt; <span class="kw">match </span>maybe_s {
-        VKind::Lit(s) =&gt; <span class="macro">write!</span>(out, <span class="string">"\"{}\""</span>, <span class="self">self</span>.escape_string(s)),
-        VKind::Var(v) =&gt; <span class="macro">write!</span>(out, <span class="string">"({v}: string)"</span>),
-      },
-      JValue::Array(maybe_a) =&gt; <span class="kw">match </span>maybe_a {
-        VKind::Var(v) =&gt; {
-          <span class="macro">write!</span>(out, <span class="string">"({v}: array)"</span>)
-        }
-        VKind::Lit(a) =&gt; {
-          out.write_str(<span class="string">"["</span>)<span class="question-mark">?</span>;
-          <span class="kw">for </span>(i, item) <span class="kw">in </span>a.iter().enumerate() {
-            <span class="kw">if </span>i &gt; <span class="number">0 </span>{
-              out.write_str(<span class="string">", "</span>)<span class="question-mark">?</span>;
-            }
-            item.write_json(out)<span class="question-mark">?</span>;
+      JValue::BoolVar(bv) =&gt; <span class="macro">write!</span>(out, <span class="string">"({bv}: bool)"</span>),
+      JValue::Int(i) =&gt; <span class="macro">write!</span>(out, <span class="string">"{i}"</span>),
+      JValue::IntVar(v) =&gt; <span class="macro">write!</span>(out, <span class="string">"({v}: int)"</span>),
+      JValue::Float(f) =&gt; <span class="macro">write!</span>(out, <span class="string">"{f}"</span>),
+      JValue::FloatVar(v) =&gt; <span class="macro">write!</span>(out, <span class="string">"({v}: float)"</span>),
+      JValue::String(s) =&gt; <span class="macro">write!</span>(out, <span class="string">"\"{}\""</span>, <span class="self">self</span>.escape_string(s)),
+      JValue::StringVar(v) =&gt; <span class="macro">write!</span>(out, <span class="string">"({v}: string)"</span>),
+      JValue::Array(a) =&gt; {
+        out.write_str(<span class="string">"["</span>)<span class="question-mark">?</span>;
+        <span class="kw">for </span>(i, item) <span class="kw">in </span>a.iter().enumerate() {
+          <span class="kw">if </span>i &gt; <span class="number">0 </span>{
+            out.write_str(<span class="string">", "</span>)<span class="question-mark">?</span>;
           }
-          out.write_str(<span class="string">"]"</span>)
+          item.write_json(out)<span class="question-mark">?</span>;
         }
-      },
-      JValue::Function(name, params) =&gt; {
+        out.write_str(<span class="string">"]"</span>)
+      }
+      JValue::ArrayVar(v) =&gt; <span class="macro">write!</span>(out, <span class="string">"({v}: array)"</span>),
+      JValue::FuncVar(name, params) =&gt; {
         out.write_str(<span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"{}("</span>, name))<span class="question-mark">?</span>;
         <span class="kw">for </span>(i, item) <span class="kw">in </span>params.iter().enumerate() {
           <span class="kw">if </span>i &gt; <span class="number">0 </span>{
@@ -150,22 +124,20 @@
         }
         out.write_str(<span class="string">")"</span>)
       }
-      JValue::Object(maybe_o) =&gt; <span class="kw">match </span>maybe_o {
-        VKind::Var(v) =&gt; {
-          <span class="macro">write!</span>(out, <span class="string">"({v}: array)"</span>)
-        }
-        VKind::Lit(o) =&gt; {
-          out.write_str(<span class="string">"{"</span>)<span class="question-mark">?</span>;
-          <span class="kw">for </span>(i, (k, v)) <span class="kw">in </span>o.iter().enumerate() {
-            <span class="kw">if </span>i &gt; <span class="number">0 </span>{
-              out.write_str(<span class="string">", "</span>)<span class="question-mark">?</span>;
-            }
-            <span class="macro">write!</span>(out, <span class="string">"\"{}\": "</span>, <span class="self">self</span>.escape_string(k))<span class="question-mark">?</span>;
-            v.write_json(out)<span class="question-mark">?</span>;
+      JValue::Object(o) =&gt; {
+        out.write_str(<span class="string">"{"</span>)<span class="question-mark">?</span>;
+        <span class="kw">for </span>(i, (k, v)) <span class="kw">in </span>o.iter().enumerate() {
+          <span class="kw">if </span>i &gt; <span class="number">0 </span>{
+            out.write_str(<span class="string">", "</span>)<span class="question-mark">?</span>;
           }
-          out.write_str(<span class="string">"}"</span>)
+          <span class="macro">write!</span>(out, <span class="string">"\"{}\": "</span>, <span class="self">self</span>.escape_string(k))<span class="question-mark">?</span>;
+          v.write_json(out)<span class="question-mark">?</span>;
         }
-      },
+        out.write_str(<span class="string">"}"</span>)
+      }
+      JValue::ObjectVar(v) =&gt; {
+        <span class="macro">write!</span>(out, <span class="string">"({v}: array)"</span>)
+      }
     }
   }
   <span class="kw">fn </span>escape_string(<span class="kw-2">&amp;</span><span class="self">self</span>, s: <span class="kw-2">&amp;</span>str) -&gt; String {
