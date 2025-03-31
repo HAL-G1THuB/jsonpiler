@@ -2,4 +2,4 @@
 *.woff2 binary
 *.ttf binary
 *.png binary
-/target/doc/** linguist-vendored
+target/doc/** linguist-vendored
