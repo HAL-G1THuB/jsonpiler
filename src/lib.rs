@@ -26,7 +26,7 @@ pub fn run() -> ! {
   let parsed =
     jsompiler.parse(&input_code).unwrap_or_else(|e| error_exit(&format!("ParseError: {e}")));
   #[cfg(debug_assertions)]
-  println!("{}", parsed);
+  println!("{parsed}");
   let file = Path::new(&args[1])
     .file_stem()
     .unwrap_or_else(|| error_exit(&format!("Invalid filename: {}", args[1])))
@@ -107,7 +107,7 @@ pub struct Jsompiler<'a> {
   bss: String,
   text: String,
   f_table: HashMap<String, JFunc<Self>>,
-  globals: HashMap<String, JValue>,
+  _globals: HashMap<String, JValue>,
   vars: HashMap<String, JValue>,
 }
 impl Jsompiler<'_> {
