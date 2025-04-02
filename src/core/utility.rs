@@ -1,3 +1,4 @@
+//! Utility functions.
 #![allow(dead_code)]
 use crate::core::{JResult, JValue, Json};
 use std::error::Error;
