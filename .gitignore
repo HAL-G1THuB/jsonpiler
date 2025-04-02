@@ -3,6 +3,6 @@
 /input.s
 /input.obj
 /input.exe
-/target/**
+/target/
 /ignore/
 /.vscode/
