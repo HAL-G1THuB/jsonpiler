@@ -1,3 +1,5 @@
+/target/*
+!target/doc/
 /.history
 /input.json
 /input.s
@@ -5,4 +7,3 @@
 /input.exe
 /ignore/
 /.vscode/
-/target/**
