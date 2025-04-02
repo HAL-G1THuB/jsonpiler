@@ -107,8 +107,8 @@ _start:
   }
   pub fn build(&mut self, parsed: Json, json_file: &str, filename: &str) -> JResult {
     self.seed = 0;
-    self.entry("g=", Jsompiler::set_global);
-    self.entry("g$", Jsompiler::get_global);
+    self.entry("=", Jsompiler::set_local);
+    self.entry("$", Jsompiler::get_local);
     self.entry("+", Jsompiler::plus);
     self.entry("-", Jsompiler::minus);
     self.entry("message", Jsompiler::message);
@@ -211,8 +211,8 @@ _start:
     }
     Ok(result)
   }
-  fn set_global(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.assert(args.len() == 2, "'g=' requires at two arguments", &args[0])?;
+  fn set_local(&mut self, args: &[Json], function: &mut String) -> JResult {
+    self.assert(args.len() == 2, "'=' requires at two arguments", &args[0])?;
     let JValue::String(var_name) = &args[0].value else {
       return self.obj_err(
         "Variable name requires compile-time fixed strings",
@@ -224,23 +224,23 @@ _start:
     match &result.value {
       JValue::String(s) => {
         writeln!(self.data, "  {n}: .string \"{s}\"")?;
-        self.globals.insert(var_name.clone(), JValue::StringVar(n));
+        self.vars.insert(var_name.clone(), JValue::StringVar(n));
         Ok(result)
       }
       JValue::StringVar(s) => {
         writeln!(self.data, "{n}: equ {s}")?;
-        self.globals.insert(var_name.clone(), JValue::StringVar(n));
+        self.vars.insert(var_name.clone(), JValue::StringVar(n));
         Ok(result)
       }
       _ => self.obj_err("Assignment to an unimplemented type", &args[2]),
     }
   }
-  fn get_global(&mut self, args: &[Json], _: &mut String) -> JResult {
-    self.assert(args.len() == 1, "'g$' requires one argument", &args[0])?;
+  fn get_local(&mut self, args: &[Json], _: &mut String) -> JResult {
+    self.assert(args.len() == 1, "'$' requires one argument", &args[0])?;
     let JValue::String(var_name) = &args[0].value else {
       return self.obj_err("Variable name requires compile-time fixed string", &args[1]);
     };
-    if let Some(value) = self.globals.get(var_name) {
+    if let Some(value) = self.vars.get(var_name) {
       Ok(self.obj_json(value.clone(), &args[0]))
     } else {
       self.obj_err(&format!("Undefined variables: '{var_name}'"), &args[1])
