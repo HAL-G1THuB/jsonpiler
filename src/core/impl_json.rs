@@ -1,21 +1,15 @@
 use super::{JValue, Json};
-use std::fmt::{self, Write};
-#[allow(dead_code)]
-impl Json {
-  pub fn print_json(&self) -> fmt::Result {
-    let mut output = String::new();
-    if self.write_json(&mut output).is_ok() {
-      println!("{output}");
-    }
-    Ok(())
+use std::fmt;
+impl fmt::Display for Json {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    self.write_json(f, 0)
   }
-  fn write_json(&self, out: &mut String) -> fmt::Result {
+}
+impl Json {
+  fn write_json(&self, out: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     match &self.value {
       JValue::Null => out.write_str("null"),
-      JValue::Bool(b) => match b {
-        true => write!(out, "true"),
-        false => write!(out, "false"),
-      },
+      JValue::Bool(b) => write!(out, "{}", b),
       JValue::BoolVar(bv) => write!(out, "({bv}: bool)"),
       JValue::Int(i) => write!(out, "{i}"),
       JValue::IntVar(v) => write!(out, "({v}: int)"),
@@ -24,47 +18,51 @@ impl Json {
       JValue::String(s) => write!(out, "\"{}\"", self.escape_string(s)),
       JValue::StringVar(v) => write!(out, "({v}: string)"),
       JValue::Array(a) => {
-        out.write_str("[")?;
+        out.write_str("[\n")?;
         for (i, item) in a.iter().enumerate() {
           if i > 0 {
-            out.write_str(", ")?;
+            out.write_str(",\n")?;
           }
-          item.write_json(out)?;
+          out.write_str(&"  ".repeat(depth + 1))?;
+          item.write_json(out, depth + 1)?;
         }
+        out.write_str("\n")?;
+        out.write_str(&"  ".repeat(depth))?;
         out.write_str("]")
       }
       JValue::ArrayVar(v) => write!(out, "({v}: array)"),
       JValue::FuncVar(name, params) => {
-        out.write_str(&format!("{}(", name))?;
+        out.write_str(&format!("{name}(",))?;
         for (i, item) in params.iter().enumerate() {
           if i > 0 {
             out.write_str(", ")?;
           }
-          item.write_json(out)?;
+          item.write_json(out, depth)?;
         }
         out.write_str(")")
       }
       JValue::Object(o) => {
-        out.write_str("{")?;
+        out.write_str("{\n")?;
         for (i, (k, v)) in o.iter().enumerate() {
           if i > 0 {
-            out.write_str(", ")?;
+            out.write_str(",\n")?;
           }
+          out.write_str(&"  ".repeat(depth + 1))?;
           write!(out, "\"{}\": ", self.escape_string(k))?;
-          v.write_json(out)?;
+          v.write_json(out, depth + 1)?;
         }
+        out.write_str("\n")?;
+        out.write_str(&"  ".repeat(depth))?;
         out.write_str("}")
       }
-      JValue::ObjectVar(v) => {
-        write!(out, "({v}: array)")
-      }
+      JValue::ObjectVar(v) => write!(out, "({v}: object)"),
     }
   }
   fn escape_string(&self, s: &str) -> String {
     let mut escaped = String::new();
     for c in s.chars() {
       match c {
-        '\"' => escaped.push_str("\\\""),
+        '"' => escaped.push_str("\\\""),
         '\\' => escaped.push_str("\\\\"),
         '\n' => escaped.push_str("\\n"),
         '\t' => escaped.push_str("\\t"),

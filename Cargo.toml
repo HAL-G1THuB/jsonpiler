@@ -9,4 +9,5 @@ repository = "https://github.com/HAL-G1THub/jsompiler.git"
 name = "jsompiler"
 path = "src/main.rs"
 [profile.release]
+lto = true
 panic = "abort"

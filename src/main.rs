@@ -1,7 +1,4 @@
-use jsompiler::core::{
-  Jsompiler,
-  utility::{de64, error_exit},
-};
+use jsompiler::core::{Jsompiler, utility::error_exit};
 use std::{env, fs, path::Path, process::Command};
 fn main() -> ! {
   #[cfg(not(target_os = "windows"))]
@@ -17,18 +14,18 @@ fn main() -> ! {
   let parsed =
     jsompiler.parse(&input_code).unwrap_or_else(|e| error_exit(&format!("ParseError: {e}")));
   #[cfg(debug_assertions)]
-  {
-    println!("{}", String::from_utf8(de64("<0").unwrap()).unwrap());
-    parsed.print_json().unwrap_or_else(|e| error_exit(&format!("Couldn't print json: {e}")));
-  }
-  let json_file = Path::new(&args[1])
+  println!("{}", parsed);
+  let file = Path::new(&args[1])
     .file_stem()
     .unwrap_or_else(|| error_exit(&format!("Invalid filename: {}", args[1])))
-    .to_string_lossy();
-  let obj_file = format!("{json_file}.obj");
-  let exe_file = format!("{json_file}.exe");
-  let asm_file = format!("{json_file}.s");
-  jsompiler.build(parsed, &asm_file).unwrap_or_else(|e| error_exit(&format!("CompileError: {e}")));
+    .to_string_lossy()
+    .to_string();
+  let obj_file = format!("{file}.obj");
+  let exe_file = format!("{file}.exe");
+  let asm_file = format!("{file}.s");
+  jsompiler
+    .build(parsed, &args[1], &asm_file)
+    .unwrap_or_else(|e| error_exit(&format!("CompileError: {e}")));
   if !Command::new("as")
     .args([&asm_file, "-o", &obj_file])
     .status()
