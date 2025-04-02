@@ -1,6 +1,6 @@
 //! Utility functions.
 #![allow(dead_code)]
-use crate::core::{JResult, JValue, Json};
+use crate::{JResult, JValue, Json};
 use std::error::Error;
 use std::io;
 pub fn format_err(text: &str, index: usize, ln: usize, input_code: &str) -> JResult {

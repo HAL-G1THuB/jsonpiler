@@ -1,4 +1,4 @@
-use jsompiler::core::{Jsompiler, utility::error_exit};
+use jsompiler::{Jsompiler, utility::error_exit};
 use std::{env, fs, path::Path, process::Command};
 fn main() -> ! {
   #[cfg(not(target_os = "windows"))]
