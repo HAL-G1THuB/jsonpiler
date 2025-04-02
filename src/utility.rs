@@ -1,11 +1,29 @@
 //! Utility functions.
 #![allow(dead_code)]
-use crate::{JResult, JValue, Json};
-use std::error::Error;
-use std::io;
+use crate::{JError, JResult, JValue, Json};
+use std::{error::Error, io};
+/// Format error.
+///
+/// # Examples
+///
+/// ```rust
+/// use jsompiler::{JError, utility::format_err};
+/// use std::any::Any;
+/// use std::error::Error;
+/// assert_eq!(
+///   *format_err("", 0, 0, "").err().unwrap().downcast_ref::<JError>().unwrap().0,
+///   String::from("\nError occurred on line: 0\nError position:\nError: Empty input")
+/// );
+/// assert_eq!(
+///   *format_err("Error!", 8, 3, "ok!\nok!\nError!!!").err().unwrap().downcast_ref::<JError>().unwrap().0,
+///   String::from("Error!\nError occurred on line: 3\nError position:\nError!!!\n^")
+/// );
+/// ```
 pub fn format_err(text: &str, index: usize, ln: usize, input_code: &str) -> JResult {
   if input_code.is_empty() {
-    return Err("Error: Empty input".into());
+    return Err(Box::new(JError(format!(
+      "{text}\nError occurred on line: {ln}\nError position:\nError: Empty input"
+    ))));
   }
   let len = input_code.len();
   let idx = index.min(len.saturating_sub(1));
@@ -17,8 +35,25 @@ pub fn format_err(text: &str, index: usize, ln: usize, input_code: &str) -> JRes
   let end = input_code[idx..].find('\n').map_or(len, |pos| idx + pos);
   let ws = " ".repeat(idx.saturating_sub(start));
   let result = &input_code[start..end];
-  Err(format!("{text}\nError occurred on line: {ln}\nError position:\n{result}\n{ws}^").into())
+  Err(Box::new(JError(format!(
+    "{text}\nError occurred on line: {ln}\nError position:\n{result}\n{ws}^"
+  ))))
 }
+/// Exit the program with exit code 1.
+///
+/// # Examples
+///
+/// ```should_panic
+/// use std::process::{Command, Stdio};
+/// use std::thread::spawn;
+/// use jsompiler::utility::error_exit;
+/// let mut child = Command::new("echo")
+///   .arg("")
+///   .stdout(Stdio::piped())
+///   .spawn();
+/// #[should_panic]
+///   error_exit("Error!")
+/// ```
 pub fn error_exit(text: &str) -> ! {
   let mut nu = String::new();
   eprint!("{text}\nPress Enter to exit:");
@@ -32,6 +67,14 @@ pub fn dummy() -> JResult {
     value: JValue::Null,
   })
 }
+/// Encoding base64 variants.
+///
+/// # Examples
+///
+/// ```rust
+/// use jsompiler::utility::en64;
+/// assert_eq!(en64(b"0"), String::from("<0"))
+/// ```
 pub fn en64(input: &[u8]) -> String {
   let mut encoded = String::new();
   let chunks = input.chunks(3);
@@ -57,6 +100,14 @@ pub fn en64(input: &[u8]) -> String {
   }
   encoded
 }
+/// Decoding base64 variants.
+///
+/// # Examples
+///
+/// ```rust
+/// use jsompiler::utility::de64;
+/// assert_eq!(de64("<0").unwrap(), b"0")
+/// ```
 pub fn de64(encoded: &str) -> Result<Vec<u8>, Box<dyn Error>> {
   let mut decoded = Vec::new();
   let mut buffer = 0u32;

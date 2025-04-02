@@ -1,11 +1,32 @@
 use super::{JValue, Json};
 use std::fmt;
 impl fmt::Display for Json {
+  /// Formats the `Json` object as a human-readable string.
+  ///
+  /// # Arguments
+  ///
+  /// * `f` - A mutable reference to the `fmt::Formatter`, which is used to write the formatted
+  ///   string.
+  ///
+  /// # Returns
+  ///
+  /// * `fmt::Result` - The result of the formatting operation, indicating success or failure.impl fmt::Display for Json {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     self.write_json(f, 0)
   }
 }
 impl Json {
+  /// Recursively writes the `Json` value to the formatter, with indentation based on depth.
+  ///
+  /// # Arguments
+  ///
+  /// * `out` - A mutable reference to the `fmt::Formatter`, where the formatted output is
+  ///   written.
+  /// * `depth` - The current depth of the nested structure, used to control the indentation.
+  ///
+  /// # Returns
+  ///
+  /// * `fmt::Result` - The result of the formatting operation, indicating success or failure.
   fn write_json(&self, out: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     match &self.value {
       JValue::Null => out.write_str("null"),
@@ -58,6 +79,19 @@ impl Json {
       JValue::ObjectVar(v) => write!(out, "({v}: object)"),
     }
   }
+  /// Escapes special characters in a string for proper JSON formatting.
+  ///
+  /// This method ensures that characters like quotes (`"`) and backslashes (`\`) are escaped
+  /// in a way that conforms to the JSON specification. It also escapes control characters and
+  /// non-ASCII characters using Unicode escapes.
+  ///
+  /// # Arguments
+  ///
+  /// * `s` - The string to be escaped.
+  ///
+  /// # Returns
+  ///
+  /// * `String` - The escaped string.
   fn escape_string(&self, s: &str) -> String {
     let mut escaped = String::new();
     for c in s.chars() {
