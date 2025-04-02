@@ -1,6 +1,6 @@
 [package]
 name = "jsompiler"
-version = "0.1.0-beta+20250402083600"
+version = "0.1.0-beta0+20250402083700"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
 license = "Apache-2.0"
