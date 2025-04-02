@@ -1,4 +1,4 @@
-use super::super::utility::{dummy, en64};
+use super::utility::{dummy, en64};
 use super::{JFunc, JResult, JValue, Jsompiler, Json};
 use std::fmt::Write as _;
 use std::fs::File;
@@ -10,41 +10,40 @@ impl Jsompiler<'_> {
   }
   fn validate(&self, flag: bool, name: &str, text: &str, obj: &Json) -> JResult {
     if flag {
-      self.obj_err(&format!("\"{name}\" requires {text} argument"), obj)
+      self.obj_err(&format!("{name} requires {text} argument"), obj)
     } else {
       dummy()
     }
   }
   pub fn build(&mut self, parsed: Json, filename: &str) -> JResult {
     self.seed = 0;
-    self
-      .f_table
-      .insert("=".into(), Jsompiler::set_var as JFunc<Self>);
-    self
-      .f_table
-      .insert("$".into(), Jsompiler::get_var as JFunc<Self>);
-    self
-      .f_table
-      .insert("+".into(), Jsompiler::plus as JFunc<Self>);
-    self
-      .f_table
-      .insert("-".into(), Jsompiler::minus as JFunc<Self>);
-    self
-      .f_table
-      .insert("message".into(), Jsompiler::message as JFunc<Self>);
-    self
-      .f_table
-      .insert("begin".into(), Jsompiler::begin as JFunc<Self>);
-    self.data.push_str(".data\n");
-    self.bss.push_str(
+    self.f_table.insert("g=".into(), Jsompiler::set_global as JFunc<Self>);
+    self.f_table.insert("g$".into(), Jsompiler::get_global as JFunc<Self>);
+    self.f_table.insert("+".into(), Jsompiler::plus as JFunc<Self>);
+    self.f_table.insert("-".into(), Jsompiler::minus as JFunc<Self>);
+    self.f_table.insert("message".into(), Jsompiler::message as JFunc<Self>);
+    self.f_table.insert("begin".into(), Jsompiler::begin as JFunc<Self>);
+    let mut main_func = String::new();
+    let result = self.eval(&parsed, &mut main_func)?;
+    let mut file = File::create(filename)?;
+    writeln!(
+      file,
+      r#".intel_syntax noprefix
+.globl _start
+.data"#
+    )?;
+    write!(file, "{}", self.data)?;
+    writeln!(
+      file,
       r#".bss
   .lcomm errorMessage, 512
   .lcomm STDOUT, 8
   .lcomm STDERR, 8
-  .lcomm STDIN, 8
-"#,
-    );
-    let mut main_func = String::from(
+  .lcomm STDIN, 8"#,
+    )?;
+    write!(file, "{}", self.bss)?;
+    writeln!(
+      file,
       r#".text
 _start:
   push rbp
@@ -72,12 +71,11 @@ _start:
   call GetStdHandle
   cmp rax, -1
   je display_error
-  mov QWORD PTR [rip + STDERR], rax
-"#,
-    );
-    let result = self.eval(&parsed, &mut main_func)?;
+  mov QWORD PTR [rip + STDERR], rax"#,
+    )?;
+    write!(file, "{main_func}")?;
     writeln!(
-      main_func,
+      file,
       r#"  xor ecx, ecx
   call ExitProcess
 display_error:
@@ -105,11 +103,6 @@ exit_program:
   mov rcx, rbx
   call ExitProcess"#
     )?;
-    let mut file = File::create(filename)?;
-    writeln!(file, ".intel_syntax noprefix\n.globl _start")?;
-    write!(file, "{}", self.data)?;
-    write!(file, "{}", self.bss)?;
-    write!(file, "{main_func}")?;
     write!(file, "{}", self.text)?;
     Ok(result)
   }
@@ -139,12 +132,14 @@ exit_program:
       }
       JValue::Array(func_list) => {
         let mut func_buffer = String::new(); //TODO
-        let JValue::FuncVar(n, _params) = self.eval_lambda(func_list, &mut func_buffer)?.value
+        let tmp = self.vars.clone();
+        let JValue::FuncVar(name, _params) = self.eval_lambda(func_list, &mut func_buffer)?.value
         else {
           unreachable!()
         };
         self.text.push_str(&func_buffer);
-        writeln!(function, "call {}", n)?;
+        writeln!(function, "call {name}")?;
+        self.vars = tmp;
         dummy()
       }
       _ => self.obj_err(
@@ -154,14 +149,11 @@ exit_program:
     }
   }
   fn eval_lambda(&mut self, func_list: &[Json], function: &mut String) -> JResult {
-    match &func_list[0].value {
-      JValue::String(v) if v == "lambda" => (),
-      _ => {
-        return self.obj_err(
-          "Only \"lambda\" is allowed as the first element of a lambda list",
-          &func_list[0],
-        );
-      }
+    if !matches!(func_list[0].value, JValue::String(ref s) if s == "lambda") {
+      return self.obj_err(
+        "Only \"lambda\" is allowed as the first element of a lambda list",
+        &func_list[0],
+      );
     }
     if func_list.len() < 3 {
       return self.obj_err("Invalid function definition", &func_list[0]);
@@ -173,7 +165,7 @@ exit_program:
       );
     };
     if !params.is_empty() {
-      todo!("Arguments not supported at present")
+      todo!("TODO!")
     }
     let n = self.get_name();
     writeln!(
@@ -203,7 +195,7 @@ exit_program:
     }
     Ok(result)
   }
-  fn set_var(&mut self, args: &[Json], function: &mut String) -> JResult {
+  fn set_global(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.validate(args.len() != 3, "=", "two", &args[0])?;
     let JValue::String(var_name) = &args[1].value else {
       return self.obj_err(
@@ -227,7 +219,7 @@ exit_program:
       _ => self.obj_err("Assignment to an unimplemented type", &args[2]),
     }
   }
-  fn get_var(&mut self, args: &[Json], _: &mut String) -> JResult {
+  fn get_global(&mut self, args: &[Json], _: &mut String) -> JResult {
     self.validate(args.len() != 2, "$", "one", &args[0])?;
     let JValue::String(var_name) = &args[1].value else {
       return self.obj_err(

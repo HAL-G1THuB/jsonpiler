@@ -1,10 +1,10 @@
-use super::utility::format_err;
 use std::collections::HashMap;
 use std::error::Error;
 mod impl_compiler;
 mod impl_json;
-mod impl_jvalue;
 mod impl_parser;
+pub mod utility;
+use crate::core::utility::format_err;
 pub type JResult = Result<Json, Box<dyn Error>>;
 pub type JFunc<T> = fn(&mut T, &[Json], &mut String) -> JResult;
 #[derive(Debug, Clone)]
@@ -30,7 +30,7 @@ pub enum JValue {
   ArrayVar(String),
   ObjectVar(String),
 }
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Jsompiler<'a> {
   input_code: &'a str,
   pos: usize,
@@ -41,6 +41,7 @@ pub struct Jsompiler<'a> {
   text: String,
   f_table: HashMap<String, JFunc<Self>>,
   globals: HashMap<String, JValue>,
+  vars: HashMap<String, JValue>,
 }
 impl Jsompiler<'_> {
   fn obj_err(&self, text: &str, obj: &Json) -> JResult {

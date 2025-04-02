@@ -1,12 +1,9 @@
-use super::super::utility::dummy;
+use super::utility::dummy;
 use super::{JResult, JValue, Jsompiler, Json};
 use std::collections::HashMap;
 impl<'a> Jsompiler<'a> {
   fn next(&mut self) -> Result<char, String> {
-    let ch = self.input_code[self.pos..]
-      .chars()
-      .next()
-      .ok_or("Reached end of text")?;
+    let ch = self.input_code[self.pos..].chars().next().ok_or("Reached end of text")?;
     self.pos += ch.len_utf8();
     Ok(ch)
   }

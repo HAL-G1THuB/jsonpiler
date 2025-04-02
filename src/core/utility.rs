@@ -1,4 +1,4 @@
-use crate::definition::{JResult, JValue, Json};
+use crate::core::{JResult, JValue, Json};
 use std::error::Error;
 use std::io;
 pub fn format_err(text: &str, index: usize, ln: usize, input_code: &str) -> JResult {
@@ -17,7 +17,6 @@ pub fn format_err(text: &str, index: usize, ln: usize, input_code: &str) -> JRes
   let result = &input_code[start..end];
   Err(format!("{text}\nError occurred on line: {ln}\nError position:\n{result}\n{ws}^").into())
 }
-
 pub fn error_exit(text: &str) -> ! {
   let mut nu = String::new();
   eprint!("{text}\nPress Enter to exit:");

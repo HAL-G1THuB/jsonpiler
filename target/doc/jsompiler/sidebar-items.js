@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["definition","utility"]};
+window.SIDEBAR_ITEMS = {"mod":["core"]};
