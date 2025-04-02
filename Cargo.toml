@@ -5,9 +5,14 @@ edition = "2024"
 description = "a Json syntax programming language for Windows"
 license = "Apache-2.0"
 repository = "https://github.com/HAL-G1THub/jsompiler.git"
+readme = "README.md"
+categories = ["compilers"]
+keywords = ["json", "parser"]
 [[bin]]
 name = "jsompiler"
 path = "src/main.rs"
 [profile.release]
 lto = true
 panic = "abort"
+[badges]
+maintenance = { status = "actively-developed" }
