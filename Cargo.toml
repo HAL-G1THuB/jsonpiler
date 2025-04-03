@@ -1,8 +1,9 @@
 [package]
 name = "jsompiler"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
+documentation = "https://hal-g1thub.github.io/jsompiler-doc/jsompiler/index.html"
 license = "Apache-2.0"
 repository = "https://github.com/HAL-G1THub/jsompiler.git"
 readme = "README.md"
