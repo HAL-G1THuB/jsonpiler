@@ -20,7 +20,7 @@ use std::{error::Error, io};
 /// );
 /// ```
 /// # Errors
-/// `Box(JError(String))` - Err is always returned.
+/// `Box(JError)` - Err is always returned.
 pub fn format_err(text: &str, index: usize, ln: usize, input_code: &str) -> JResult {
   if input_code.is_empty() {
     return Err(Box::new(JError(format!(

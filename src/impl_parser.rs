@@ -44,7 +44,7 @@ impl<'a> Jsompiler<'a> {
   ///
   /// # Errors
   ///
-  /// `JError(String)` - Returns a `JError` structure containing an error message if an invalid syntax is passed.
+  /// `JError` - Returns a `JError` structure containing an error message if an invalid syntax is passed.
   pub fn parse(&mut self, code: &'a str) -> JResult {
     self.input_code = code;
     self.pos = 0;

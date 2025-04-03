@@ -53,7 +53,7 @@ impl Json {
       }
       JValue::ArrayVar(v) => write!(out, "({v}: array)"),
       JValue::FuncVar(name, params) => {
-        out.write_str(&format!("{name}(",))?;
+        out.write_str(&format!("{name}("))?;
         for (i, item) in params.iter().enumerate() {
           if i > 0 {
             out.write_str(", ")?;
