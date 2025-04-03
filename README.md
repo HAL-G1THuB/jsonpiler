@@ -5,6 +5,7 @@ Jsompiler is a compiler for the JSON syntax programming language.
 This program converts a program written in JSON into GNU Assembly, compiles it, and executes the result.  
 [crates.io](https://crates.io/crates/jsompiler)  
 [docs.rs](https://docs.rs/jsompiler/latest/jsompiler)  
+[Documentation for when docs.rs builds fail.](https://hal-g1thub.github.io/jsompiler-doc/jsompiler/index.html)
 🚨 **This program only runs on Windows(x64)!** 🚨
 
 ## Prerequisites
