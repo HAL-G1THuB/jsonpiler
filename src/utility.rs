@@ -19,6 +19,8 @@ use std::{error::Error, io};
 ///   String::from("Error!\nError occurred on line: 3\nError position:\nError!!!\n^")
 /// );
 /// ```
+/// # Errors
+/// `Box(JError(String))` - Err is always returned.
 pub fn format_err(text: &str, index: usize, ln: usize, input_code: &str) -> JResult {
   if input_code.is_empty() {
     return Err(Box::new(JError(format!(
@@ -60,12 +62,13 @@ pub fn error_exit(text: &str) -> ! {
   let _ = io::stdin().read_line(&mut nu);
   std::process::exit(1)
 }
-pub fn dummy() -> JResult {
-  Ok(Json {
+#[must_use]
+pub const fn dummy() -> Json {
+  Json {
     pos: 0,
     ln: 0,
     value: JValue::Null,
-  })
+  }
 }
 /// Encoding base64 variants.
 ///
@@ -75,6 +78,7 @@ pub fn dummy() -> JResult {
 /// use jsompiler::utility::en64;
 /// assert_eq!(en64(b"0"), String::from("<0"))
 /// ```
+#[must_use]
 pub fn en64(input: &[u8]) -> String {
   let mut encoded = String::new();
   let chunks = input.chunks(3);
@@ -108,6 +112,10 @@ pub fn en64(input: &[u8]) -> String {
 /// use jsompiler::utility::de64;
 /// assert_eq!(de64("<0").unwrap(), b"0")
 /// ```
+///
+/// # Errors
+///
+/// `Box<dyn Error(String)>` - If an invalid encoded value is passed, return `Err`
 pub fn de64(encoded: &str) -> Result<Vec<u8>, Box<dyn Error>> {
   let mut decoded = Vec::new();
   let mut buffer = 0u32;
@@ -115,15 +123,54 @@ pub fn de64(encoded: &str) -> Result<Vec<u8>, Box<dyn Error>> {
   for ch in encoded.chars() {
     let val = (ch as u8).wrapping_sub(48);
     if val > 63 {
-      panic!("Invalid character in input string");
+      return Err::<Vec<u8>, Box<dyn Error>>("Invalid character in input string".into());
     }
-    buffer = (buffer << 6) | val as u32;
+    buffer = (buffer << 6) | u32::from(val);
     buffer_length += 6;
     while buffer_length >= 8 {
-      let byte = (buffer >> (buffer_length - 8)) as u8;
+      let byte = u8::try_from(buffer >> (buffer_length - 8))?;
       decoded.push(byte);
       buffer_length -= 8;
     }
   }
   Ok(decoded)
+}
+/// Escapes special characters in a string for proper JSON formatting.
+///
+/// This method ensures that characters like quotes (`"`) and backslashes (`\`) are escaped
+/// in a way that conforms to the JSON specification. It also escapes control characters and
+/// non-ASCII characters using Unicode escapes.
+///
+/// # Arguments
+///
+/// * `s` - The string to be escaped.
+///
+/// # Returns
+///
+/// * `String` - The escaped string.
+#[must_use]
+pub fn escape_string(s: &str) -> String {
+  let mut escaped = String::new();
+  for c in s.chars() {
+    match c {
+      '"' => escaped.push_str("\\\""),
+      '\\' => escaped.push_str("\\\\"),
+      '\n' => escaped.push_str("\\n"),
+      '\t' => escaped.push_str("\\t"),
+      '\r' => escaped.push_str("\\r"),
+      '\u{08}' => escaped.push_str("\\b"),
+      '\u{0C}' => escaped.push_str("\\f"),
+      c if c < '\u{20}' => escaped.push_str(&format!("\\u{:04x}", c as u32)),
+      _ => escaped.push(c),
+    }
+  }
+  escaped
+}
+#[must_use]
+pub const fn obj_json(val: JValue, obj: &Json) -> Json {
+  Json {
+    pos: obj.pos,
+    ln: obj.ln,
+    value: val,
+  }
 }

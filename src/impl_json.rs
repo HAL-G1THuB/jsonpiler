@@ -1,4 +1,4 @@
-use super::{JValue, Json};
+use super::{JValue, Json, utility::escape_string};
 use std::fmt;
 impl fmt::Display for Json {
   /// Formats the `Json` object as a human-readable string.
@@ -10,7 +10,7 @@ impl fmt::Display for Json {
   ///
   /// # Returns
   ///
-  /// * `fmt::Result` - The result of the formatting operation, indicating success or failure.impl fmt::Display for Json {
+  /// * `fmt::Result` - The result of the formatting operation, indicating success or failure.impl `fmt::Display` for Json {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     self.write_json(f, 0)
   }
@@ -30,13 +30,13 @@ impl Json {
   fn write_json(&self, out: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     match &self.value {
       JValue::Null => out.write_str("null"),
-      JValue::Bool(b) => write!(out, "{}", b),
+      JValue::Bool(b) => write!(out, "{b}"),
       JValue::BoolVar(bv) => write!(out, "({bv}: bool)"),
       JValue::Int(i) => write!(out, "{i}"),
       JValue::IntVar(v) => write!(out, "({v}: int)"),
       JValue::Float(f) => write!(out, "{f}"),
       JValue::FloatVar(v) => write!(out, "({v}: float)"),
-      JValue::String(s) => write!(out, "\"{}\"", self.escape_string(s)),
+      JValue::String(s) => write!(out, "\"{}\"", escape_string(s)),
       JValue::StringVar(v) => write!(out, "({v}: string)"),
       JValue::Array(a) => {
         out.write_str("[\n")?;
@@ -69,7 +69,7 @@ impl Json {
             out.write_str(",\n")?;
           }
           out.write_str(&"  ".repeat(depth + 1))?;
-          write!(out, "\"{}\": ", self.escape_string(k))?;
+          write!(out, "\"{}\": ", escape_string(k))?;
           v.write_json(out, depth + 1)?;
         }
         out.write_str("\n")?;
@@ -78,35 +78,5 @@ impl Json {
       }
       JValue::ObjectVar(v) => write!(out, "({v}: object)"),
     }
-  }
-  /// Escapes special characters in a string for proper JSON formatting.
-  ///
-  /// This method ensures that characters like quotes (`"`) and backslashes (`\`) are escaped
-  /// in a way that conforms to the JSON specification. It also escapes control characters and
-  /// non-ASCII characters using Unicode escapes.
-  ///
-  /// # Arguments
-  ///
-  /// * `s` - The string to be escaped.
-  ///
-  /// # Returns
-  ///
-  /// * `String` - The escaped string.
-  fn escape_string(&self, s: &str) -> String {
-    let mut escaped = String::new();
-    for c in s.chars() {
-      match c {
-        '"' => escaped.push_str("\\\""),
-        '\\' => escaped.push_str("\\\\"),
-        '\n' => escaped.push_str("\\n"),
-        '\t' => escaped.push_str("\\t"),
-        '\r' => escaped.push_str("\\r"),
-        '\u{08}' => escaped.push_str("\\b"),
-        '\u{0C}' => escaped.push_str("\\f"),
-        c if c < '\u{20}' => escaped.push_str(&format!("\\u{:04x}", c as u32)),
-        _ => escaped.push(c),
-      }
-    }
-    escaped
   }
 }
