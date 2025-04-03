@@ -12,6 +12,59 @@ use utility::{error_exit, format_err};
 pub type JResult = Result<Json, Box<dyn Error>>;
 pub type JFunc<T> = fn(&mut T, &[Json], &mut String) -> JResult;
 use std::{collections::HashMap, env, error::Error, fmt, fs, path::Path, process::Command};
+/// Runs the Jsompiler, compiling and executing a JSON-based program.
+///
+/// This function serves as the main entry point for the Jsompiler. It performs the following steps:
+///
+/// 1.  **Argument Parsing:** It expects a single command-line argument, which is the path to the input JSON file.
+/// 2.  **File Reading:** It reads the content of the specified JSON file into a string.
+/// 3.  **Parsing:** It parses the JSON string into an internal `Json` representation using the `Jsompiler`.
+/// 4.  **Compilation:** It compiles the parsed `Json` into assembly code.
+/// 5.  **Assembly:** It assembles the generated assembly code into an object file (`.obj`).
+/// 6.  **Linking:** It links the object file with necessary libraries to create an executable file (`.exe`).
+/// 7.  **Execution:** It executes the generated `.exe` file.
+/// 8.  **Exit Code Handling:** It retrieves the exit code from the executed program and exits with the same code.
+///
+/// # Panics
+///
+/// This function will panic if:
+///
+/// *   The program is not run on Windows.
+/// *   The number of command-line arguments is not exactly two.
+/// *   The input file cannot be read.
+/// *   The JSON input cannot be parsed.
+/// *   The compilation process fails.
+/// *   The assembly process fails.
+/// *   The linking process fails.
+/// *   The generated executable cannot be spawned.
+/// *   The program fails to wait for the child process.
+/// *   The program fails to retrieve the exit code.
+/// *   The current directory cannot be retrieved.
+/// *   The filename is invalid.
+///
+/// # Errors
+///
+/// This function does not return a `Result` type, but instead uses `error_exit` to terminate the program with an error message.
+///
+/// # Safety
+///
+/// This function uses external commands (`as` and `ld`) for assembly and linking. Ensure that these commands are available in the system's PATH.
+///
+/// # Examples
+///
+/// ```bash
+/// # Assuming you have a JSON file named "test.json"
+/// ./jsompiler test.json
+/// ```
+///
+/// # Platform Specific
+///
+/// This function is designed to work exclusively on Windows operating systems.
+///
+/// # Exits
+///
+/// This function will exit the program with the exit code of the executed program.
+/// If any error occurs during the process, it will exit with code 1.
 pub fn run() -> ! {
   #[cfg(not(target_os = "windows"))]
   compile_error!("This program can only run on Windows.");
