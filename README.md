@@ -31,6 +31,14 @@ cd jsompiler
 cargo run <input_json_file>
 ```
 
+### open document
+
+```bash
+git clone https://github.com/HAL-G1THuB/jsompiler
+cd jsompiler
+cargo doc --open
+```
+
 ## Command Syntax
 
 ```bash
