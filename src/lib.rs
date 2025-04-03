@@ -10,7 +10,8 @@ mod impl_parser;
 pub mod utility;
 use utility::{error_exit, format_err};
 pub type JResult = Result<Json, Box<dyn Error>>;
-pub type JFunc<T> = fn(&mut T, &[Json], &mut String) -> JResult;
+pub type JFunc<T> = fn(&mut T, &[Json], &mut String) -> Result<JValue, Box<dyn Error>>;
+pub type JFuncResult = Result<JValue, Box<dyn Error>>;
 use std::{collections::HashMap, env, error::Error, fmt, fs, path::Path, process::Command};
 /// Runs the Jsompiler, compiling and executing a JSON-based program.
 ///
@@ -173,11 +174,9 @@ impl Jsompiler<'_> {
 }
 #[derive(Debug)]
 pub struct JError(pub String);
-
 impl fmt::Display for JError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     write!(f, "{}", self.0)
   }
 }
-
 impl Error for JError {}

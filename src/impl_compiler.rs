@@ -1,5 +1,5 @@
 use super::utility::dummy;
-use super::{JFunc, JResult, JValue, Jsompiler, Json, utility::obj_json};
+use super::{JFunc, JFuncResult, JResult, JValue, Jsompiler, Json, utility::obj_json};
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{self, BufWriter, Write as _};
@@ -82,7 +82,6 @@ impl Jsompiler<'_> {
     writer.write_all(self.data.as_bytes())?;
     writer.write_all(
       br".bss
-  .lcomm EMSG, 512
   .lcomm STDO, 8
   .lcomm STDE, 8
   .lcomm STDI, 8
@@ -124,28 +123,30 @@ _start:
     writer.write_all(
       br"  xor ecx, ecx
   call ExitProcess
-  display_error:
+display_error:
   call GetLastError
   mov rbx, rax
   sub rsp, 32
-  mov ecx, 0x1200
+  mov ecx, 0x1300
   xor edx, edx
   mov r8, rbx
   xor r9d, r9d
-  lea rax, QWORD PTR EMSG[rip]
-  mov 32[rsp], rax
-  mov QWORD PTR 40[rsp], 512
+  lea rax, QWORD PTR 32[rsp]
+  mov QWORD PTR 32[rsp], rax
+  mov QWORD PTR 40[rsp], 0
   mov QWORD PTR 48[rsp], 0
   call FormatMessageW
-  add rsp, 32
   test rax, rax
   jz exit_program
   xor ecx, ecx
-  lea rdx, QWORD PTR EMSG[rip]
+  mov rdx, QWORD PTR 32[rsp]
   xor r8d, r8d
   mov r9, 0x10
   call MessageBoxW
-  exit_program:
+exit_program:
+  mov rcx, QWORD PTR 32[rsp]
+  call LocalFree
+  add rsp, 32
   mov rcx, rbx
   call ExitProcess
 ",
@@ -169,11 +170,11 @@ _start:
   /// # Returns
   ///
   /// * `Ok(Json)` - The result of the evaluation.
-  /// * `Err(JError(String))` - If an error occurred during the compilation process.
+  /// * `Err(JError)` - If an error occurred during the compilation process.
   ///
   /// # Errors
   ///
-  /// * `JError(String)` - If an error occurred during the compilation process.
+  /// * `JError` - If an error occurred during the compilation process.
   pub fn build(&mut self, parsed: &Json, json_file: &str, filename: &str) -> JResult {
     self.seed = 0;
     self.entry("=", Jsompiler::set_local);
@@ -220,7 +221,7 @@ _start:
           return result;
         }
         if let Some(func) = self.f_table.get(cmd.as_str()) {
-          func(self, &list[1..], function)
+          Ok(obj_json(func(self, &list[1..], function)?, &list[0]))
         } else {
           self.obj_err(&format!("Function {cmd} is undefined"), &list[0])
         }
@@ -244,19 +245,6 @@ _start:
     }
   }
   /// Evaluates a lambda function definition.
-  ///
-  /// This function handles the definition of lambda functions, including parsing the parameter
-  /// list and generating the assembly code for the function body.
-  ///
-  /// # Arguments
-  ///
-  /// * `func_list` - The list of JSON objects representing the lambda function.
-  /// * `function` - A mutable string to accumulate the assembly code.
-  ///
-  /// # Returns
-  ///
-  /// * `Ok(Json)` - A `Json` object representing the defined lambda function.
-  /// * `Err(JError)` - If an error occurred during the lambda function definition.
   fn eval_lambda(&mut self, func_list: &[Json], function: &mut String) -> JResult {
     if !matches!(func_list[0].value, JValue::String(ref s) if s == "lambda") {
       return self.obj_err(
@@ -307,9 +295,9 @@ _start:
   ///
   /// # Returns
   ///
-  /// * `Ok(Json)` - The result of the last expression in the block.
+  /// * `Ok(JValue)` - The result of the last expression in the block.
   /// * `Err(JError)` - If an error occurred during the evaluation.
-  fn begin(&mut self, args: &[Json], function: &mut String) -> JResult {
+  fn begin(&mut self, args: &[Json], function: &mut String) -> JFuncResult {
     self.assert(
       !args.is_empty(),
       "'begin' requires at least one arguments",
@@ -319,7 +307,7 @@ _start:
     for a in args {
       result = self.eval(a, function)?;
     }
-    Ok(result)
+    Ok(result.value)
   }
   /// Sets a local variable.
   ///
@@ -332,29 +320,26 @@ _start:
   ///
   /// # Returns
   ///
-  /// * `Ok(Json)` - The result of the assignment.
+  /// * `Ok(JValue)` - The result of the assignment.
   /// * `Err(JError)` - If an error occurred during the assignment.
-  fn set_local(&mut self, args: &[Json], function: &mut String) -> JResult {
+  fn set_local(&mut self, args: &[Json], function: &mut String) -> JFuncResult {
     self.assert(args.len() == 2, "'=' requires two arguments", &args[0])?;
     let JValue::String(var_name) = &args[0].value else {
-      return self.obj_err(
-        "Variable name requires compile-time fixed strings",
-        &args[1],
-      );
+      return Err("Variable name requires compile-time fixed strings".into());
     };
     let result = self.eval(&args[1], function)?;
     let n = self.get_name();
     match &result.value {
       JValue::String(s) => {
         writeln!(self.data, "  {n}: .string \"{s}\"")?;
-        self.vars.insert(var_name.clone(), JValue::StringVar(n));
-        Ok(result)
+        self.vars.insert(var_name.clone(), JValue::StringVar(n.clone()));
+        Ok(JValue::StringVar(n))
       }
       JValue::StringVar(s) => {
         self.vars.insert(var_name.clone(), JValue::StringVar(s.clone()));
-        Ok(result)
+        Ok(result.value)
       }
-      _ => self.obj_err("Assignment to an unimplemented type", &args[2]),
+      _ => Err("Assignment to an unimplemented type".into()),
     }
   }
   /// Gets the value of a local variable.
@@ -368,16 +353,16 @@ _start:
   ///
   /// # Returns
   ///
-  /// * `Ok(Json)` - A `Json` object representing the value of the variable.
+  /// * `Ok(JValue)` - A `Json` object representing the value of the variable.
   /// * `Err(JError)` - If the variable is undefined.
-  fn get_local(&mut self, args: &[Json], _: &mut String) -> JResult {
+  fn get_local(&mut self, args: &[Json], _: &mut String) -> JFuncResult {
     self.assert(args.len() == 1, "'$' requires one argument", &args[0])?;
     let JValue::String(var_name) = &args[0].value else {
-      return self.obj_err("Variable name requires compile-time fixed string", &args[1]);
+      return Err("Variable name requires compile-time fixed string".into());
     };
     self.vars.get(var_name).map_or_else(
-      || self.obj_err(&format!("Undefined variables: '{var_name}'"), &args[1]),
-      |value| Ok(obj_json(value.clone(), &args[0])),
+      || Err(format!("Undefined variables: '{var_name}'").into()),
+      |value| Ok(value.clone()),
     )
   }
   /// Performs addition.
@@ -391,9 +376,9 @@ _start:
   ///
   /// # Returns
   ///
-  /// * `Ok(Json)` - A `Json` object representing the sum.
+  /// * `Ok(JValue)` - A `Json` object representing the sum.
   /// * `Err(JError)` - If an error occurred during the addition.
-  fn plus(&mut self, args: &[Json], function: &mut String) -> JResult {
+  fn plus(&mut self, args: &[Json], function: &mut String) -> JFuncResult {
     self.assert(
       !args.is_empty(),
       "'+' requires at least one arguments",
@@ -402,25 +387,19 @@ _start:
     match self.eval(&args[0], function)?.value {
       JValue::Int(l) => writeln!(function, "  mov rax, {l}")?,
       JValue::IntVar(v) => writeln!(function, "  mov rax, QWORD PTR {v}[rip]")?,
-      _ => return self.obj_err("'+' requires integer operands", &args[0]),
+      _ => return Err("'+' requires integer operands".into()),
     }
     for a in &args[1..args.len()] {
       match self.eval(a, function)?.value {
         JValue::Int(l) => writeln!(function, "  add rax, {l}")?,
         JValue::IntVar(v) => writeln!(function, "  add rax, QWORD PTR {v}[rip]")?,
-        _ => {
-          return self.obj_err("'+' requires integer operands", &args[0]);
-        }
+        _ => return Err("'+' requires integer operands".into()),
       };
     }
     let ret = self.get_name();
     writeln!(self.bss, "  .lcomm {ret}, 8")?;
     writeln!(function, "  mov QWORD PTR {ret}[rip], rax")?;
-    Ok(Json {
-      pos: args[0].pos,
-      ln: args[0].ln,
-      value: JValue::IntVar(ret),
-    })
+    Ok(JValue::IntVar(ret))
   }
   /// Performs subtraction.
   ///
@@ -433,9 +412,9 @@ _start:
   ///
   /// # Returns
   ///
-  /// * `Ok(Json)` - A `Json` object representing the difference.
+  /// * `Ok(JValue)` - A `Json` object representing the difference.
   /// * `Err(JError)` - If an error occurred during the subtraction.
-  fn minus(&mut self, args: &[Json], function: &mut String) -> JResult {
+  fn minus(&mut self, args: &[Json], function: &mut String) -> JFuncResult {
     self.assert(
       !args.is_empty(),
       "'-' requires at least one arguments",
@@ -444,25 +423,21 @@ _start:
     match self.eval(&args[0], function)?.value {
       JValue::Int(l) => writeln!(function, "  mov rax, {l}")?,
       JValue::IntVar(v) => writeln!(function, "  mov rax, QWORD PTR {v}[rip]")?,
-      _ => return self.obj_err("'-' requires integer operands", &args[0]),
+      _ => return Err("'-' requires integer operands".into()),
     }
     for a in &args[2..args.len()] {
       match self.eval(a, function)?.value {
         JValue::Int(l) => writeln!(function, "  sub rax, {l}")?,
         JValue::IntVar(v) => writeln!(function, "  sub rax, QWORD PTR {v}[rip]")?,
         _ => {
-          return self.obj_err("'+' requires integer operands", &args[0]);
+          return Err("'+' requires integer operands".into());
         }
       };
     }
     let ret = self.get_name();
     writeln!(self.bss, "  .lcomm {ret}, 8")?;
     writeln!(function, "  mov QWORD PTR {ret}[rip], rax")?;
-    Ok(Json {
-      pos: args[0].pos,
-      ln: args[0].ln,
-      value: JValue::IntVar(ret),
-    })
+    Ok(JValue::IntVar(ret))
   }
   /// Displays a message box.
   ///
@@ -475,9 +450,9 @@ _start:
   ///
   /// # Returns
   ///
-  /// * `Ok(Json)` - A `Json` object representing the result of the message box.
+  /// * `Ok(JValue)` - A `Json` object representing the result of the message box.
   /// * `Err(JError)` - If an error occurred while displaying the message box.
-  fn message(&mut self, args: &[Json], function: &mut String) -> JResult {
+  fn message(&mut self, args: &[Json], function: &mut String) -> JFuncResult {
     self.assert(
       args.len() == 2,
       "'message' requires two arguments",
@@ -491,7 +466,7 @@ _start:
       }
       JValue::StringVar(v) => v,
       _ => {
-        return self.obj_err("The first argument of message must be a string", &args[0]);
+        return Err("The first argument of message must be a string".into());
       }
     };
     let msg = match self.eval(&args[1], function)?.value {
@@ -502,7 +477,7 @@ _start:
       }
       JValue::StringVar(v) => v,
       _ => {
-        return self.obj_err("The second argument of message must be a string", &args[1]);
+        return Err("The second argument of message must be a string".into());
       }
     };
     let ret = self.get_name();
@@ -518,6 +493,6 @@ _start:
   jz display_error
   mov QWORD PTR {ret}[rip], rax",
     )?;
-    Ok(obj_json(JValue::IntVar(ret), &args[0]))
+    Ok(JValue::IntVar(ret))
   }
 }
