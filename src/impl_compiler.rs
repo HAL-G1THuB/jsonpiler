@@ -1,4 +1,4 @@
-use super::utility::{dummy, en64};
+use super::utility::dummy;
 use super::{JFunc, JResult, JValue, Jsompiler, Json};
 use std::fmt::Write as _;
 use std::fs::File;
@@ -6,7 +6,7 @@ use std::io::{self, BufWriter, Write as _};
 impl Jsompiler<'_> {
   fn get_name(&mut self) -> String {
     self.seed += 1;
-    format!("_{:x}", self.seed)
+    format!(".L{:x}", self.seed)
   }
   fn assert(&self, flag: bool, text: &str, obj: &Json) -> JResult {
     if !flag {
@@ -212,7 +212,7 @@ _start:
     Ok(result)
   }
   fn set_local(&mut self, args: &[Json], function: &mut String) -> JResult {
-    self.assert(args.len() == 2, "'=' requires at two arguments", &args[0])?;
+    self.assert(args.len() == 2, "'=' requires two arguments", &args[0])?;
     let JValue::String(var_name) = &args[0].value else {
       return self.obj_err(
         "Variable name requires compile-time fixed strings",
@@ -220,7 +220,7 @@ _start:
       );
     };
     let result = self.eval(&args[1], function)?;
-    let n = format!("\"{}\"", en64(var_name.as_bytes()));
+    let n = self.get_name();
     match &result.value {
       JValue::String(s) => {
         writeln!(self.data, "  {n}: .string \"{s}\"")?;
@@ -228,8 +228,7 @@ _start:
         Ok(result)
       }
       JValue::StringVar(s) => {
-        writeln!(self.data, "{n}: equ {s}")?;
-        self.vars.insert(var_name.clone(), JValue::StringVar(n));
+        self.vars.insert(var_name.clone(), JValue::StringVar(s.clone()));
         Ok(result)
       }
       _ => self.obj_err("Assignment to an unimplemented type", &args[2]),
