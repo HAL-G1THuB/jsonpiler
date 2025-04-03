@@ -36,7 +36,7 @@ pub fn run() -> ! {
   let exe_file = format!("{file}.exe");
   let asm_file = format!("{file}.s");
   jsompiler
-    .build(parsed, &args[1], &asm_file)
+    .build(&parsed, &args[1], &asm_file)
     .unwrap_or_else(|e| error_exit(&format!("CompileError: {e}")));
   if !Command::new("as")
     .args([&asm_file, "-o", &obj_file])
@@ -113,13 +113,6 @@ pub struct Jsompiler<'a> {
 impl Jsompiler<'_> {
   fn obj_err(&self, text: &str, obj: &Json) -> JResult {
     format_err(text, obj.pos, obj.ln, self.input_code)
-  }
-  fn obj_json(&self, val: JValue, obj: &Json) -> Json {
-    Json {
-      pos: obj.pos,
-      ln: obj.ln,
-      value: val,
-    }
   }
   fn parse_err(&self, text: &str) -> JResult {
     format_err(text, self.pos, self.ln, self.input_code)

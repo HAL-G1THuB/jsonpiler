@@ -1,24 +1,73 @@
 use super::utility::dummy;
-use super::{JFunc, JResult, JValue, Jsompiler, Json};
+use super::{JFunc, JResult, JValue, Jsompiler, Json, utility::obj_json};
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{self, BufWriter, Write as _};
 impl Jsompiler<'_> {
+  /// Generates a unique name for internal use.
+  ///
+  /// This function increments an internal seed and formats it into a string
+  /// that can be used as a unique label or identifier.
+  ///
+  /// # Returns
+  ///
+  /// A unique string formatted as ".L" followed by a hexadecimal representation of the seed.
   fn get_name(&mut self) -> String {
     self.seed += 1;
     format!(".L{:x}", self.seed)
   }
+  /// Asserts a condition and returns an error if the condition is false.
+  ///
+  /// This function checks if the provided flag is true. If it is, it returns a dummy `Json` object.
+  /// If the flag is false, it returns an error with the specified text and the position information
+  /// from the provided `Json` object.
+  ///
+  /// # Arguments
+  ///
+  /// * `flag` - The boolean condition to assert.
+  /// * `text` - The error message to return if the flag is false.
+  /// * `obj` - The `Json` object containing position information for the error.
+  ///
+  /// # Returns
+  ///
+  /// * `Ok(Json)` - A dummy `Json` object if the flag is true.
+  /// * `Err(JError)` - An error containing the specified text and position information if the flag is false.
   fn assert(&self, flag: bool, text: &str, obj: &Json) -> JResult {
-    if !flag {
-      self.obj_err(text, obj)
+    if flag {
+      Ok(dummy())
     } else {
-      dummy()
+      self.obj_err(text, obj)
     }
   }
+  /// Registers a function in the function table.
+  ///
+  /// This function inserts a new function into the internal function table, allowing it to be
+  /// called by name during the evaluation process.
+  ///
+  /// # Arguments
+  ///
+  /// * `name` - The name of the function to register.
+  /// * `func` - The function to register.
   fn entry(&mut self, name: &str, func: JFunc<Self>) {
     self.f_table.insert(name.into(), func);
   }
-  fn write_file(&mut self, main_func: &str, filename: &str, json_file: &str) -> io::Result<()> {
+  /// Writes the compiled assembly code to a file.
+  ///
+  /// This function takes the generated assembly code, along with some metadata, and writes it to
+  /// a file specified by `filename`. It also includes some boilerplate code for setting up the
+  /// console and handling errors.
+  ///
+  /// # Arguments
+  ///
+  /// * `main_func` - The name of the main function.
+  /// * `filename` - The name of the file to write to.
+  /// * `json_file` - The name of the original JSON file.
+  ///
+  /// # Returns
+  ///
+  /// * `Ok(())` - If the file was written successfully.
+  /// * `Err(io::Error)` - If an error occurred while writing the file.
+  fn write_file(&self, main_func: &str, filename: &str, json_file: &str) -> io::Result<()> {
     let file = File::create(filename)?;
     let mut writer = BufWriter::new(file);
     writer.write_all(b".file \"")?;
@@ -32,16 +81,16 @@ impl Jsompiler<'_> {
     )?;
     writer.write_all(self.data.as_bytes())?;
     writer.write_all(
-      br#".bss
+      br".bss
   .lcomm EMSG, 512
   .lcomm STDO, 8
   .lcomm STDE, 8
   .lcomm STDI, 8
-"#,
+",
     )?;
     writer.write_all(self.bss.as_bytes())?;
     writer.write_all(
-      br#".text
+      br".text
 _start:
   push rbp
   mov rbp, rsp
@@ -69,11 +118,11 @@ _start:
   cmp rax, -1
   je display_error
   mov QWORD PTR STDE[rip], rax
-"#,
+",
     )?;
     writer.write_all(main_func.as_bytes())?;
     writer.write_all(
-      br#"  xor ecx, ecx
+      br"  xor ecx, ecx
   call ExitProcess
   display_error:
   call GetLastError
@@ -99,13 +148,33 @@ _start:
   exit_program:
   mov rcx, rbx
   call ExitProcess
-"#,
+",
     )?;
     writer.write_all(self.text.as_bytes())?;
     writer.flush()?;
     Ok(())
   }
-  pub fn build(&mut self, parsed: Json, json_file: &str, filename: &str) -> JResult {
+  /// Builds the assembly code from the parsed JSON.
+  ///
+  /// This function is the main entry point for the compilation process. It takes the parsed JSON,
+  /// sets up the initial function table, evaluates the JSON, and writes the resulting assembly
+  /// code to a file.
+  ///
+  /// # Arguments
+  ///
+  /// * `parsed` - The parsed JSON object.
+  /// * `json_file` - The name of the original JSON file.
+  /// * `filename` - The name of the file to write the assembly code to.
+  ///
+  /// # Returns
+  ///
+  /// * `Ok(Json)` - The result of the evaluation.
+  /// * `Err(JError(String))` - If an error occurred during the compilation process.
+  ///
+  /// # Errors
+  ///
+  /// * `JError(String)` - If an error occurred during the compilation process.
+  pub fn build(&mut self, parsed: &Json, json_file: &str, filename: &str) -> JResult {
     self.seed = 0;
     self.entry("=", Jsompiler::set_local);
     self.entry("$", Jsompiler::get_local);
@@ -114,10 +183,24 @@ _start:
     self.entry("message", Jsompiler::message);
     self.entry("begin", Jsompiler::begin);
     let mut main_func = String::new();
-    let result = self.eval(&parsed, &mut main_func)?;
+    let result = self.eval(parsed, &mut main_func)?;
     self.write_file(&main_func, filename, json_file)?;
     Ok(result)
   }
+  /// Evaluates a JSON object.
+  ///
+  /// This function recursively evaluates a JSON object, handling function calls and other
+  /// operations.
+  ///
+  /// # Arguments
+  ///
+  /// * `parsed` - The JSON object to evaluate.
+  /// * `function` - A mutable string to accumulate the assembly code.
+  ///
+  /// # Returns
+  ///
+  /// * `Ok(Json)` - The result of the evaluation.
+  /// * `Err(JError)` - If an error occurred during the evaluation.
   fn eval(&mut self, parsed: &Json, function: &mut String) -> JResult {
     let JValue::Array(list) = &parsed.value else {
       return Ok(parsed.clone());
@@ -152,7 +235,7 @@ _start:
         self.text.push_str(&func_buffer);
         writeln!(function, "  call {name}")?;
         self.vars = tmp;
-        dummy()
+        Ok(dummy())
       }
       _ => self.obj_err(
         "The first element of an evaluation list requires a function name.",
@@ -160,6 +243,20 @@ _start:
       ),
     }
   }
+  /// Evaluates a lambda function definition.
+  ///
+  /// This function handles the definition of lambda functions, including parsing the parameter
+  /// list and generating the assembly code for the function body.
+  ///
+  /// # Arguments
+  ///
+  /// * `func_list` - The list of JSON objects representing the lambda function.
+  /// * `function` - A mutable string to accumulate the assembly code.
+  ///
+  /// # Returns
+  ///
+  /// * `Ok(Json)` - A `Json` object representing the defined lambda function.
+  /// * `Err(JError)` - If an error occurred during the lambda function definition.
   fn eval_lambda(&mut self, func_list: &[Json], function: &mut String) -> JResult {
     if !matches!(func_list[0].value, JValue::String(ref s) if s == "lambda") {
       return self.obj_err(
@@ -182,35 +279,61 @@ _start:
     let n = self.get_name();
     writeln!(
       function,
-      r#"{n}:
+      r"{n}:
   push rbp
   mov rbp, rsp
-  sub rsp, 32"#
+  sub rsp, 32"
     )?;
     for i in &func_list[2..] {
       self.eval(i, function)?;
     }
     writeln!(
       function,
-      r#"  add rsp, 32
+      r"  add rsp, 32
   mov rsp, rbp
   pop rbp
-  ret"#,
+  ret",
     )?;
-    Ok(self.obj_json(JValue::FuncVar(n, params.clone()), &func_list[0]))
+    Ok(obj_json(JValue::FuncVar(n, params.clone()), &func_list[0]))
   }
+  /// Evaluates a 'begin' block.
+  ///
+  /// This function evaluates a sequence of expressions within a 'begin' block.
+  ///
+  /// # Arguments
+  ///
+  /// * `args` - The list of JSON objects to evaluate.
+  /// * `function` - A mutable string to accumulate the assembly code.
+  ///
+  /// # Returns
+  ///
+  /// * `Ok(Json)` - The result of the last expression in the block.
+  /// * `Err(JError)` - If an error occurred during the evaluation.
   fn begin(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.assert(
       !args.is_empty(),
       "'begin' requires at least one arguments",
       &args[0],
     )?;
-    let mut result = dummy()?;
+    let mut result = dummy();
     for a in args {
-      result = self.eval(a, function)?
+      result = self.eval(a, function)?;
     }
     Ok(result)
   }
+  /// Sets a local variable.
+  ///
+  /// This function handles the assignment of a value to a local variable.
+  ///
+  /// # Arguments
+  ///
+  /// * `args` - The list of JSON objects containing the variable name and value.
+  /// * `function` - A mutable string to accumulate the assembly code.
+  ///
+  /// # Returns
+  ///
+  /// * `Ok(Json)` - The result of the assignment.
+  /// * `Err(JError)` - If an error occurred during the assignment.
   fn set_local(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.assert(args.len() == 2, "'=' requires two arguments", &args[0])?;
     let JValue::String(var_name) = &args[0].value else {
@@ -234,17 +357,42 @@ _start:
       _ => self.obj_err("Assignment to an unimplemented type", &args[2]),
     }
   }
+  /// Gets the value of a local variable.
+  ///
+  /// This function retrieves the value of a local variable from the variable table.
+  ///
+  /// # Arguments
+  ///
+  /// * `args` - The list of JSON objects containing the variable name.
+  /// * `_` - A mutable string (unused in this function).
+  ///
+  /// # Returns
+  ///
+  /// * `Ok(Json)` - A `Json` object representing the value of the variable.
+  /// * `Err(JError)` - If the variable is undefined.
   fn get_local(&mut self, args: &[Json], _: &mut String) -> JResult {
     self.assert(args.len() == 1, "'$' requires one argument", &args[0])?;
     let JValue::String(var_name) = &args[0].value else {
       return self.obj_err("Variable name requires compile-time fixed string", &args[1]);
     };
-    if let Some(value) = self.vars.get(var_name) {
-      Ok(self.obj_json(value.clone(), &args[0]))
-    } else {
-      self.obj_err(&format!("Undefined variables: '{var_name}'"), &args[1])
-    }
+    self.vars.get(var_name).map_or_else(
+      || self.obj_err(&format!("Undefined variables: '{var_name}'"), &args[1]),
+      |value| Ok(obj_json(value.clone(), &args[0])),
+    )
   }
+  /// Performs addition.
+  ///
+  /// This function adds a sequence of integer values.
+  ///
+  /// # Arguments
+  ///
+  /// * `args` - The list of JSON objects containing the integer values.
+  /// * `function` - A mutable string to accumulate the assembly code.
+  ///
+  /// # Returns
+  ///
+  /// * `Ok(Json)` - A `Json` object representing the sum.
+  /// * `Err(JError)` - If an error occurred during the addition.
   fn plus(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.assert(
       !args.is_empty(),
@@ -274,6 +422,19 @@ _start:
       value: JValue::IntVar(ret),
     })
   }
+  /// Performs subtraction.
+  ///
+  /// This function subtracts a sequence of integer values.
+  ///
+  /// # Arguments
+  ///
+  /// * `args` - The list of JSON objects containing the integer values.
+  /// * `function` - A mutable string to accumulate the assembly code.
+  ///
+  /// # Returns
+  ///
+  /// * `Ok(Json)` - A `Json` object representing the difference.
+  /// * `Err(JError)` - If an error occurred during the subtraction.
   fn minus(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.assert(
       !args.is_empty(),
@@ -303,14 +464,26 @@ _start:
       value: JValue::IntVar(ret),
     })
   }
+  /// Displays a message box.
+  ///
+  /// This function displays a message box with the specified title and message.
+  ///
+  /// # Arguments
+  ///
+  /// * `args` - The list of JSON objects containing the title and message strings.
+  /// * `function` - A mutable string to accumulate the assembly code.
+  ///
+  /// # Returns
+  ///
+  /// * `Ok(Json)` - A `Json` object representing the result of the message box.
+  /// * `Err(JError)` - If an error occurred while displaying the message box.
   fn message(&mut self, args: &[Json], function: &mut String) -> JResult {
     self.assert(
       args.len() == 2,
       "'message' requires two arguments",
       &args[0],
     )?;
-    let arg1 = self.eval(&args[0], function)?.value;
-    let title = match arg1 {
+    let title = match self.eval(&args[0], function)?.value {
       JValue::String(l) => {
         let name = self.get_name();
         writeln!(self.data, "  {name}: .string \"{l}\"")?;
@@ -336,15 +509,15 @@ _start:
     writeln!(self.bss, "  .lcomm {ret}, 8")?;
     writeln!(
       function,
-      r#"  xor ecx, ecx
+      r"  xor ecx, ecx
   lea rdx, QWORD PTR {msg}[rip]
   lea r8, QWORD PTR {title}[rip]
   xor r9d, r9d
   call MessageBoxA
   test eax, eax
   jz display_error
-  mov QWORD PTR {ret}[rip], rax"#,
+  mov QWORD PTR {ret}[rip], rax",
     )?;
-    Ok(self.obj_json(JValue::IntVar(ret), &args[0]))
+    Ok(obj_json(JValue::IntVar(ret), &args[0]))
   }
 }
