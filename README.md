@@ -27,23 +27,15 @@ This program converts a program written in JSON into GNU Assembly, compiles it, 
 ## Installation & Usage
 
 ```bash
-git clone https://github.com/HAL-G1THuB/jsompiler
+cargo install jsompiler
 cd jsompiler
-cargo run <input_json_file>
-```
-
-### open document
-
-```bash
-git clone https://github.com/HAL-G1THuB/jsompiler
-cd jsompiler
-cargo doc --open
+cargo run (input_json_file (utf-8))
 ```
 
 ## Command Syntax
 
 ```bash
-jsompiler (input_json_file)
+jsompiler (input_json_file (utf-8))
 ```
 
 Replace (input_json_file) with the actual JSON file you want to compile.

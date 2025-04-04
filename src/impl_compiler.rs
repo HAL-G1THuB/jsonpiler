@@ -85,15 +85,14 @@ impl Jsompiler<'_> {
   .lcomm STDO, 8
   .lcomm STDE, 8
   .lcomm STDI, 8
+  .lcomm EMSG, 8
 ",
     )?;
     writer.write_all(self.bss.as_bytes())?;
     writer.write_all(
       br".text
 _start:
-  push rbp
-  mov rbp, rsp
-  sub rsp, 32
+  sub rsp, 40
   mov ecx, 65001
   call SetConsoleCP
   test rax, rax
@@ -131,22 +130,21 @@ display_error:
   xor edx, edx
   mov r8, rbx
   xor r9d, r9d
-  lea rax, QWORD PTR 32[rsp]
-  mov QWORD PTR 32[rsp], rax
-  mov QWORD PTR 40[rsp], 0
-  mov QWORD PTR 48[rsp], 0
+  lea rax, QWORD PTR EMSG[rip]
+  mov QWORD PTR 0x20[rsp], rax
+  mov QWORD PTR 0x28[rsp], 0
+  mov QWORD PTR 0x30[rsp], 0
   call FormatMessageW
   test rax, rax
   jz exit_program
   xor ecx, ecx
-  mov rdx, QWORD PTR 32[rsp]
+  mov rdx, QWORD PTR EMSG[rip]
   xor r8d, r8d
   mov r9, 0x10
   call MessageBoxW
 exit_program:
-  mov rcx, QWORD PTR 32[rsp]
+  mov rcx, QWORD PTR EMSG[rip]
   call LocalFree
-  add rsp, 32
   mov rcx, rbx
   call ExitProcess
 ",
@@ -189,19 +187,6 @@ exit_program:
     Ok(result)
   }
   /// Evaluates a JSON object.
-  ///
-  /// This function recursively evaluates a JSON object, handling function calls and other
-  /// operations.
-  ///
-  /// # Arguments
-  ///
-  /// * `parsed` - The JSON object to evaluate.
-  /// * `function` - A mutable string to accumulate the assembly code.
-  ///
-  /// # Returns
-  ///
-  /// * `Ok(Json)` - The result of the evaluation.
-  /// * `Err(JError)` - If an error occurred during the evaluation.
   fn eval(&mut self, parsed: &Json, function: &mut String) -> JResult {
     let JValue::Array(list) = &parsed.value else {
       return Ok(parsed.clone());
@@ -480,18 +465,52 @@ exit_program:
         return Err("The second argument of message must be a string".into());
       }
     };
+    writeln!(function, "  sub rsp, 16")?;
+    let wtitle = self.get_name();
+    let wmsg = self.get_name();
+    for (c, w) in [(&msg, &wmsg), (&title, &wtitle)] {
+      writeln!(self.bss, "  .lcomm {w}, 8")?;
+      writeln!(function, r"  mov ecx, 65001
+  xor edx, edx
+  lea r8, QWORD PTR {c}[rip]
+  mov r9d, -1
+  mov QWORD PTR 0x20[rsp], 0
+  mov QWORD PTR 0x28[rsp], 0
+  call MultiByteToWideChar
+  test rax, rax
+  jz display_error
+  shl eax, 1
+  mov edi, eax
+  mov ecx, eax
+  call malloc
+  mov r12, rax
+  mov ecx, 65001
+  xor edx, edx
+  lea r8, QWORD PTR {c}[rip]
+  mov r9d, -1
+  mov QWORD PTR 0x20[rsp], r12
+  mov QWORD PTR 0x28[rsp], rdi
+  call MultiByteToWideChar
+  test rax, rax
+  jz display_error
+  mov QWORD PTR {w}[rip], r12")?;}
     let ret = self.get_name();
     writeln!(self.bss, "  .lcomm {ret}, 8")?;
     writeln!(
       function,
       r"  xor ecx, ecx
-  lea rdx, QWORD PTR {msg}[rip]
-  lea r8, QWORD PTR {title}[rip]
+  mov rdx, QWORD PTR {wmsg}[rip]
+  mov r8, QWORD PTR {wtitle}[rip]
   xor r9d, r9d
-  call MessageBoxA
-  test eax, eax
+  call MessageBoxW
+  test rax, rax
   jz display_error
-  mov QWORD PTR {ret}[rip], rax",
+  mov QWORD PTR {ret}[rip], rax
+  mov rcx, QWORD PTR {wmsg}[rip]
+  call free
+  mov rcx, QWORD PTR {wtitle}[rip]
+  call free
+  add rsp, 16",
     )?;
     Ok(JValue::IntVar(ret))
   }
