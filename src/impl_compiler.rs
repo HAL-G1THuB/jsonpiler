@@ -18,105 +18,21 @@ impl Jsompiler<'_> {
     }
   }
   /// Registers a function in the function table.
-  fn entry(&mut self, name: &str, func: JFunc<Self>) {
+  fn register(&mut self, name: &str, func: JFunc<Self>) {
     self.f_table.insert(name.into(), func);
   }
   /// Writes the compiled assembly code to a file.
   fn write_file(&self, main_func: &str, filename: &str, json_file: &str) -> io::Result<()> {
     let file = File::create(filename)?;
     let mut writer = BufWriter::new(file);
-    writer.write_all(format!(
-      ".file \"{json_file}\"
-.intel_syntax noprefix
-.data
-  msg_text: .string  \"An exception occurred!\\nPossible causes:\\n- Division by zero\\n\
-- null pointer dereference\\n- invalid memory access\\n- out-of-bounds array access\\n\
-- invalid input or arguments\\n- stack overflow\\n- file not found\\n...\"
-").as_bytes())?;
+    writer.write_all(format!(".file \"{json_file}\"\n").as_bytes())?;
+    writer.write_all(include_bytes!("data.s"))?;
     writer.write_all(self.data.as_bytes())?;
-    writer.write_all(
-      b"\
-.bss
-  .lcomm STDO, 8
-  .lcomm STDE, 8
-  .lcomm STDI, 8
-  .lcomm EMSG, 8\n",
-    )?;
+    writer.write_all(include_bytes!("bss.s"))?;
     writer.write_all(self.bss.as_bytes())?;
-    writer.write_all(
-      b"\
-.section .text
-.globl _start
-.def	_start; .scl	2; .type	32; .endef
-.seh_proc _start
-_start:
-  sub rsp, 40
-  .seh_stackalloc 40
-  .seh_endprologue
-  .seh_handler exception_handler, @except
-  mov ecx, 65001
-  call SetConsoleCP
-  test rax, rax
-  jz display_error
-  mov ecx, 65001
-  call SetConsoleOutputCP
-  test rax, rax
-  jz display_error\n",
-    )?;
-    for (num, ioe) in [("0", "I"), ("1", "O"), ("2", "E")] {
-      writer.write_all(
-        format!(
-          "\
-  mov ecx, -1{num}
-  call GetStdHandle
-  cmp rax, -1
-  je display_error
-  mov QWORD PTR STD{ioe}[rip], rax\n"
-        )
-        .as_bytes(),
-      )?;
-    }
+    writer.write_all(include_bytes!("start.s"))?;
     writer.write_all(main_func.as_bytes())?;
-    writer.write_all(
-      b"\
-  xor ecx, ecx
-  call ExitProcess
-  .seh_endproc
-display_error:
-  call GetLastError
-  mov rbx, rax
-  sub rsp, 32
-  mov ecx, 0x1300
-  xor edx, edx
-  mov r8, rbx
-  xor r9d, r9d
-  lea rax, QWORD PTR EMSG[rip]
-  mov QWORD PTR 0x20[rsp], rax
-  mov QWORD PTR 0x28[rsp], 0
-  mov QWORD PTR 0x30[rsp], 0
-  call FormatMessageW
-  test rax, rax
-  jz exit_program
-  xor ecx, ecx
-  mov rdx, QWORD PTR EMSG[rip]
-  xor r8d, r8d
-  mov r9, 0x10
-  call MessageBoxW
-exit_program:
-  mov rcx, QWORD PTR EMSG[rip]
-  call LocalFree
-  mov rcx, rbx
-  call ExitProcess
-exception_handler:
-  sub rsp, 40
-  xor ecx, ecx
-  lea rdx, msg_text[rip]
-  xor r8d, r8d
-  mov r9d, 16
-  call MessageBoxA
-  mov ecx, 1
-  call ExitProcess\n",
-    )?;
+    writer.write_all(include_bytes!("text.s"))?;
     writer.write_all(self.text.as_bytes())?;
     writer.flush()?;
     Ok(())
@@ -143,12 +59,12 @@ exception_handler:
   /// * `JError` - If an error occurred during the compilation process.
   pub fn build(&mut self, parsed: &Json, json_file: &str, filename: &str) -> JResult {
     self.seed = 0;
-    self.entry("=", Jsompiler::set_local);
-    self.entry("$", Jsompiler::get_local);
-    self.entry("+", Jsompiler::plus);
-    self.entry("-", Jsompiler::minus);
-    self.entry("message", Jsompiler::message);
-    self.entry("begin", Jsompiler::begin);
+    self.register("=", Jsompiler::set_local);
+    self.register("$", Jsompiler::get_local);
+    self.register("+", Jsompiler::plus);
+    self.register("-", Jsompiler::minus);
+    self.register("message", Jsompiler::message);
+    self.register("begin", Jsompiler::begin);
     let mut main_func = String::new();
     let result = self.eval(parsed, &mut main_func)?;
     self.write_file(&main_func, filename, json_file)?;
@@ -199,7 +115,7 @@ exception_handler:
   }
   /// Evaluates a lambda function definition.
   fn eval_lambda(&mut self, func_list: &[Json], function: &mut String) -> JResult {
-    if !matches!(func_list[0].value, JValue::String(ref s) if s == "lambda") {
+    if !matches!(&func_list[0].value, JValue::String(s) if s == "lambda") {
       return self.obj_err(
         "The first element of a lambda list requires \"lambda\".",
         &func_list[0],
@@ -220,8 +136,7 @@ exception_handler:
     let n = self.get_name();
     writeln!(
       function,
-      "\
-.seh_proc	{n}
+      ".seh_proc	{n}
 {n}:
   push rbp
   .seh_pushreg rbp
@@ -237,8 +152,7 @@ exception_handler:
     }
     writeln!(
       function,
-      "\
-  add rsp, 32
+      "  add rsp, 32
   leave
   ret
   .seh_endproc",
@@ -326,7 +240,7 @@ exception_handler:
       JValue::IntVar(v) => writeln!(function, "  mov rax, QWORD PTR {v}[rip]")?,
       _ => return Err("'-' requires integer operands".into()),
     }
-    for a in &args[2..args.len()] {
+    for a in &args[1..args.len()] {
       match self.eval(a, function)?.value {
         JValue::Int(l) => writeln!(function, "  sub rax, {l}")?,
         JValue::IntVar(v) => writeln!(function, "  sub rax, QWORD PTR {v}[rip]")?,
@@ -376,14 +290,13 @@ exception_handler:
       writeln!(self.bss, "  .lcomm {w}, 8")?;
       writeln!(
         function,
-        "\
-  mov ecx, 65001
+        "  mov ecx, 65001
   xor edx, edx
   lea r8, QWORD PTR {c}[rip]
   mov r9d, -1
   mov QWORD PTR 0x20[rsp], 0
   mov QWORD PTR 0x28[rsp], 0
-  call MultiByteToWideChar
+  call [QWORD PTR __imp_MultiByteToWideChar[rip]]
   test rax, rax
   jz display_error
   shl eax, 1
@@ -397,7 +310,7 @@ exception_handler:
   mov r9d, -1
   mov QWORD PTR 0x20[rsp], r12
   mov QWORD PTR 0x28[rsp], rdi
-  call MultiByteToWideChar
+  call [QWORD PTR __imp_MultiByteToWideChar[rip]]
   test rax, rax
   jz display_error
   mov QWORD PTR {w}[rip], r12"
@@ -407,12 +320,11 @@ exception_handler:
     writeln!(self.bss, "  .lcomm {ret}, 8")?;
     writeln!(
       function,
-      "\
-  xor ecx, ecx
+      "  xor ecx, ecx
   mov rdx, QWORD PTR {wmsg}[rip]
   mov r8, QWORD PTR {wtitle}[rip]
   xor r9d, r9d
-  call MessageBoxW
+  call [QWORD PTR __imp_MessageBoxW[rip]]
   test rax, rax
   jz display_error
   mov QWORD PTR {ret}[rip], rax

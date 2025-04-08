@@ -1,7 +1,10 @@
 //! Utility functions.
-#![allow(dead_code)]
 use crate::{JError, JResult, JValue, Json};
-use std::{error::Error, io};
+use core::{
+  error::Error,
+  fmt::{self, Write as _},
+};
+use std::{io, process::exit};
 /// Format error.
 ///
 /// # Examples
@@ -60,7 +63,7 @@ pub fn error_exit(text: &str) -> ! {
   let mut nu = String::new();
   eprint!("{text}\nPress Enter to exit:");
   let _ = io::stdin().read_line(&mut nu);
-  std::process::exit(1)
+  exit(1)
 }
 #[must_use]
 pub const fn dummy() -> Json {
@@ -145,26 +148,28 @@ pub fn de64(encoded: &str) -> Result<Vec<u8>, Box<dyn Error>> {
 ///
 /// * `s` - The string to be escaped.
 ///
+/// # Errors
+///
+/// * `fmt::Error` - ...
 /// # Returns
 ///
 /// * `String` - The escaped string.
-#[must_use]
-pub fn escape_string(s: &str) -> String {
+pub fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {
   let mut escaped = String::new();
-  for c in s.chars() {
-    match c {
-      '"' => escaped.push_str("\\\""),
-      '\\' => escaped.push_str("\\\\"),
-      '\n' => escaped.push_str("\\n"),
-      '\t' => escaped.push_str("\\t"),
-      '\r' => escaped.push_str("\\r"),
-      '\u{08}' => escaped.push_str("\\b"),
-      '\u{0C}' => escaped.push_str("\\f"),
-      c if c < '\u{20}' => escaped.push_str(&format!("\\u{:04x}", c as u32)),
-      _ => escaped.push(c),
+  for ch in unescaped.chars() {
+    match ch {
+      '"' => write!(escaped, "\\\"")?,
+      '\\' => write!(escaped, r"\\")?,
+      '\n' => write!(escaped, r"\n")?,
+      '\t' => write!(escaped, r"\t")?,
+      '\r' => write!(escaped, r"\r")?,
+      '\u{08}' => write!(escaped, r"\b")?,
+      '\u{0C}' => write!(escaped, r"\f")?,
+      u_ch if u_ch < '\u{20}' => write!(escaped, "\\u{:04x}", u_ch as u32)?,
+      _ => escaped.push(ch),
     }
   }
-  escaped
+  Ok(escaped)
 }
 #[must_use]
 pub const fn obj_json(val: JValue, obj: &Json) -> Json {

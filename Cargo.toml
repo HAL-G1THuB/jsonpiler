@@ -1,6 +1,6 @@
 [package]
 name = "jsompiler"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
 documentation = "https://hal-g1thub.github.io/jsompiler-doc/jsompiler/index.html"
@@ -17,3 +17,18 @@ lto = true
 panic = "abort"
 [badges]
 maintenance = { status = "actively-developed" }
+[lints.clippy]
+pedantic = {level = "warn", priority = -1}
+perf = {level = "warn", priority = -1}
+style = {level = "warn", priority = -1}
+cargo = {level = "warn", priority = -1}
+all = {level = "warn", priority = -1}
+# restriction = {level = "warn", priority = -1}
+# missing_inline_in_public_items = "allow"
+# single_char_lifetime_names = "allow"
+# implicit_return = "allow"
+# unseparated-literal-suffix = "allow"
+# question_mark_used = "allow"
+# ref_patterns = "allow"
+#___
+#___

@@ -12,7 +12,14 @@ use utility::{error_exit, format_err};
 pub type JResult = Result<Json, Box<dyn Error>>;
 pub type JFunc<T> = fn(&mut T, &[Json], &mut String) -> Result<JValue, Box<dyn Error>>;
 pub type JFuncResult = Result<JValue, Box<dyn Error>>;
-use std::{collections::HashMap, env, error::Error, fmt, fs, path::Path, process::Command};
+use std::{
+  collections::HashMap,
+  env,
+  error::Error,
+  fmt, fs,
+  path::Path,
+  process::{Command, exit},
+};
 /// Runs the Jsompiler, compiling and executing a JSON-based program.
 ///
 /// This function serves as the main entry point for the Jsompiler. It performs the following steps:
@@ -70,9 +77,12 @@ pub fn run() -> ! {
   #[cfg(not(target_os = "windows"))]
   compile_error!("This program can only run on Windows.");
   let args: Vec<String> = env::args().collect();
-  if args.len() != 2 {
-    eprintln!("Usage: {} <input json file>", args[0]);
-    std::process::exit(0)
+  if args.len() <= 1 {
+    eprintln!(
+      "Usage: {} <input json file> [arguments of .exe...]",
+      args[0]
+    );
+    exit(0)
   }
   let input_code = fs::read_to_string(&args[1])
     .unwrap_or_else(|e| error_exit(&format!("Failed to read file: {e}")));
@@ -120,13 +130,14 @@ pub fn run() -> ! {
     .unwrap_or_else(|e| error_exit(&format!("Failed to get current directory: {e}")));
   path.push(&exe_file);
   let exit_code = Command::new(path)
+    .args(&args[2..])
     .spawn()
     .unwrap_or_else(|e| error_exit(&format!("Failed to spawn child process: {e}")))
     .wait()
     .unwrap_or_else(|e| error_exit(&format!("Failed to wait for child process: {e}")))
     .code()
     .unwrap_or_else(|| error_exit("Failed to retrieve the exit code"));
-  std::process::exit(exit_code)
+  exit(exit_code)
 }
 #[derive(Debug, Clone)]
 pub struct Json {
