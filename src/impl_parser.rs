@@ -3,26 +3,12 @@ use super::{JResult, JValue, Jsompiler, Json};
 use std::collections::HashMap;
 impl<'a> Jsompiler<'a> {
   /// Advances the current position in the input code and returns the next character.
-  ///
-  /// # Returns
-  ///
-  /// * `Ok(char)` - The next character in the input code.
-  /// * `Err(String)` - If the end of the input code is reached.
   fn next(&mut self) -> Result<char, String> {
     let ch = self.input_code[self.pos..].chars().next().ok_or("Reached end of text")?;
     self.pos += ch.len_utf8();
     Ok(ch)
   }
   /// Checks if the next character in the input code matches the expected character.
-  ///
-  /// # Arguments
-  ///
-  /// * `expected` - The character expected at the current position.
-  ///
-  /// # Returns
-  ///
-  /// * `Ok(Json)` - A dummy `Json` object if the expected character is found.
-  /// * `Err(Box<dyn Error>)` - An error if the expected character is not found.
   fn expect(&mut self, expected: char) -> JResult {
     if self.input_code[self.pos..].starts_with(expected) {
       self.next()?;
@@ -71,16 +57,6 @@ impl<'a> Jsompiler<'a> {
     }
   }
   /// Parses a specific name and returns a `Json` object with the associated value.
-  ///
-  /// # Arguments
-  ///
-  /// * `n` - The name to parse.
-  /// * `v` - The `JValue` associated with the name.
-  ///
-  /// # Returns
-  ///
-  /// * `Ok(Json)` - The `Json` object representing the parsed name and value.
-  /// * `Err(Box<dyn Error>)` - An error if the name is not found.
   fn parse_name(&mut self, n: &str, v: JValue) -> JResult {
     if self.input_code[self.pos..].starts_with(n) {
       let start = self.pos;
@@ -95,11 +71,6 @@ impl<'a> Jsompiler<'a> {
     }
   }
   /// Parses a number (integer or float) from the input code.
-  ///
-  /// # Returns
-  ///
-  /// * `Ok(Json)` - The `Json` object representing the parsed number.
-  /// * `Err(Box<dyn Error>)` - An error if the number is invalid.
   fn parse_number(&mut self) -> JResult {
     let start = self.pos;
     let mut num_str = String::new();
@@ -135,9 +106,9 @@ impl<'a> Jsompiler<'a> {
         if !matches!(self.input_code[self.pos..].chars().next(), Some(c) if c.is_ascii_digit()) {
           return self.parse_err("A digit is required after the decimal point");
         }
-        while let Some(ch) = self.input_code[self.pos..].chars().next() {
-          if ch.is_ascii_digit() {
-            num_str.push(ch);
+        while let Some(ch2) = self.input_code[self.pos..].chars().next() {
+          if ch2.is_ascii_digit() {
+            num_str.push(ch2);
             self.next()?;
           } else {
             break;
@@ -191,11 +162,6 @@ impl<'a> Jsompiler<'a> {
     }
   }
   /// Parses a string from the input code.
-  ///
-  /// # Returns
-  ///
-  /// * `Ok(Json)` - The `Json` object representing the parsed string.
-  /// * `Err(Box<dyn Error>)` - An error if the string is invalid.
   fn parse_string(&mut self) -> JResult {
     if !self.input_code[self.pos..].starts_with('\"') {
       return self.parse_err("Missing opening quotation for string");
@@ -261,11 +227,6 @@ impl<'a> Jsompiler<'a> {
     self.parse_err("String is not properly terminated")
   }
   /// Parses an array from the input code.
-  ///
-  /// # Returns
-  ///
-  /// * `Ok(Json)` - The `Json` object representing the parsed array.
-  /// * `Err(Box<dyn Error>)` - An error if the array is invalid.
   fn parse_array(&mut self) -> JResult {
     let start_pos = self.pos;
     let start_ln = self.ln;
@@ -297,11 +258,6 @@ impl<'a> Jsompiler<'a> {
     }
   }
   /// Parses an object from the input code.
-  ///
-  /// # Returns
-  ///
-  /// * `Ok(Json)` - The `Json` object representing the parsed object.
-  /// * `Err(Box<dyn Error>)` - An error if the object is invalid.
   fn parse_object(&mut self) -> JResult {
     let start_pos = self.pos;
     let start_ln = self.ln;
@@ -340,14 +296,6 @@ impl<'a> Jsompiler<'a> {
     }
   }
   /// Parses a value from the input code.
-  ///
-  /// This function determines the type of value (string, number, array, object, etc.)
-  /// and calls the appropriate parsing function.
-  ///
-  /// # Returns
-  ///
-  /// * `Ok(Json)` - The `Json` object representing the parsed value.
-  /// * `Err(Box<dyn Error>)` - An error if the value is invalid.
   fn parse_value(&mut self) -> JResult {
     self.skip_ws();
     if self.pos >= self.input_code.len() {
