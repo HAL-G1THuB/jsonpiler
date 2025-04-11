@@ -21,7 +21,7 @@ type JFuncResult = Result<JValue, Box<dyn Error>>;
 type JResult = Result<Json, Box<dyn Error>>;
 // Type and value information.
 #[derive(Debug, Clone, Default)]
-enum JValue {
+pub enum JValue {
   Array(Vec<Json>),
   ArrayVar(String),
   Bool(bool),
@@ -56,7 +56,7 @@ pub struct Jsompiler<'a> {
 }
 /// Json object.
 #[derive(Debug, Clone, Default)]
-struct Json {
+pub struct Json {
   /// Information on the line of objects in the source code.
   pub ln: usize,
   /// Information on the location of objects in the source code.

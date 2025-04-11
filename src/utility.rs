@@ -67,6 +67,7 @@ pub fn error_exit(text: &str) -> ! {
 /// assert_eq!(en64(b"0"), String::from("<0"))
 /// ```
 #[must_use]
+#[expect(dead_code, reason = "todo")]
 pub fn en64(input: &[u8]) -> String {
   let mut encoded = String::new();
   let chunks = input.chunks(3);
@@ -104,6 +105,7 @@ pub fn en64(input: &[u8]) -> String {
 /// # Errors
 ///
 /// `Box<dyn Error(String)>` - If an invalid encoded value is passed, return `Err`
+#[expect(dead_code, reason = "todo")]
 pub fn de64(encoded: &str) -> Result<Vec<u8>, Box<dyn Error>> {
   let mut decoded = Vec::new();
   let mut buffer = 0u32;

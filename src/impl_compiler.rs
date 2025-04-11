@@ -136,7 +136,7 @@ impl Jsompiler<'_> {
     if func_list.len() < 3 {
       self.compile_err("Invalid function definition", &func_list[0])?;
     }
-    let &JValue::Array(ref params) = &func_list[1].value else {
+    let JValue::Array(params) = &func_list[1].value else {
       return self.compile_err(
         "The second element of a lambda list requires an argument list.",
         &func_list[1],
