@@ -1,6 +1,6 @@
 //! Parser implementation.
 use super::{
-  JFunc, JFuncResult, JResult, JValue, Jsompiler, Json,
+  JFunc, JFuncResult, JResult, JValue, Jsompiler, Json, Section,
   utility::{format_err, obj_json},
 };
 use core::{error::Error, fmt::Write as _};
@@ -11,11 +11,11 @@ use std::{
 impl Jsompiler<'_> {
   /// create compile error.
   fn compile_err(&self, text: &str, obj: &Json) -> JResult {
-    Err(format_err(text, obj.pos, obj.ln, self.input_code).into())
+    Err(format_err(text, obj.pos, obj.line, self.input_code).into())
   }
   /// create function error.
   fn func_err(&self, text: &str, obj: &Json) -> JFuncResult {
-    Err(format_err(text, obj.pos, obj.ln, self.input_code).into())
+    Err(format_err(text, obj.pos, obj.line, self.input_code).into())
   }
   /// Generates a unique name for internal use.
   fn get_name(&mut self) -> String {
@@ -30,15 +30,15 @@ impl Jsompiler<'_> {
   fn write_file(&self, main_func: &str, filename: &str, json_file: &str) -> io::Result<()> {
     let file = File::create(filename)?;
     let mut writer = BufWriter::new(file);
-    writer.write_all(format!(".file \"{json_file}\"\n").as_bytes())?;
+    writer.write_all(format!(".file \"{json_file}\"\n.intel_syntax noprefix\n").as_bytes())?;
     writer.write_all(include_bytes!("data.s"))?;
-    writer.write_all(self.data.as_bytes())?;
+    writer.write_all(self.sect.data.as_bytes())?;
     writer.write_all(include_bytes!("bss.s"))?;
-    writer.write_all(self.bss.as_bytes())?;
+    writer.write_all(self.sect.bss.as_bytes())?;
     writer.write_all(include_bytes!("start.s"))?;
     writer.write_all(main_func.as_bytes())?;
     writer.write_all(include_bytes!("text.s"))?;
-    writer.write_all(self.text.as_bytes())?;
+    writer.write_all(self.sect.text.as_bytes())?;
     writer.flush()?;
     Ok(())
   }
@@ -71,7 +71,19 @@ impl Jsompiler<'_> {
     self.register("message", Jsompiler::message);
     self.register("begin", Jsompiler::begin);
     let mut main_func = String::new();
+    self.sect = Section::default();
     let result = self.eval(parsed, &mut main_func)?;
+    writeln!(
+      main_func,
+      "  {}
+  call [qword ptr __imp_ExitProcess[rip]]
+  .seh_endproc",
+      match &result.value {
+        JValue::Int(int) => format!("mov rcx, {int}"),
+        JValue::IntVar(var) => format!("mov rcx, qword ptr {var}[rip]"),
+        _ => String::from("xor ecx, ecx"),
+      }
+    )?;
     self.write_file(&main_func, filename, json_file)?;
     Ok(result)
   }
@@ -89,7 +101,7 @@ impl Jsompiler<'_> {
         if cmd == "lambda" {
           let mut func_buffer = String::new();
           let result = Ok(self.eval_lambda(list, &mut func_buffer)?);
-          self.text.push_str(&func_buffer);
+          self.sect.text.push_str(&func_buffer);
           return result;
         }
         if let Some(func) = self.f_table.get(cmd.as_str()) {
@@ -102,13 +114,27 @@ impl Jsompiler<'_> {
         let mut func_buffer = String::new();
         let tmp = self.vars.clone();
         let lambda = self.eval_lambda(func_list, &mut func_buffer)?;
-        let JValue::FuncVar(name, _params) = lambda.value else {
+        let JValue::FuncVar { name: n, params: _, ret: r } = &lambda.value else {
           return self.compile_err("InternalError: 'lambda' don't return lambda object.", &lambda);
         };
-        self.text.push_str(&func_buffer);
-        writeln!(function, "  call {name}")?;
+        self.sect.text.push_str(&func_buffer);
+        writeln!(function, "  call {n}")?;
         self.vars = tmp;
-        Ok(Json::default())
+        match **r {
+          JValue::IntVar(_) => {
+            let na = self.get_name();
+            writeln!(self.sect.bss, "  .lcomm {na}, 8")?;
+            writeln!(function, "  mov qword ptr {na}[rip], rax")?;
+            Ok(obj_json(JValue::IntVar(na), &lambda))
+          }
+          JValue::Int(_) => {
+            let na = self.get_name();
+            writeln!(self.sect.bss, "  .lcomm {na}, 8")?;
+            writeln!(function, "  mov qword ptr {na}[rip], rax")?;
+            Ok(obj_json(JValue::IntVar(na), &lambda))
+          }
+          _ => Ok(Json::default()),
+        }
       }
       _ => self.compile_err(
         "The first element of an evaluation list requires a function name or a lambda object.",
@@ -161,24 +187,43 @@ impl Jsompiler<'_> {
   .seh_handler .L_SEH_HANDLER, @except",
       &n[3..]
     )?;
-    for i in &func_list[2..] {
-      self.eval(i, function)?;
-    }
+    let result = self
+      .eval_args(&func_list[2..], function)?
+      .last()
+      .ok_or_else(|| {
+        format_err("Empty lambda body", func_list[0].pos, func_list[0].line, self.input_code)
+      })?
+      .clone();
     writeln!(
       function,
-      "  add rsp, 32
+      "  {}
+  add rsp, 32
   leave
   ret
   .seh_endproc",
+      match &result {
+        JValue::Int(int) => format!("mov rax, {int}"),
+        JValue::IntVar(var) => format!("mov rax, qword ptr {var}[rip]"),
+        _ => String::from("xor eax, eax"),
+      }
     )?;
-    Ok(obj_json(JValue::FuncVar(n, params.clone()), &func_list[0]))
+    Ok(obj_json(
+      JValue::FuncVar { name: n, params: params.clone(), ret: Box::new(result) },
+      &func_list[0],
+    ))
   }
   /// Evaluates a 'begin' block.
   fn begin(&mut self, args: &[Json], function: &mut String) -> JFuncResult {
     if args.len() <= 1 {
       return self.func_err("'begin' requires at least one arguments", &args[0]);
     }
-    Ok(self.eval_args(&args[1..], function)?[0].clone())
+    Ok(
+      self
+        .eval_args(&args[1..], function)?
+        .last()
+        .ok_or_else(|| format_err("Empty lambda body", args[0].pos, args[0].line, self.input_code))?
+        .clone(),
+    )
   }
   /// Sets a local variable.
   fn set_local(&mut self, args: &[Json], function: &mut String) -> JFuncResult {
@@ -192,7 +237,7 @@ impl Jsompiler<'_> {
     let n = self.get_name();
     match &result.value {
       JValue::String(s) => {
-        writeln!(self.data, "  {n}: .string \"{s}\"")?;
+        writeln!(self.sect.data, "  {n}: .string \"{s}\"")?;
         self.vars.insert(var_name.clone(), JValue::StringVar(n.clone()));
         Ok(JValue::StringVar(n))
       }
@@ -237,13 +282,13 @@ impl Jsompiler<'_> {
     }
     for a in &result_vec[1..] {
       match a {
-        JValue::Int(l) => writeln!(function, "  {mnemonic} rax, {l}")?,
-        JValue::IntVar(v) => writeln!(function, "  {mnemonic} rax, qword ptr {v}[rip]")?,
+        JValue::Int(int) => writeln!(function, "  {mnemonic} rax, {int}")?,
+        JValue::IntVar(var) => writeln!(function, "  {mnemonic} rax, qword ptr {var}[rip]")?,
         _ => return Err(format!("'{error_context}' requires integer operands").into()),
       }
     }
     let ret = self.get_name();
-    writeln!(self.bss, "  .lcomm {ret}, 8")?;
+    writeln!(self.sect.bss, "  .lcomm {ret}, 8")?;
     writeln!(function, "  mov qword ptr {ret}[rip], rax")?;
     Ok(JValue::IntVar(ret))
   }
@@ -263,7 +308,7 @@ impl Jsompiler<'_> {
     let title = match self.eval(&args[1], function)?.value {
       JValue::String(l) => {
         let name = self.get_name();
-        writeln!(self.data, "  {name}: .string \"{l}\"")?;
+        writeln!(self.sect.data, "  {name}: .string \"{l}\"")?;
         name
       }
       JValue::StringVar(var) => var,
@@ -272,7 +317,7 @@ impl Jsompiler<'_> {
     let msg = match self.eval(&args[2], function)?.value {
       JValue::String(l) => {
         let name = self.get_name();
-        writeln!(self.data, "  {name}: .string \"{l}\"")?;
+        writeln!(self.sect.data, "  {name}: .string \"{l}\"")?;
         name
       }
       JValue::StringVar(var) => var,
@@ -282,7 +327,7 @@ impl Jsompiler<'_> {
     let wmsg = self.get_name();
     let ret = self.get_name();
     writeln!(
-      self.bss,
+      self.sect.bss,
       "  .lcomm {wtitle}, 8
   .lcomm {wmsg}, 8
   .lcomm {ret}, 8"

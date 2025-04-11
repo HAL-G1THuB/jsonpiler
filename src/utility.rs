@@ -160,5 +160,5 @@ pub fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {
 }
 #[must_use]
 pub const fn obj_json(val: JValue, obj: &Json) -> Json {
-  Json { pos: obj.pos, ln: obj.ln, value: val }
+  Json { pos: obj.pos, line: obj.line, value: val }
 }
