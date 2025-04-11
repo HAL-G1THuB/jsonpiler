@@ -1,6 +1,3 @@
-  xor ecx, ecx
-  call [qword ptr __imp_ExitProcess[rip]]
-  .seh_endproc
 .L_WIN_HANDLER:
   call [qword ptr __imp_GetLastError[rip]]
   mov rbx, rax
@@ -19,7 +16,7 @@
   xor ecx, ecx
   mov rdx, qword ptr .L_WIN_HANDLER_MSG[rip]
   xor r8d, r8d
-  mov r9, 0x10
+  mov r9d, 0x10
   call [qword ptr __imp_MessageBoxW[rip]]
 .L_EXIT:
   mov rcx, qword ptr .L_WIN_HANDLER_MSG[rip]

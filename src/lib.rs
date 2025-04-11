@@ -5,7 +5,7 @@
 //!}
 //! ```
 mod impl_compiler;
-mod impl_json;
+mod impl_jvalue;
 mod impl_parser;
 mod utility;
 use core::error::Error;
@@ -25,10 +25,14 @@ pub enum JValue {
   Array(Vec<Json>),
   ArrayVar(String),
   Bool(bool),
-  BoolVar(String),
+  BoolVar(String, usize),
   Float(f64),
   FloatVar(String),
-  FuncVar(String, Vec<Json>),
+  FuncVar {
+    name: String,
+    params: Vec<Json>,
+    ret: Box<JValue>,
+  },
   Int(i64),
   IntVar(String),
   #[default]
@@ -39,17 +43,29 @@ pub enum JValue {
   StringVar(String),
 }
 #[derive(Debug, Clone, Default)]
-pub struct Jsompiler<'a> {
-  input_code: &'a str,
+pub(crate) struct ParserContext {
+  /// Location of the part being parsed.
   pos: usize,
-  seed: usize,
-  ln: usize,
+  /// Line number of the part being parsed.
+  line: usize,
+}
+/// Section of the assembly.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Section {
   /// Buffer to store the contents of the data section of the assembly.
   data: String,
   /// Buffer to store the contents of the bss section of the assembly.
   bss: String,
   /// Buffer to store the contents of the text section of the assembly.
   text: String,
+}
+#[derive(Debug, Clone, Default)]
+pub struct Jsompiler<'a> {
+  input_code: &'a str,
+  pctx: ParserContext,
+  seed: usize,
+  /// Buffer to store the contents of the data section of the assembly.
+  sect: Section,
   f_table: HashMap<String, JFunc<Self>>,
   _globals: HashMap<String, JValue>,
   vars: HashMap<String, JValue>,
@@ -57,9 +73,9 @@ pub struct Jsompiler<'a> {
 /// Json object.
 #[derive(Debug, Clone, Default)]
 pub struct Json {
-  /// Information on the line of objects in the source code.
-  pub ln: usize,
-  /// Information on the location of objects in the source code.
+  /// Line number of objects in the source code.
+  pub line: usize,
+  /// Location of objects in the source code.
   pub pos: usize,
   /// Type and value information.
   pub value: JValue,
@@ -125,12 +141,12 @@ pub fn run() -> ! {
     exit(0)
   }
   let input_code = fs::read_to_string(&args[1])
-    .unwrap_or_else(|e| error_exit(&format!("Failed to read file {}: {e}", args[1])));
+    .unwrap_or_else(|err| error_exit(&format!("Failed to read file {}: {err}", args[1])));
   let mut jsompiler = Jsompiler::default();
   let parsed =
     jsompiler.parse(&input_code).unwrap_or_else(|e| error_exit(&format!("ParseError: {e}")));
   #[cfg(debug_assertions)]
-  println!("{parsed}");
+  println!("{}", parsed.value);
   let file = Path::new(&args[1]).with_extension("").to_string_lossy().to_string();
   let obj_file = format!("{file}.obj");
   let exe_file = format!("{file}.exe");
