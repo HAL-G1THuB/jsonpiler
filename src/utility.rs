@@ -1,5 +1,5 @@
 //! Utility functions.
-use crate::{JError, JResult, JValue, Json};
+use crate::{JValue, Json};
 use core::{
   error::Error,
   fmt::{self, Write as _},
@@ -24,25 +24,18 @@ use std::{io, process::exit};
 /// ```
 /// # Errors
 /// `Box(JError)` - Err is always returned.
-pub fn format_err(text: &str, index: usize, ln: usize, input_code: &str) -> JResult {
+#[must_use]
+pub fn format_err(text: &str, index: usize, ln: usize, input_code: &str) -> String {
   if input_code.is_empty() {
-    return Err(Box::new(JError(format!(
-      "{text}\nError occurred on line: {ln}\nError position:\nError: Empty input"
-    ))));
+    return format!("{text}\nError occurred on line: {ln}\nError position:\nError: Empty input");
   }
   let len = input_code.len();
   let idx = index.min(len.saturating_sub(1));
-  let start = if idx > 0 {
-    input_code[..idx].rfind('\n').map_or(0, |pos| pos + 1)
-  } else {
-    0
-  };
+  let start = if idx > 0 { input_code[..idx].rfind('\n').map_or(0, |pos| pos + 1) } else { 0 };
   let end = input_code[idx..].find('\n').map_or(len, |pos| idx + pos);
   let ws = " ".repeat(idx.saturating_sub(start));
   let result = &input_code[start..end];
-  Err(Box::new(JError(format!(
-    "{text}\nError occurred on line: {ln}\nError position:\n{result}\n{ws}^"
-  ))))
+  format!("{text}\nError occurred on line: {ln}\nError position:\n{result}\n{ws}^")
 }
 /// Exit the program with exit code 1.
 ///
@@ -64,14 +57,6 @@ pub fn error_exit(text: &str) -> ! {
   eprint!("{text}\nPress Enter to exit:");
   let _ = io::stdin().read_line(&mut nu);
   exit(1)
-}
-#[must_use]
-pub const fn dummy() -> Json {
-  Json {
-    pos: 0,
-    ln: 0,
-    value: JValue::Null,
-  }
 }
 /// Encoding base64 variants.
 ///
@@ -173,9 +158,5 @@ pub fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {
 }
 #[must_use]
 pub const fn obj_json(val: JValue, obj: &Json) -> Json {
-  Json {
-    pos: obj.pos,
-    ln: obj.ln,
-    value: val,
-  }
+  Json { pos: obj.pos, ln: obj.ln, value: val }
 }

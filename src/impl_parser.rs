@@ -1,21 +1,32 @@
-use super::utility::dummy;
-use super::{JResult, JValue, Jsompiler, Json};
-use std::collections::HashMap;
+//! Parser implementation.
+use super::{JResult, JValue, Jsompiler, Json, utility::format_err};
+use std::{char::from_u32, collections::HashMap, error::Error};
 impl<'a> Jsompiler<'a> {
+  /// Checks if the next character in the input code matches the expected character.
+  fn expect(&mut self, expected: char) -> Result<(), Box<dyn Error>> {
+    if self.input_code[self.pos..].starts_with(expected) {
+      self.next()?;
+      Ok(())
+    } else {
+      Err(
+        format_err(
+          &format!("Expected character '{expected}' not found."),
+          self.pos,
+          self.ln,
+          self.input_code,
+        )
+        .into(),
+      )
+    }
+  }
   /// Advances the current position in the input code and returns the next character.
   fn next(&mut self) -> Result<char, String> {
     let ch = self.input_code[self.pos..].chars().next().ok_or("Reached end of text")?;
     self.pos += ch.len_utf8();
     Ok(ch)
   }
-  /// Checks if the next character in the input code matches the expected character.
-  fn expect(&mut self, expected: char) -> JResult {
-    if self.input_code[self.pos..].starts_with(expected) {
-      self.next()?;
-      Ok(dummy())
-    } else {
-      self.parse_err(&format!("Expected character '{expected}' not found."))
-    }
+  fn parse_err(&self, text: &str) -> JResult {
+    Err(format_err(text, self.pos, self.ln, self.input_code).into())
   }
   /// Parses the entire input code and returns the resulting `Json` object.
   ///
@@ -61,11 +72,7 @@ impl<'a> Jsompiler<'a> {
     if self.input_code[self.pos..].starts_with(n) {
       let start = self.pos;
       self.pos += n.len();
-      Ok(Json {
-        pos: start,
-        ln: self.ln,
-        value: v,
-      })
+      Ok(Json { pos: start, ln: self.ln, value: v })
     } else {
       self.parse_err(&format!("Failed to parse '{n}'"))
     }
@@ -140,24 +147,12 @@ impl<'a> Jsompiler<'a> {
     if !has_decimal && !has_exponent {
       num_str.parse::<i64>().map_or_else(
         |_| self.parse_err("Invalid integer value"),
-        |int_val| {
-          Ok(Json {
-            pos: start,
-            ln: self.ln,
-            value: JValue::Int(int_val),
-          })
-        },
+        |int_val| Ok(Json { pos: start, ln: self.ln, value: JValue::Int(int_val) }),
       )
     } else {
       num_str.parse::<f64>().map_or_else(
         |_| self.parse_err("Invalid numeric value"),
-        |float_val| {
-          Ok(Json {
-            pos: start,
-            ln: self.ln,
-            value: JValue::Float(float_val),
-          })
-        },
+        |float_val| Ok(Json { pos: start, ln: self.ln, value: JValue::Float(float_val) }),
       )
     }
   }
@@ -170,14 +165,10 @@ impl<'a> Jsompiler<'a> {
     self.pos += 1;
     let mut result = String::new();
     while self.pos < self.input_code.len() {
-      let c = self.next()?;
-      match c {
+      let ch = self.next()?;
+      match ch {
         '\"' => {
-          return Ok(Json {
-            pos: start,
-            ln: self.ln,
-            value: JValue::String(result),
-          });
+          return Ok(Json { pos: start, ln: self.ln, value: JValue::String(result) });
         }
         '\n' => {
           self.parse_err("Invalid line breaks in strings")?;
@@ -206,22 +197,22 @@ impl<'a> Jsompiler<'a> {
                   return self.parse_err("Failed read hex");
                 }
               }
-              let cp =
-                u32::from_str_radix(&hex, 16).map_err(|_| String::from("Invalid code point"))?;
+              let cp = u32::from_str_radix(&hex, 16)
+                .map_err(|err_msg| format!("Invalid code point: {err_msg}"))?;
               if (0xD800..=0xDFFF).contains(&cp) {
                 return self.parse_err("Invalid unicode");
               }
-              result.push(std::char::from_u32(cp).ok_or("Invalid unicode")?);
+              result.push(from_u32(cp).ok_or("Invalid unicode")?);
             }
             _ => {
               return self.parse_err("Invalid escape sequence");
             }
           }
         }
-        c if c < '\u{20}' => {
+        cha if cha < '\u{20}' => {
           return self.parse_err("Invalid control character");
         }
-        _ => result.push(c),
+        cha => result.push(cha),
       }
     }
     self.parse_err("String is not properly terminated")
@@ -235,21 +226,13 @@ impl<'a> Jsompiler<'a> {
     self.skip_ws();
     if self.input_code[self.pos..].starts_with(']') {
       self.pos += 1;
-      return Ok(Json {
-        pos: start_pos,
-        ln: start_ln,
-        value: JValue::Array(array),
-      });
+      return Ok(Json { pos: start_pos, ln: start_ln, value: JValue::Array(array) });
     }
     loop {
       array.push(self.parse_value()?);
       if self.input_code[self.pos..].starts_with(']') {
         self.pos += 1;
-        return Ok(Json {
-          pos: start_pos,
-          ln: start_ln,
-          value: JValue::Array(array),
-        });
+        return Ok(Json { pos: start_pos, ln: start_ln, value: JValue::Array(array) });
       } else if self.input_code[self.pos..].starts_with(',') {
         self.pos += 1;
       } else {
@@ -266,27 +249,19 @@ impl<'a> Jsompiler<'a> {
     self.skip_ws();
     if self.input_code[self.pos..].starts_with('}') {
       self.pos += 1;
-      return Ok(Json {
-        pos: start_pos,
-        ln: start_ln,
-        value: JValue::Object(object),
-      });
+      return Ok(Json { pos: start_pos, ln: start_ln, value: JValue::Object(object) });
     }
     loop {
       let key = self.parse_value()?;
-      let JValue::String(s) = key.value else {
-        return self.obj_err("Keys must be strings", &key);
+      let JValue::String(string) = key.value else {
+        return Err(format_err("Keys must be strings", key.pos, key.ln, self.input_code).into());
       };
       self.expect(':')?;
       let value = self.parse_value()?;
-      object.insert(s, value);
+      object.insert(string, value);
       if self.input_code[self.pos..].starts_with('}') {
         self.pos += 1;
-        return Ok(Json {
-          pos: start_pos,
-          ln: start_ln,
-          value: JValue::Object(object),
-        });
+        return Ok(Json { pos: start_pos, ln: start_ln, value: JValue::Object(object) });
       }
       if self.input_code[self.pos..].starts_with(',') {
         self.pos += 1;

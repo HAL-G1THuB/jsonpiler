@@ -13,19 +13,19 @@ impl Json {
   ///
   /// * `fmt::Result` - The result of the formatting operation, indicating success or failure.
   fn write_json(&self, out: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    match &self.value {
+    match self.value {
       JValue::Null => out.write_str("null"),
-      JValue::Bool(b) => write!(out, "{b}"),
-      JValue::BoolVar(bv) => write!(out, "({bv}: bool)"),
-      JValue::Int(i) => write!(out, "{i}"),
-      JValue::IntVar(v) => write!(out, "({v}: int)"),
-      JValue::Float(f) => write!(out, "{f}"),
-      JValue::FloatVar(v) => write!(out, "({v}: float)"),
-      JValue::String(s) => write!(out, "\"{}\"", escape_string(s)?),
-      JValue::StringVar(v) => write!(out, "({v}: string)"),
-      JValue::Array(a) => {
+      JValue::Bool(bo) => write!(out, "{bo}"),
+      JValue::BoolVar(ref bv) => write!(out, "({bv}: bool)"),
+      JValue::Int(int) => write!(out, "{int}"),
+      JValue::IntVar(ref iv) => write!(out, "({iv}: int)"),
+      JValue::Float(fl) => write!(out, "{fl}"),
+      JValue::FloatVar(ref fv) => write!(out, "({fv}: float)"),
+      JValue::String(ref st) => write!(out, "\"{}\"", escape_string(st)?),
+      JValue::StringVar(ref sv) => write!(out, "({sv}: string)"),
+      JValue::Array(ref ar) => {
         out.write_str("[\n")?;
-        for (i, item) in a.iter().enumerate() {
+        for (i, item) in ar.iter().enumerate() {
           if i > 0 {
             out.write_str(",\n")?;
           }
@@ -36,8 +36,8 @@ impl Json {
         out.write_str(&"  ".repeat(depth))?;
         out.write_str("]")
       }
-      JValue::ArrayVar(v) => write!(out, "({v}: array)"),
-      JValue::FuncVar(name, params) => {
+      JValue::ArrayVar(ref av) => write!(out, "({av}: array)"),
+      JValue::FuncVar(ref name, ref params) => {
         out.write_str(&format!("{name}("))?;
         for (i, item) in params.iter().enumerate() {
           if i > 0 {
@@ -47,21 +47,21 @@ impl Json {
         }
         out.write_str(")")
       }
-      JValue::Object(obj) => {
+      JValue::Object(ref obj) => {
         out.write_str("{\n")?;
-        for (i, (k, v)) in obj.iter().enumerate() {
+        for (i, (key, value)) in obj.iter().enumerate() {
           if i > 0 {
             out.write_str(",\n")?;
           }
           out.write_str(&"  ".repeat(depth + 1))?;
-          write!(out, "\"{}\": ", escape_string(k)?)?;
-          v.write_json(out, depth + 1)?;
+          write!(out, "\"{}\": ", escape_string(key)?)?;
+          value.write_json(out, depth + 1)?;
         }
         out.write_str("\n")?;
         out.write_str(&"  ".repeat(depth))?;
         out.write_str("}")
       }
-      JValue::ObjectVar(obj_var) => write!(out, "({obj_var}: object)"),
+      JValue::ObjectVar(ref ov) => write!(out, "({ov}: object)"),
     }
   }
 }
@@ -76,6 +76,7 @@ impl fmt::Display for Json {
   /// # Returns
   ///
   /// * `fmt::Result` - The result of the formatting operation, indicating success or failure.impl `fmt::Display` for Json {
+  #[expect(clippy::min_ident_chars, reason = "default name is 'f'")]
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     self.write_json(f, 0)
   }
