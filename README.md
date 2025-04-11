@@ -61,7 +61,7 @@ The variable `"a"` is assigned the string `"title"` using `"="`.
 A message box appears with the title (from variable `"a"`) and the body `"345"`, as specified by `"message"`.
 
 The program returns the integer ID of the pressed button in the message box  
-(currently only `'2'` is supported, which corresponds to `IDOK` in C/C++),  
+(currently only `1` is supported, which corresponds to `IDOK` in C/C++),  
 as the final value of the `begin` block.
 
 ## Function Documentation
