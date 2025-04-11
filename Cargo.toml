@@ -1,6 +1,6 @@
 [package]
 name = "jsompiler"
-version = "0.1.5"
+version = "0.1.7"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
 documentation = "https://hal-g1thub.github.io/jsompiler-doc/jsompiler/index.html"
@@ -13,7 +13,6 @@ keywords = ["json", "parser"]
 name = "jsompiler"
 path = "src/main.rs"
 [profile.release]
-lto = true
 panic = "abort"
 [badges]
 maintenance = { status = "actively-developed" }
@@ -30,5 +29,5 @@ all = {level = "warn", priority = -1}
 # unseparated-literal-suffix = "allow"
 # question_mark_used = "allow"
 # ref_patterns = "allow"
-#___
-#___
+# exit = "allow"
+# string_slice = "allow"

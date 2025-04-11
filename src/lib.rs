@@ -7,19 +7,63 @@
 mod impl_compiler;
 mod impl_json;
 mod impl_parser;
-pub mod utility;
-use utility::{error_exit, format_err};
-pub type JResult = Result<Json, Box<dyn Error>>;
-pub type JFunc<T> = fn(&mut T, &[Json], &mut String) -> Result<JValue, Box<dyn Error>>;
-pub type JFuncResult = Result<JValue, Box<dyn Error>>;
+mod utility;
+use core::error::Error;
 use std::{
   collections::HashMap,
-  env,
-  error::Error,
-  fmt, fs,
+  env, fs,
   path::Path,
   process::{Command, exit},
 };
+use utility::error_exit;
+type JFunc<T> = fn(&mut T, &[Json], &mut String) -> Result<JValue, Box<dyn Error>>;
+type JFuncResult = Result<JValue, Box<dyn Error>>;
+type JResult = Result<Json, Box<dyn Error>>;
+// Type and value information.
+#[derive(Debug, Clone, Default)]
+pub enum JValue {
+  Array(Vec<Json>),
+  ArrayVar(String),
+  Bool(bool),
+  BoolVar(String),
+  Float(f64),
+  FloatVar(String),
+  FuncVar(String, Vec<Json>),
+  Int(i64),
+  IntVar(String),
+  #[default]
+  Null,
+  Object(HashMap<String, Json>),
+  ObjectVar(String),
+  String(String),
+  StringVar(String),
+}
+#[derive(Debug, Clone, Default)]
+pub struct Jsompiler<'a> {
+  input_code: &'a str,
+  pos: usize,
+  seed: usize,
+  ln: usize,
+  /// Buffer to store the contents of the data section of the assembly.
+  data: String,
+  /// Buffer to store the contents of the bss section of the assembly.
+  bss: String,
+  /// Buffer to store the contents of the text section of the assembly.
+  text: String,
+  f_table: HashMap<String, JFunc<Self>>,
+  _globals: HashMap<String, JValue>,
+  vars: HashMap<String, JValue>,
+}
+/// Json object.
+#[derive(Debug, Clone, Default)]
+pub struct Json {
+  /// Information on the line of objects in the source code.
+  pub ln: usize,
+  /// Information on the location of objects in the source code.
+  pub pos: usize,
+  /// Type and value information.
+  pub value: JValue,
+}
 /// Runs the Jsompiler, compiling and executing a JSON-based program.
 ///
 /// This function serves as the main entry point for the Jsompiler. It performs the following steps:
@@ -34,6 +78,8 @@ use std::{
 /// 8.  **Exit Code Handling:** It retrieves the exit code from the executed program and exits with the same code.
 ///
 /// # Panics
+///
+/// This function uses external commands (`as` and `ld`) for assembly and linking. Ensure that these commands are available in the system's PATH.
 ///
 /// This function will panic if:
 ///
@@ -54,9 +100,6 @@ use std::{
 ///
 /// This function does not return a `Result` type, but instead uses `error_exit` to terminate the program with an error message.
 ///
-/// # Safety
-///
-/// This function uses external commands (`as` and `ld`) for assembly and linking. Ensure that these commands are available in the system's PATH.
 ///
 /// # Examples
 ///
@@ -78,38 +121,34 @@ pub fn run() -> ! {
   compile_error!("This program can only run on Windows.");
   let args: Vec<String> = env::args().collect();
   if args.len() <= 1 {
-    eprintln!(
-      "Usage: {} <input json file> [arguments of .exe...]",
-      args[0]
-    );
+    eprintln!("Usage: {} <input json file> [arguments of .exe...]", args[0]);
     exit(0)
   }
   let input_code = fs::read_to_string(&args[1])
-    .unwrap_or_else(|e| error_exit(&format!("Failed to read file: {e}")));
+    .unwrap_or_else(|e| error_exit(&format!("Failed to read file {}: {e}", args[1])));
   let mut jsompiler = Jsompiler::default();
   let parsed =
     jsompiler.parse(&input_code).unwrap_or_else(|e| error_exit(&format!("ParseError: {e}")));
   #[cfg(debug_assertions)]
   println!("{parsed}");
-  let file = Path::new(&args[1])
-    .file_stem()
-    .unwrap_or_else(|| error_exit(&format!("Invalid filename: {}", args[1])))
-    .to_string_lossy()
-    .to_string();
+  let file = Path::new(&args[1]).with_extension("").to_string_lossy().to_string();
   let obj_file = format!("{file}.obj");
   let exe_file = format!("{file}.exe");
   let asm_file = format!("{file}.s");
   jsompiler
     .build(&parsed, &args[1], &asm_file)
-    .unwrap_or_else(|e| error_exit(&format!("CompileError: {e}")));
+    .unwrap_or_else(|err| error_exit(&format!("CompileError: {err}")));
   if !Command::new("as")
     .args([&asm_file, "-o", &obj_file])
     .status()
-    .unwrap_or_else(|e| error_exit(&format!("Failed to assemble: {e}")))
+    .unwrap_or_else(|err| error_exit(&format!("Failed to assemble: {err}")))
     .success()
   {
     error_exit("Failed to assemble")
-  };
+  }
+  #[cfg(not(debug_assertions))]
+  fs::remove_file(asm_file)
+    .unwrap_or_else(|err| error_exit(&format!("Failed to remove '.asm': {err}")));
   if !Command::new("ld")
     .args([
       &obj_file,
@@ -119,75 +158,28 @@ pub fn run() -> ! {
       "-luser32",
       "-lkernel32",
       "-lucrtbase",
+      "--gc-sections",
+      "-e_start",
     ])
     .status()
-    .unwrap_or_else(|e| error_exit(&format!("Failed to link: {e}")))
+    .unwrap_or_else(|err| error_exit(&format!("Failed to link: {err}")))
     .success()
   {
     error_exit("Failed to link")
-  };
+  }
+  #[cfg(not(debug_assertions))]
+  fs::remove_file(obj_file)
+    .unwrap_or_else(|err| error_exit(&format!("Failed to remove '.obj': {err}")));
   let mut path = env::current_dir()
-    .unwrap_or_else(|e| error_exit(&format!("Failed to get current directory: {e}")));
+    .unwrap_or_else(|err| error_exit(&format!("Failed to get current directory: {err}")));
   path.push(&exe_file);
   let exit_code = Command::new(path)
     .args(&args[2..])
     .spawn()
-    .unwrap_or_else(|e| error_exit(&format!("Failed to spawn child process: {e}")))
+    .unwrap_or_else(|err| error_exit(&format!("Failed to spawn child process: {err}")))
     .wait()
-    .unwrap_or_else(|e| error_exit(&format!("Failed to wait for child process: {e}")))
+    .unwrap_or_else(|err| error_exit(&format!("Failed to wait for child process: {err}")))
     .code()
     .unwrap_or_else(|| error_exit("Failed to retrieve the exit code"));
   exit(exit_code)
 }
-#[derive(Debug, Clone)]
-pub struct Json {
-  pub pos: usize,
-  pub ln: usize,
-  pub value: JValue,
-}
-#[derive(Debug, Clone)]
-pub enum JValue {
-  Null,
-  Bool(bool),
-  Int(i64),
-  Float(f64),
-  String(String),
-  Array(Vec<Json>),
-  Object(HashMap<String, Json>),
-  FuncVar(String, Vec<Json>),
-  BoolVar(String),
-  IntVar(String),
-  FloatVar(String),
-  StringVar(String),
-  ArrayVar(String),
-  ObjectVar(String),
-}
-#[derive(Debug, Clone, Default)]
-pub struct Jsompiler<'a> {
-  input_code: &'a str,
-  pos: usize,
-  seed: usize,
-  ln: usize,
-  data: String,
-  bss: String,
-  text: String,
-  f_table: HashMap<String, JFunc<Self>>,
-  _globals: HashMap<String, JValue>,
-  vars: HashMap<String, JValue>,
-}
-impl Jsompiler<'_> {
-  fn obj_err(&self, text: &str, obj: &Json) -> JResult {
-    format_err(text, obj.pos, obj.ln, self.input_code)
-  }
-  fn parse_err(&self, text: &str) -> JResult {
-    format_err(text, self.pos, self.ln, self.input_code)
-  }
-}
-#[derive(Debug)]
-pub struct JError(pub String);
-impl fmt::Display for JError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "{}", self.0)
-  }
-}
-impl Error for JError {}
