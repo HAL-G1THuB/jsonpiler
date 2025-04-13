@@ -1,6 +1,6 @@
 [package]
 name = "jsompiler"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
 documentation = "https://hal-g1thub.github.io/jsompiler-doc/jsompiler/index.html"
@@ -22,12 +22,14 @@ perf = {level = "warn", priority = -1}
 style = {level = "warn", priority = -1}
 cargo = {level = "warn", priority = -1}
 all = {level = "warn", priority = -1}
-# restriction = {level = "warn", priority = -1}
-# missing_inline_in_public_items = "allow"
-# single_char_lifetime_names = "allow"
-# implicit_return = "allow"
-# unseparated-literal-suffix = "allow"
-# question_mark_used = "allow"
-# ref_patterns = "allow"
-# exit = "allow"
-# string_slice = "allow"
+restriction = {level = "warn", priority = -1}
+implicit_return = "allow"
+unseparated-literal-suffix = "allow"
+question_mark_used = "allow"
+ref_patterns = "allow"
+exit = "allow"
+string_slice = "allow"
+pub-with-shorthand = "allow"
+blanket_clippy_restriction_lints = "allow"
+multiple_inherent_impl = "allow"
+print_stdout = "allow"

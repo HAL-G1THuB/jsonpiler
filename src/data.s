@@ -1,2 +1,8 @@
+.section	.rdata,"dr"
+  .L_SEH_HANDLER_MSG:
+  .ascii "An exception occurred!\nPossible causes:\n"
+  .ascii "- Division by zero\n- null pointer dereference\n"
+  .ascii "- invalid memory access\n- out-of-bounds array access\n"
+  .ascii "- invalid input or arguments\n- stack overflow\n"
+  .ascii "- file not found\n...\000"
 .data
-  .L_SEH_HANDLER_MSG: .string  "An exception occurred!\nPossible causes:\n- Division by zero\n- null pointer dereference\n- invalid memory access\n- out-of-bounds array access\n- invalid input or arguments\n- stack overflow\n- file not found\n..."
