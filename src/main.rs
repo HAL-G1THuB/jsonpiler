@@ -1,4 +1,4 @@
-//! main function.
+//! (main.rs)
 fn main() -> ! {
   jsompiler::run()
 }

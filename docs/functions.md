@@ -1,75 +1,95 @@
 # Functions
 
+## Notation
+
+- `-> T` — Returns a value of type `T`  
+- `=> V` — Evaluates to the value `V`  
+- `L...` — Literal(s) of type `...`  
+- `"..."` — Zero or more arguments following the previous pattern  
+
+---
+
 ## begin
 
 ```json
-["begin", "expr: any", "..."]
+["begin", {"expr": "Any"}, "...", {"return_value": "Any"}] -> {"return_value": "Any"}
 ```
 
-Evaluate the expression sequentially and return the last value.
+Evaluates each expression sequentially and returns the value of the last one.
 
 ```json
-["begin", ["+", 1, 3]]
+["begin", ["+", 1, 3], 0] => 0
 ```
+
+---
 
 ## +
 
 ```json
-["+", "operand: -> int", "..."]
+["+", {"augend": "Int"}, {"addend": "Int"}, "..."] -> {"return_value": "Int"}
 ```
 
-Add the operands and return the result.
+Adds all operands and returns the result.
 
 ```json
-["+", 1, 5, ["+", 4, 6]]
+["+", 1, 5, ["+", 4, 6]] => 16
 ```
+
+---
 
 ## -
 
 ```json
-["-", "operand: -> int", "..."]
+["-", {"minuend": "Int"}, {"subtrahend": "Int"}, "..."] -> {"return_value": "Int"}
 ```
 
-Subtract the subsequent operands from the first operand and return the result.
+Subtracts all following operands from the first operand and returns the result.
 
 ```json
-["-", 30, 5, ["+", 4, 6]]
+["-", 30, 5, ["+", 4, 6]] => 15
 ```
+
+---
 
 ## lambda
 
 ```json
-["lambda", "params: empty [] (todo)", "expr: any", "..."]
+["lambda", {"params": "empty [] (todo)"}, {"body": "Any"}, "..."] -> "Function"
 ```
 
-Create a function where the first argument is the argument list,
-and the remaining arguments are the content, then return the function.
+Creates a function. The first argument is the parameter list, and the rest are the function body expressions. Returns the created function.
 
 ```json
-["lambda", [], ["+", 4, 6], "this function return string"]
+["lambda", [], ["+", 4, 6], "this function returns a string"]
 ```
+
+---
 
 ## message
 
 ```json
-["message", "title: string", "text: string"]
+["message", {"title": "String"}, {"text": "String"}] => 1
 ```
 
-Create a message box where the first argument specifies the title and the second argument specifies the message body.
-The function returns the ID of the pressed button.
+Creates a message box. The first argument is the title, and the second is the body text.  
+Returns the ID of the button pressed (currently only `1` is supported, corresponding to `IDOK` in C/C++).
+
+---
 
 ## =
 
 ```json
-["=", "variable: string", "value: any"]
+["=", {"variable": "LString"}, {"value": "Any"}] -> {"value": "AnyVariable"}
 ```
 
-Assign the second argument's value to the variable named in the first argument, then return the assigned value.
+Assigns the second argument’s value to the variable named by the first argument. Returns the assigned value.
+
+---
 
 ## $
 
 ```json
-["$", "variable: string"]
+["$", {"variable": "LString"}] -> {"value": "AnyVariable"}
 ```
 
-Retrieve and return the value of the specified variable.
+Retrieves and returns the value of the specified variable.
