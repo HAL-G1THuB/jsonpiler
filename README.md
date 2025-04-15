@@ -12,8 +12,7 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 
 ## What's New
 
-- The program now sets the **exit code** to the return value when the entire program evaluates to an `int`.
-- Lambda functions now return a value **only if** their return type is `int`.
+- Fixed a bug in the evaluation order.
 
 ## Prerequisites
 
@@ -32,13 +31,6 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 
 ```bash
 cargo install jsompiler
-cd jsompiler
-cargo run --release -- (input_json_file in UTF-8)
-```
-
-## Command Syntax
-
-```bash
 jsompiler (input_json_file in UTF-8)
 ```
 

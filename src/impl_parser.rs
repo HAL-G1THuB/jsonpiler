@@ -1,23 +1,23 @@
 //! Implementation of the parser inside the `Jsompiler`.
-use super::{JResult, JValue, Jsompiler, Json, ParserContext, utility::format_err};
+use super::{JResult, JValue, Jsompiler, Json, ParseInfo, utility::format_err};
 use core::{char::from_u32, error::Error};
 use std::collections::HashMap;
 impl Jsompiler {
   /// Create parse error.
   fn err_parse(&self, text: &str) -> JResult {
-    Err(format_err(text, self.ctx.pos, self.ctx.line, &self.source).into())
+    Err(format_err(text, self.info.pos, self.info.line, &self.source).into())
   }
   /// Checks if the next character in the input code matches the expected character.
   fn expect(&mut self, expected: char) -> Result<(), Box<dyn Error>> {
-    if self.source[self.ctx.pos..].starts_with(expected) {
+    if self.source[self.info.pos..].starts_with(expected) {
       self.next()?;
       Ok(())
     } else {
       Err(
         format_err(
           &format!("Expected character '{expected}' not found."),
-          self.ctx.pos,
-          self.ctx.line,
+          self.info.pos,
+          self.info.line,
           &self.source,
         )
         .into(),
@@ -27,30 +27,24 @@ impl Jsompiler {
   /// Advances the current position in the input code and returns the next character.
   fn next(&mut self) -> Result<char, Box<dyn Error>> {
     let ch = self.peek()?;
-    self.ctx.pos = self.ctx.pos.checked_add(ch.len_utf8()).ok_or("PosOverflowError")?;
+    self.info.pos = self.step(ch.len_utf8())?;
     Ok(ch)
   }
   /// Parses the entire input code and returns the resulting `Json` object.
-  ///
   /// # Arguments
-  ///
   /// * `code` - The input code to parse.
-  ///
   /// # Returns
-  ///
   /// * `Ok(Json)` - The parsed `Json` object.
   /// * `Err(Box<dyn Error>)` - An error if the input code is invalid.
-  ///
   /// # Errors
-  ///
   /// * `Box<dyn Error>` - An error if the input code is invalid.
   #[inline]
   pub(crate) fn parse(&mut self, code: String) -> JResult {
     self.source = code;
-    self.ctx = ParserContext { pos: 0, line: 0 };
+    self.info = ParseInfo { pos: 0, line: 1 };
     let result = self.parse_value()?;
     self.skip_ws()?;
-    if self.ctx.pos == self.source.len() {
+    if self.info.pos == self.source.len() {
       Ok(result)
     } else {
       self.err_parse("Unexpected trailing characters")
@@ -58,22 +52,22 @@ impl Jsompiler {
   }
   /// Parses an array from the input code.
   fn parse_array(&mut self) -> JResult {
-    let start_pos = self.ctx.pos;
-    let start_ln = self.ctx.line;
-    let mut array = Vec::new();
+    let start_pos = self.info.pos;
+    let start_ln = self.info.line;
+    let mut array = vec![];
     self.expect('[')?;
     self.skip_ws()?;
-    if self.source[self.ctx.pos..].starts_with(']') {
-      self.ctx.pos = self.ctx.pos.checked_add(1).ok_or("PosOverflowError")?;
+    if self.source[self.info.pos..].starts_with(']') {
+      self.info.pos = self.step(1)?;
       return Ok(Json { pos: start_pos, line: start_ln, value: JValue::Array(array) });
     }
     loop {
       array.push(self.parse_value()?);
-      if self.source[self.ctx.pos..].starts_with(']') {
-        self.ctx.pos = self.ctx.pos.checked_add(1).ok_or("PosOverflowError")?;
+      if self.source[self.info.pos..].starts_with(']') {
+        self.info.pos = self.step(1)?;
         return Ok(Json { pos: start_pos, line: start_ln, value: JValue::Array(array) });
-      } else if self.source[self.ctx.pos..].starts_with(',') {
-        self.ctx.pos = self.ctx.pos.checked_add(1).ok_or("PosOverflowError")?;
+      } else if self.source[self.info.pos..].starts_with(',') {
+        self.info.pos = self.step(1)?;
       } else {
         return self.err_parse("Invalid array separator");
       }
@@ -81,32 +75,34 @@ impl Jsompiler {
   }
   /// Parses a specific name and returns a `Json` object with the associated value.
   fn parse_name(&mut self, name: &str, val: JValue) -> JResult {
-    if self.source[self.ctx.pos..].starts_with(name) {
-      let start = self.ctx.pos;
-      self.ctx.pos = self.ctx.pos.checked_add(name.len()).ok_or("PosOverflowError")?;
-      Ok(Json { pos: start, line: self.ctx.line, value: val })
+    if self.source[self.info.pos..].starts_with(name) {
+      let start = self.info.pos;
+      self.info.pos = self.step(name.len())?;
+      Ok(Json { pos: start, line: self.info.line, value: val })
     } else {
       self.err_parse(&format!("Failed to parse '{name}'"))
     }
   }
   /// Parses a number (integer or float) from the input code.
   fn parse_number(&mut self) -> JResult {
-    let start = self.ctx.pos;
+    let start = self.info.pos;
     let mut num_str = String::new();
     let mut has_decimal = false;
     let mut has_exponent = false;
-    if self.source[self.ctx.pos..].starts_with('-') {
+    if self.source[self.info.pos..].starts_with('-') {
       num_str.push('-');
       self.next()?;
     }
-    if self.source[self.ctx.pos..].starts_with('0') {
-      num_str.push('0');
-      self.next()?;
-      if matches!(self.peek()?, ch if ch.is_ascii_digit()) {
-        return self.err_parse("Leading zeros are not allowed in numbers");
+    let num_char = self.peek()?;
+    match num_char {
+      '0' => {
+        num_str.push('0');
+        self.next()?;
+        if matches!(self.peek()?, ch if ch.is_ascii_digit()) {
+          return self.err_parse("Leading zeros are not allowed in numbers");
+        }
       }
-    } else if matches!(self.peek()?, '1'..='9') {
-      loop {
+      '1'..='9' => loop {
         let ch = self.peek()?;
         if ch.is_ascii_digit() {
           num_str.push(ch);
@@ -114,9 +110,8 @@ impl Jsompiler {
         } else {
           break;
         }
-      }
-    } else {
-      return self.err_parse("Invalid number format.");
+      },
+      _ => return self.err_parse("Invalid number format."),
     }
     if matches!(self.peek()?, '.') {
       has_decimal = true;
@@ -155,27 +150,27 @@ impl Jsompiler {
         }
       }
     }
-    if !has_decimal && !has_exponent {
-      num_str.parse::<i64>().map_or_else(
-        |_| self.err_parse("Invalid numeric value."),
-        |int_val| Ok(Json { pos: start, line: self.ctx.line, value: JValue::Int(int_val) }),
-      )
-    } else {
+    if has_decimal || has_exponent {
       num_str.parse::<f64>().map_or_else(
         |_| self.err_parse("Invalid numeric value."),
-        |float_val| Ok(Json { pos: start, line: self.ctx.line, value: JValue::Float(float_val) }),
+        |float_val| Ok(Json { pos: start, line: self.info.line, value: JValue::Float(float_val) }),
+      )
+    } else {
+      num_str.parse::<i64>().map_or_else(
+        |_| self.err_parse("Invalid numeric value."),
+        |int_val| Ok(Json { pos: start, line: self.info.line, value: JValue::Int(int_val) }),
       )
     }
   }
   /// Parses an object from the input code.
   fn parse_object(&mut self) -> JResult {
-    let start_pos = self.ctx.pos;
-    let start_ln = self.ctx.line;
+    let start_pos = self.info.pos;
+    let start_ln = self.info.line;
     let mut object = HashMap::new();
     self.expect('{')?;
     self.skip_ws()?;
-    if self.source[self.ctx.pos..].starts_with('}') {
-      self.ctx.pos = self.ctx.pos.checked_add(1).ok_or("PosOverflowError")?;
+    if self.source[self.info.pos..].starts_with('}') {
+      self.info.pos = self.step(1)?;
       return Ok(Json { pos: start_pos, line: start_ln, value: JValue::Object(object) });
     }
     loop {
@@ -186,12 +181,12 @@ impl Jsompiler {
       self.expect(':')?;
       let value = self.parse_value()?;
       object.insert(string, value);
-      if self.source[self.ctx.pos..].starts_with('}') {
-        self.ctx.pos = self.ctx.pos.checked_add(1).ok_or("PosOverflowError")?;
+      if self.source[self.info.pos..].starts_with('}') {
+        self.info.pos = self.step(1)?;
         return Ok(Json { pos: start_pos, line: start_ln, value: JValue::Object(object) });
       }
-      if self.source[self.ctx.pos..].starts_with(',') {
-        self.ctx.pos = self.ctx.pos.checked_add(1).ok_or("PosOverflowError")?;
+      if self.source[self.info.pos..].starts_with(',') {
+        self.info.pos = self.step(1)?;
       } else {
         return self.err_parse("Invalid object separator.");
       }
@@ -199,16 +194,18 @@ impl Jsompiler {
   }
   /// Parses a string from the input code.
   fn parse_string(&mut self) -> JResult {
-    if !self.source[self.ctx.pos..].starts_with('\"') {
+    if !self.source[self.info.pos..].starts_with('\"') {
       return self.err_parse("Missing opening quotation for string.");
     }
-    let start = self.ctx.pos;
-    self.ctx.pos = self.ctx.pos.checked_add(1).ok_or("PosOverflowError")?;
+    let start = self.info.pos;
+    self.info.pos = self.step(1)?;
     let mut result = String::new();
-    while self.ctx.pos < self.source.len() {
+    while self.info.pos < self.source.len() {
       let ch = self.next()?;
       match ch {
-        '\"' => return Ok(Json { pos: start, line: self.ctx.line, value: JValue::String(result) }),
+        '\"' => {
+          return Ok(Json { pos: start, line: self.info.line, value: JValue::String(result) });
+        }
         '\n' => return self.err_parse("Invalid line breaks in strings."),
         '\\' => {
           let escaped = self.next()?;
@@ -247,7 +244,7 @@ impl Jsompiler {
   /// Parses a value from the input code.
   fn parse_value(&mut self) -> JResult {
     self.skip_ws()?;
-    if self.ctx.pos >= self.source.len() {
+    if self.info.pos >= self.source.len() {
       return self.err_parse("Unexpected end of text.");
     }
     let result = match self.peek()? {
@@ -265,7 +262,7 @@ impl Jsompiler {
   }
   /// Peek next character.
   fn peek(&mut self) -> Result<char, Box<dyn Error>> {
-    self.source[self.ctx.pos..].chars().next().ok_or("Reached end of text.".into())
+    self.source[self.info.pos..].chars().next().ok_or("Reached end of text.".into())
   }
   /// Skips whitespace characters in the input code.
   fn skip_ws(&mut self) -> Result<(), Box<dyn Error>> {
@@ -273,12 +270,16 @@ impl Jsompiler {
       let Ok(ch) = self.peek() else { break Ok(()) };
       if ch.is_whitespace() {
         if ch == '\n' {
-          self.ctx.line = self.ctx.line.checked_add(1).ok_or("LineOverflowError")?;
+          self.info.line = self.info.line.checked_add(1).ok_or("LineOverflowError")?;
         }
-        self.ctx.pos = self.ctx.pos.checked_add(ch.len_utf8()).ok_or("PosOverflowError")?;
+        self.info.pos = self.step(ch.len_utf8())?;
       } else {
         break Ok(());
       }
     }
+  }
+  /// Advance pos.
+  fn step(&mut self, num: usize) -> Result<usize, &str> {
+    self.info.pos.checked_add(num).ok_or("PosOverflowError")
   }
 }

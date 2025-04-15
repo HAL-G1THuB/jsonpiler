@@ -3,14 +3,10 @@ use super::{JValue, utility::escape_string};
 use core::fmt;
 impl JValue {
   /// Recursively writes the `Json` value to the formatter, with indentation based on depth.
-  ///
   /// # Arguments
-  ///
   /// * `out` - A mutable reference to the `fmt::Formatter`, where the formatted output is written.
   /// * `depth` - The current depth of the nested structure, used to control the indentation.
-  ///
   /// # Returns
-  ///
   /// * `fmt::Result` - The result of the formatting operation, indicating success or failure.
   fn write_json(&self, out: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     match *self {
@@ -68,13 +64,9 @@ impl JValue {
 }
 impl fmt::Display for JValue {
   /// Formats the `Json` object as a human-readable string.
-  ///
   /// # Arguments
-  ///
   /// * `f: fmt::Formatter`  - Used to write the formatted string.
-  ///
   /// # Returns
-  ///
   /// * `fmt::Result` - The result of the formatting operation, indicating success or failure.
   #[expect(clippy::min_ident_chars, reason = "default name is 'f'")]
   #[inline]

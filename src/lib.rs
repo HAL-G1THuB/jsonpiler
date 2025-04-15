@@ -1,5 +1,5 @@
 //! (main.rs)
-//! ```rust
+//! ```should_panic
 //! fn main() -> ! {
 //!  jsompiler::run()
 //!}
@@ -8,7 +8,7 @@ mod impl_compiler;
 mod impl_object;
 mod impl_parser;
 mod impl_value;
-pub mod utility;
+mod utility;
 use core::error::Error;
 use std::{
   collections::HashMap,
@@ -18,11 +18,19 @@ use std::{
 };
 use utility::error_exit;
 /// Built-in function types.
-type JFunc<T> = fn(&mut T, &[Json], &mut String) -> Result<JValue, Box<dyn Error>>;
+#[derive(Debug, Clone)]
+/// Built-in function.
+pub(crate) struct BuiltinFunc<T> {
+  /// Should arguments already be evaluated.
+  pub evaluated: bool,
+  /// Pointer of function.
+  pub func: JFunc<T>,
+}
+type JFunc<T> = fn(&mut T, &Json, &[Json], &mut String) -> JFuncResult;
 /// Contain `JValue` or `Box<dyn Error>`.
 type JFuncResult = Result<JValue, Box<dyn Error>>;
 /// Represents a JSON object with key-value pairs.
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct JObject {
   /// Stores the key-value pairs in insertion order.
   entries: Vec<(String, JValue)>,
@@ -33,7 +41,6 @@ pub(crate) struct JObject {
 type JResult = Result<Json, Box<dyn Error>>;
 /// Type and value information.
 #[derive(Debug, Clone, Default)]
-#[non_exhaustive]
 pub(crate) enum JValue {
   /// Array.
   Array(Vec<Json>),
@@ -81,10 +88,10 @@ pub(crate) enum JValue {
 pub struct Jsompiler {
   /// Global variables (now on Unused).
   _globals: HashMap<String, JValue>,
-  /// Information to be used during parsing.
-  ctx: ParserContext,
   /// Built-in function table.
-  f_table: HashMap<String, JFunc<Self>>,
+  f_table: HashMap<String, BuiltinFunc<Self>>,
+  /// Information to be used during parsing.
+  info: ParseInfo,
   /// Section of the assembly.
   sect: Section,
   /// Seed to generate label names.
@@ -96,18 +103,17 @@ pub struct Jsompiler {
 }
 /// Json object.
 #[derive(Debug, Clone, Default)]
-#[non_exhaustive]
 pub(crate) struct Json {
   /// Line number of objects in the source code.
-  pub line: usize,
+  line: usize,
   /// Location of objects in the source code.
-  pub pos: usize,
+  pos: usize,
   /// Type and value information.
-  pub value: JValue,
+  value: JValue,
 }
 /// Information to be used during parsing.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct ParserContext {
+pub(crate) struct ParseInfo {
   /// Line number of the part being parsed.
   line: usize,
   /// Location of the part being parsed.
@@ -124,10 +130,8 @@ pub(crate) struct Section {
   text: String,
 }
 /// Runs the Jsompiler, compiling and executing a JSON-based program.
-///
 /// This is the main function of the Jsompiler.
 /// It runs the full compilation process, step by step:
-///
 /// 1. **Argument Parsing:** first command-line argument is the path to the input JSON file.
 /// 2. **File Reading:** It reads the content of the specified JSON file into a string.
 /// 3. **Parsing:** Converts the JSON text into an internal `Json` data structure.
@@ -136,14 +140,10 @@ pub(crate) struct Section {
 /// 6. **Linking:** It links the `.obj` file with necessary libraries to create an `.exe` file.
 /// 7. **Execution:** It executes the generated `.exe` file.
 /// 8. **Exit Code Handling:** It exits with the exit code of the executed program.
-///
 /// # Panics
-///
 /// This function uses external commands (`as` and `ld`) for assembly and linking.
 /// Ensure that these commands are available in the system's PATH.
-///
 /// This function will panic if:
-///
 /// *   The program is not run on Windows.
 /// *   The number of command-line arguments is not exactly two.
 /// *   The input file cannot be read.
@@ -156,26 +156,17 @@ pub(crate) struct Section {
 /// *   The program fails to retrieve the exit code.
 /// *   The current directory cannot be retrieved.
 /// *   The filename is invalid.
-///
 /// # Errors
-///
 /// This function does not return a `Result` type,
 /// but instead uses `error_exit` to terminate the program with an error message.
-///
-///
 /// # Examples
-///
 /// ```sh
 /// # Assuming you have a JSON file named "test.json"
 /// ./jsompiler test.json
 /// ```
-///
 /// # Platform Specific
-///
 /// This function is designed to work exclusively on Windows operating systems.
-///
 /// # Exits
-///
 /// This function will exit the program with the exit code of the executed program.
 /// If any error occurs during the process, it will exit with code 1.
 #[inline]
@@ -191,36 +182,29 @@ pub fn run() -> ! {
     .unwrap_or_else(|err| error_exit(&format!("Failed to read file ({input_file}): {err}")));
   let mut jsompiler = Jsompiler::default();
   let file = Path::new(input_file);
-  let obj_file = file.with_extension("obj");
-  let exe_file = file.with_extension("exe");
-  let asm_file = file.with_extension("s");
+  let with_s = file.with_extension("s");
+  let asm = &with_s.to_string_lossy().to_string();
+  let with_obj = file.with_extension("obj");
+  let obj = &with_obj.to_string_lossy().to_string();
+  let with_exe = file.with_extension("exe");
+  let exe = &with_exe.to_string_lossy().to_string();
   jsompiler
-    .build(
-      source,
-      input_file,
-      asm_file.to_str().unwrap_or_else(|| error_exit("File name isn't UTF-8.")),
-    )
-    .unwrap_or_else(|err| error_exit(&format!("CompileError: {err}")));
-  if !Command::new("as")
-    .args([
-      asm_file.to_str().unwrap_or_else(|| error_exit("File name isn't UTF-8.")),
-      "-o",
-      obj_file.to_str().unwrap_or_else(|| error_exit("File name isn't UTF-8.")),
-    ])
+    .build(source, input_file, asm)
+    .unwrap_or_else(|err| error_exit(&format!("Error: {err}")));
+  (!Command::new("as")
+    .args([asm, "-o", obj])
     .status()
     .unwrap_or_else(|err| error_exit(&format!("Failed to assemble: {err}")))
-    .success()
-  {
-    error_exit("Assembling process returned Bad status.")
-  }
+    .success())
+  .then(|| error_exit("Assembling process returned Bad status."));
   #[cfg(not(debug_assertions))]
-  fs::remove_file(asm_file)
-    .unwrap_or_else(|err| error_exit(&format!("Failed to remove '.asm': {err}")));
-  if !Command::new("ld")
+  fs::remove_file(asm)
+    .unwrap_or_else(|err| error_exit(&format!("Failed to remove '{asm}': {err}")));
+  (!Command::new("ld")
     .args([
-      obj_file.to_str().unwrap_or_else(|| error_exit("File name isn't UTF-8.")),
+      obj,
       "-o",
-      exe_file.to_str().unwrap_or_else(|| error_exit("File name isn't UTF-8.")),
+      exe,
       "-LC:/Windows/System32",
       "-luser32",
       "-lkernel32",
@@ -230,16 +214,14 @@ pub fn run() -> ! {
     ])
     .status()
     .unwrap_or_else(|err| error_exit(&format!("Failed to link: {err}")))
-    .success()
-  {
-    error_exit("Linking process returned Bad status.")
-  }
+    .success())
+  .then(|| error_exit("Linking process returned Bad status."));
   #[cfg(not(debug_assertions))]
-  fs::remove_file(obj_file)
-    .unwrap_or_else(|err| error_exit(&format!("Failed to remove '.obj': {err}")));
+  fs::remove_file(obj)
+    .unwrap_or_else(|err| error_exit(&format!("Failed to remove '{obj}': {err}")));
   let mut path = env::current_dir()
     .unwrap_or_else(|err| error_exit(&format!("Failed to get current directory: {err}")));
-  path.push(&exe_file);
+  path.push(exe);
   let exit_code = Command::new(path)
     .args(args.get(2..).unwrap_or(&[]))
     .spawn()
