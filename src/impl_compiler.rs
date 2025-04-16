@@ -423,7 +423,7 @@ impl Jsompiler {
     write!(
       function,
       include_str!("asm/message.s"),
-      msg, msg, wmsg, title, title, wtitle, wmsg, wtitle, ret, wmsg, wtitle
+      msg, wmsg, title, wtitle, wmsg, wtitle, ret, wmsg, wtitle
     )?;
     Ok(JValue::IntVar(ret))
   }

@@ -12,6 +12,8 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 
 ## What's New
 
+- Add MerMaid to README.md
+- Optimize message box functions.
 - Fixed a bug in the evaluation order.
 
 ## Prerequisites
@@ -59,3 +61,18 @@ as the final value of the `begin` block.
 ## Function Documentation
 
 [Function Reference (Markdown)](https://github.com/HAL-G1THuB/jsompiler/tree/main/docs/functions.md)
+
+## Execution
+
+```mermaid
+graph TD
+  A[file.json] --> B{Jsompiler}
+  B -->|Parse| C([AST])
+  C -->|Compile| D[file.s]
+  D --> |Assembling with GNU AS| E[file.obj]
+  E --> |Linking with GNU LD| F[file.exe]
+  S[C:\System32\] --> KERNEL32[kernel32.dll] --> F[file.exe]
+  S[C:\System32\] --> USER32[user32.dll] --> F[file.exe]
+  S[C:\System32\] --> UCRTBASE[ucrtbase.dll] --> F[file.exe]
+  F --> Execute[(Execute!)]
+```

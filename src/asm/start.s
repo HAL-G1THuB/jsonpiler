@@ -12,11 +12,11 @@ _start:
   .seh_handler .L_SEH_HANDLER, @except
   mov ecx, 65001
   call [qword ptr __imp_SetConsoleCP[rip]]
-  test rax, rax
+  test eax, eax
   jz .L_WIN_HANDLER
   mov ecx, 65001
   call [qword ptr __imp_SetConsoleOutputCP[rip]]
-  test rax, rax
+  test eax, eax
   jz .L_WIN_HANDLER
   mov ecx, -10
   call [qword ptr __imp_GetStdHandle[rip]]
