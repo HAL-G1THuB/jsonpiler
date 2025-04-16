@@ -4,8 +4,8 @@
 
 - `-> T` — Returns a value of type `T`  
 - `=> V` — Evaluates to the value `V`  
-- `L...` — Literal(s) of type `...`  
-- `"..."` — Zero or more arguments following the previous pattern  
+- `L...` — A literal of type `...`  
+- `"..."` — Zero or more arguments matching the previous pattern  
 
 ---
 
@@ -15,7 +15,7 @@
 ["begin", {"expr": "Any"}, "...", {"return_value": "Any"}] -> {"return_value": "Any"}
 ```
 
-Evaluates each expression sequentially and returns the value of the last one.
+Evaluates each expression in sequence and returns the value of the last one.
 
 ```json
 ["begin", ["+", 1, 3], 0] => 0
@@ -43,7 +43,7 @@ Adds all operands and returns the result.
 ["-", {"minuend": "Int"}, {"subtrahend": "Int"}, "..."] -> {"return_value": "Int"}
 ```
 
-Subtracts all following operands from the first operand and returns the result.
+Subtracts all subsequent operands from the first operand and returns the result.
 
 ```json
 ["-", 30, 5, ["+", 4, 6]] => 15
@@ -57,7 +57,9 @@ Subtracts all following operands from the first operand and returns the result.
 ["lambda", {"params": "empty [] (todo)"}, {"body": "Any"}, "..."] -> "Function"
 ```
 
-Creates a function. The first argument is the parameter list, and the rest are the function body expressions. Returns the created function.
+Creates a function.  
+The first argument is the parameter list, and the remaining arguments are treated as expressions in the function body.  
+Returns the created function object.
 
 ```json
 ["lambda", [], ["+", 4, 6], "this function returns a string"]
@@ -71,25 +73,27 @@ Creates a function. The first argument is the parameter list, and the rest are t
 ["message", {"title": "String"}, {"text": "String"}] => 1
 ```
 
-Creates a message box. The first argument is the title, and the second is the body text.  
-Returns the ID of the button pressed (currently only `1` is supported, corresponding to `IDOK` in C/C++).
+Displays a message box.  
+The first argument specifies the title, and the second specifies the message body.  
+Returns the ID of the button pressed (currently always `1`, corresponding to `IDOK` in C/C++).
 
 ---
 
 ## =
 
 ```json
-["=", {"variable": "LString"}, {"value": "Any"}] -> {"value": "AnyVariable"}
+["=", {"variable": "LString"}, {"value": "Any"}] -> {"value": "Any (non-Literal)"}
 ```
 
-Assigns the second argument’s value to the variable named by the first argument. Returns the assigned value.
+Assigns the value of the second argument to the variable named by the first argument.  
+Returns the assigned value.
 
 ---
 
 ## $
 
 ```json
-["$", {"variable": "LString"}] -> {"value": "AnyVariable"}
+["$", {"variable": "LString"}] -> {"value": "Any (non-Literal)"}
 ```
 
-Retrieves and returns the value of the specified variable.
+Retrieves and returns the value associated with the specified variable.

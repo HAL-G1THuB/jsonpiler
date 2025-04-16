@@ -12,6 +12,8 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 
 ## What's New
 
+- **Objects now preserve insertion order.**
+- **Object values are now evaluated in insertion order.**
 - Add MerMaid to README.md
 - Optimize message box functions.
 - Fixed a bug in the evaluation order.

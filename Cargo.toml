@@ -1,6 +1,6 @@
 [package]
 name = "jsonpiler"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
 documentation = "https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html"
@@ -32,4 +32,3 @@ string_slice = "allow"
 pub-with-shorthand = "allow"
 blanket_clippy_restriction_lints = "allow"
 multiple_inherent_impl = "allow"
-print_stdout = "allow"

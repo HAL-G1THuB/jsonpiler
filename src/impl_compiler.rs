@@ -1,23 +1,19 @@
 //! Implementation of the compiler inside the `Jsonpiler`.
 extern crate alloc;
 use super::{
-  BuiltinFunc, JFunc, JFuncResult, JResult, JValue, Jsonpiler, Json, Section,
+  BuiltinFunc, JFunc, JFuncResult, JObject, JResult, JValue, Json, Jsonpiler, Section,
   utility::{format_err, obj_json},
 };
 use alloc::borrow::Cow;
 use core::{error::Error, fmt::Write as _};
-use std::fs::File;
-use std::io::{self, BufWriter, Write as _};
+use std::{
+  fs::File,
+  io::{self, BufWriter, Write as _},
+};
 impl Jsonpiler {
   /// Assert condition.
-  #[expect(clippy::panic_in_result_fn, reason = "panic don't occurred")]
   fn assert(&self, cond: bool, text: &str, obj: &Json) -> Result<(), Box<dyn Error>> {
-    if cond {
-      assert!(cond, "{text}");
-      Ok(())
-    } else {
-      Err(format_err(text, obj.pos, obj.line, &self.source).into())
-    }
+    cond.then_some(()).ok_or_else(|| format_err(text, &obj.info, &self.source).into())
   }
   /// Builds the assembly code from the parsed JSON.
   /// This function is the main entry point for the compilation process. It takes the parsed JSON,
@@ -52,21 +48,12 @@ impl Jsonpiler {
       "  {}
   call [qword ptr __imp_ExitProcess[rip]]
   .seh_endproc",
-      match result.value {
-        JValue::Int(int) => format!("mov rcx, {int}"),
-        JValue::IntVar(ref var) => format!("mov rcx, qword ptr {var}[rip]"),
-        JValue::Array(_)
-        | JValue::ArrayVar(_)
-        | JValue::Bool(_)
-        | JValue::BoolVar(..)
-        | JValue::Float(_)
-        | JValue::FloatVar(_)
-        | JValue::FuncVar { .. }
-        | JValue::Null
-        | JValue::Object(_)
-        | JValue::ObjectVar(_)
-        | JValue::String(_)
-        | JValue::StringVar(_) => "xor ecx, ecx".into(),
+      if let JValue::Int(int) = result.value {
+        format!("mov rcx, {int}")
+      } else if let JValue::IntVar(ref var) = result.value {
+        format!("mov rcx, qword ptr {var}[rip]")
+      } else {
+        "xor ecx, ecx".into()
       }
     )?;
     self.write_file(&start, filename, json_file)?;
@@ -74,99 +61,76 @@ impl Jsonpiler {
   }
   /// Create compile error.
   fn err_compile(&self, text: &str, obj: &Json) -> JResult {
-    Err(format_err(text, obj.pos, obj.line, &self.source).into())
+    Err(format_err(text, &obj.info, &self.source).into())
   }
   /// Create function error.
   fn err_func(&self, text: &str, obj: &Json) -> JFuncResult {
-    Err(format_err(text, obj.pos, obj.line, &self.source).into())
+    Err(format_err(text, &obj.info, &self.source).into())
   }
   /// Evaluates a JSON object.
   fn eval(&mut self, parsed: &Json, function: &mut String) -> JResult {
+    const ERR: &str = "Unreachable (eval)";
     let JValue::Array(ref list) = parsed.value else {
-      return Ok(parsed.clone());
+      let JValue::Object(ref object) = parsed.value else { return Ok(parsed.clone()) };
+      let mut evaluated = JObject::default();
+      for kv in object.iter() {
+        evaluated.insert(kv.0.clone(), self.eval(&kv.1, function)?);
+      }
+      return Ok(obj_json(JValue::Object(evaluated), parsed.info.clone()));
     };
-    self.assert(!list.is_empty(), "An function call cannot be an empty list.", parsed)?;
-    let first = list.first().ok_or("Unreachable (eval)")?;
-    match first.value {
-      JValue::String(ref cmd) => {
-        if cmd == "lambda" {
-          let mut func_buffer = String::new();
-          let result = Ok(self.eval_lambda(parsed, &mut func_buffer)?);
-          self.sect.text.push_str(&func_buffer);
-          result
-        } else if self.f_table.contains_key(cmd.as_str()) {
-          let evaluated;
-          {
-            let func = self.f_table.get_mut(cmd.as_str()).ok_or("Unreachable (eval)")?;
-            evaluated = func.evaluated;
-          };
-          let args = if evaluated {
-            Cow::Owned(self.eval_args(list.get(1..).unwrap_or(&[]), function)?)
-          } else {
-            Cow::Borrowed(list.get(1..).unwrap_or(&[]))
-          };
-          let func = self.f_table.get_mut(cmd.as_str()).ok_or("Unreachable (eval)")?;
-          Ok(obj_json((func.func)(self, first, &args, function)?, first))
-        } else {
-          self.err_compile(
-            &format!("Function {cmd} is undefined."),
-            list.first().ok_or("Unreachable (eval)")?,
-          )
-        }
-      }
-      JValue::Array(_) => {
+    let Some(first) = list.first() else {
+      return self.err_compile("An function call cannot be an empty list.", parsed);
+    };
+    if let JValue::String(ref cmd) = first.value {
+      if cmd == "lambda" {
         let mut func_buffer = String::new();
-        let tmp = self.vars.clone();
-        let lambda =
-          self.eval_lambda(list.first().ok_or("Unreachable (eval)")?, &mut func_buffer)?;
-        let JValue::FuncVar { name: ref n, ret: ref re, .. } = lambda.value else {
-          return self.err_compile("Unreachable (eval)", &lambda);
-        };
+        let result = Ok(self.eval_lambda(parsed, &mut func_buffer)?);
         self.sect.text.push_str(&func_buffer);
-        writeln!(function, "  call {n}")?;
-        self.vars = tmp;
-        match **re {
-          JValue::IntVar(_) => {
-            let na = self.get_name()?;
-            writeln!(self.sect.bss, "  .lcomm {na}, 8")?;
-            writeln!(function, "  mov qword ptr {na}[rip], rax")?;
-            Ok(obj_json(JValue::IntVar(na), &lambda))
-          }
-          JValue::Int(_) => {
-            let na = self.get_name()?;
-            writeln!(self.sect.bss, "  .lcomm {na}, 8")?;
-            writeln!(function, "  mov qword ptr {na}[rip], rax")?;
-            Ok(obj_json(JValue::IntVar(na), &lambda))
-          }
-          JValue::Array(_)
-          | JValue::ArrayVar(_)
-          | JValue::Bool(_)
-          | JValue::BoolVar(..)
-          | JValue::Float(_)
-          | JValue::FloatVar(_)
-          | JValue::FuncVar { .. }
-          | JValue::Null
-          | JValue::Object(_)
-          | JValue::ObjectVar(_)
-          | JValue::String(_)
-          | JValue::StringVar(_) => Ok(Json::default()),
-        }
+        result
+      } else if self.f_table.contains_key(cmd.as_str()) {
+        let evaluated;
+        {
+          let func = self.f_table.get_mut(cmd.as_str()).ok_or(ERR)?;
+          evaluated = func.evaluated;
+        };
+        let args = if evaluated {
+          Cow::Owned(self.eval_args(list.get(1..).unwrap_or(&[]), function)?)
+        } else {
+          Cow::Borrowed(list.get(1..).unwrap_or(&[]))
+        };
+        let func = self.f_table.get_mut(cmd.as_str()).ok_or(ERR)?;
+        Ok(obj_json((func.func)(self, first, &args, function)?, first.info.clone()))
+      } else {
+        self.err_compile(&format!("Function {cmd} is undefined."), list.first().ok_or(ERR)?)
       }
-      JValue::ArrayVar(_)
-      | JValue::Bool(_)
-      | JValue::BoolVar(..)
-      | JValue::Float(_)
-      | JValue::FloatVar(_)
-      | JValue::FuncVar { .. }
-      | JValue::Int(_)
-      | JValue::IntVar(_)
-      | JValue::Null
-      | JValue::Object(_)
-      | JValue::ObjectVar(_)
-      | JValue::StringVar(_) => self.err_compile(
+    } else if let JValue::Array(_) = first.value {
+      let mut func_buffer = String::new();
+      let tmp = self.vars.clone();
+      let lambda = self.eval_lambda(list.first().ok_or(ERR)?, &mut func_buffer)?;
+      let JValue::FuncVar { name: ref n, ret: ref re, .. } = lambda.value else {
+        return self.err_compile(ERR, &lambda);
+      };
+      self.sect.text.push_str(&func_buffer);
+      writeln!(function, "  call {n}")?;
+      self.vars = tmp;
+      if let JValue::IntVar(_) = **re {
+        let na = self.get_name()?;
+        writeln!(self.sect.bss, "  .lcomm {na}, 8")?;
+        writeln!(function, "  mov qword ptr {na}[rip], rax")?;
+        Ok(obj_json(JValue::IntVar(na), lambda.info.clone()))
+      } else if let JValue::Int(_) = **re {
+        let na = self.get_name()?;
+        writeln!(self.sect.bss, "  .lcomm {na}, 8")?;
+        writeln!(function, "  mov qword ptr {na}[rip], rax")?;
+        Ok(obj_json(JValue::IntVar(na), lambda.info.clone()))
+      } else {
+        Ok(Json::default())
+      }
+    } else {
+      self.err_compile(
         "The first element of an evaluation list requires a function name or a lambda object.",
         parsed,
-      ),
+      )
     }
   }
   /// Evaluate arguments.
@@ -203,12 +167,12 @@ impl Jsonpiler {
       "PARAMS IS TODO.",
       func_list.get(1).ok_or("Unreachable (eval_lambda)")?,
     )?;
-    let n = self.get_name()?;
+    let name = self.get_name()?;
     writeln!(
       function,
       ".section .text${},\"x\"
-.seh_proc {n}
-{n}:
+.seh_proc {name}
+{name}:
   push rbp
   .seh_pushreg rbp
   mov rbp, rsp
@@ -217,7 +181,7 @@ impl Jsonpiler {
   .seh_stackalloc 32
   .seh_endprologue
   .seh_handler .L_SEH_HANDLER, @except",
-      &n[3..]
+      &name[3..]
     )?;
     let mut ret = JValue::Null;
     for arg in func_list.get(2..).ok_or("Empty lambda body.")? {
@@ -230,24 +194,18 @@ impl Jsonpiler {
   leave
   ret
   .seh_endproc",
-      match ret {
-        JValue::Int(int) => format!("mov rax, {int}"),
-        JValue::IntVar(ref var) => format!("mov rax, qword ptr {var}[rip]"),
-        JValue::Array(_)
-        | JValue::ArrayVar(_)
-        | JValue::Bool(_)
-        | JValue::BoolVar(..)
-        | JValue::Float(_)
-        | JValue::FloatVar(_)
-        | JValue::FuncVar { .. }
-        | JValue::Null
-        | JValue::Object(_)
-        | JValue::ObjectVar(_)
-        | JValue::String(_)
-        | JValue::StringVar(_) => "xor eax, eax".into(),
+      if let JValue::Int(int) = ret {
+        format!("mov rax, {int}")
+      } else if let JValue::IntVar(ref var) = ret {
+        format!("mov rax, qword ptr {var}[rip]")
+      } else {
+        "xor eax, eax".into()
       }
     )?;
-    Ok(obj_json(JValue::FuncVar { name: n, params: params.clone(), ret: Box::new(ret) }, lambda))
+    Ok(obj_json(
+      JValue::FuncVar { name, params: params.clone(), ret: Box::new(ret) },
+      lambda.info.clone(),
+    ))
   }
   /// Evaluates a 'begin' block.
   #[expect(clippy::single_call_fn, reason = "")]
@@ -263,42 +221,20 @@ impl Jsonpiler {
   ) -> JFuncResult {
     self.assert(args.len() >= 2, &format!("'{op}' requires at least two arguments"), first)?;
     let augend = args.first().ok_or("Unreachable (binary_op)")?;
-    match augend.value {
-      JValue::Int(int) => writeln!(function, "  mov rax, {int}")?,
-      JValue::IntVar(ref iv) => writeln!(function, "  mov rax, qword ptr {iv}[rip]")?,
-      JValue::Array(_)
-      | JValue::ArrayVar(_)
-      | JValue::Bool(_)
-      | JValue::BoolVar(..)
-      | JValue::Float(_)
-      | JValue::FloatVar(_)
-      | JValue::FuncVar { .. }
-      | JValue::Null
-      | JValue::Object(_)
-      | JValue::ObjectVar(_)
-      | JValue::String(_)
-      | JValue::StringVar(_) => {
-        return self.err_func(&format!("'{op}' requires integer operands"), augend);
-      }
+    if let JValue::Int(int) = augend.value {
+      writeln!(function, "  mov rax, {int}")?;
+    } else if let JValue::IntVar(ref var) = augend.value {
+      writeln!(function, "  mov rax, qword ptr {var}[rip]")?;
+    } else {
+      return self.err_func(&format!("'{op}' requires integer operands"), augend);
     }
     for addend in args.get(1..).ok_or("Unreachable (binary_op)")? {
-      match addend.value {
-        JValue::Int(int) => writeln!(function, "  {mnemonic} rax, {int}")?,
-        JValue::IntVar(ref var) => writeln!(function, "  {mnemonic} rax, qword ptr {var}[rip]")?,
-        JValue::Array(_)
-        | JValue::ArrayVar(_)
-        | JValue::Bool(_)
-        | JValue::BoolVar(..)
-        | JValue::Float(_)
-        | JValue::FloatVar(_)
-        | JValue::FuncVar { .. }
-        | JValue::Null
-        | JValue::Object(_)
-        | JValue::ObjectVar(_)
-        | JValue::String(_)
-        | JValue::StringVar(_) => {
-          return self.err_func(&format!("'{op}' requires integer operands"), addend);
-        }
+      if let JValue::Int(int) = addend.value {
+        writeln!(function, "  {mnemonic} rax, {int}")?;
+      } else if let JValue::IntVar(ref var) = addend.value {
+        writeln!(function, "  {mnemonic} rax, qword ptr {var}[rip]")?;
+      } else {
+        return self.err_func(&format!("'{op}' requires integer operands"), addend);
       }
     }
     let ret = self.get_name()?;
@@ -309,6 +245,7 @@ impl Jsonpiler {
   /// Gets the value of a local variable.
   #[expect(clippy::single_call_fn, reason = "")]
   fn f_local_get(&mut self, first: &Json, args: &[Json], _: &mut String) -> JFuncResult {
+    self.assert(args.len() == 1, "'$' requires one argument.", first)?;
     let Some(var) = args.first() else {
       return self.err_func("'$' requires one argument.", first);
     };
@@ -322,7 +259,7 @@ impl Jsonpiler {
   }
   /// Sets a local variable.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn f_local_set(&mut self, first: &Json, args: &[Json], function: &mut String) -> JFuncResult {
+  fn f_local_set(&mut self, first: &Json, args: &[Json], _: &mut String) -> JFuncResult {
     self.assert(args.len() == 2, "'=' requires two arguments.", first)?;
     let JValue::String(ref var_name) = args.first().ok_or("Unreachable (f_set_local)")?.value
     else {
@@ -331,88 +268,45 @@ impl Jsonpiler {
         args.first().ok_or("Unreachable (f_set_local)")?,
       );
     };
-    let result = self.eval(args.get(1).ok_or("Unreachable (f_set_local)")?, function)?;
-    match result.value {
-      JValue::String(ref st) => {
-        let n = self.get_name()?;
-        writeln!(self.sect.data, "  {n}: .string \"{st}\"")?;
-        self.vars.insert(var_name.clone(), JValue::StringVar(n.clone()));
-        Ok(JValue::StringVar(n))
-      }
-      JValue::StringVar(ref sv) => {
-        self.vars.insert(var_name.clone(), JValue::StringVar(sv.clone()));
-        Ok(result.value)
-      }
-      JValue::Array(_)
-      | JValue::ArrayVar(_)
-      | JValue::Bool(_)
-      | JValue::BoolVar(..)
-      | JValue::Float(_)
-      | JValue::FloatVar(_)
-      | JValue::FuncVar { .. }
-      | JValue::Int(_)
-      | JValue::IntVar(_)
-      | JValue::Null
-      | JValue::Object(_)
-      | JValue::ObjectVar(_) => self.err_func(
-        "Assignment to an unimplemented type.",
-        args.get(1).ok_or("Unreachable (f_set_local)")?,
-      ),
+    let result = args.get(1).ok_or("Unreachable (f_set_local)")?;
+    if let JValue::String(ref st) = result.value {
+      let name = self.get_name()?;
+      writeln!(self.sect.data, "  {name}: .string \"{st}\"")?;
+      self.vars.insert(var_name.clone(), JValue::StringVar(name.clone()));
+      Ok(JValue::StringVar(name))
+    } else if let JValue::StringVar(ref sv) = result.value {
+      self.vars.insert(var_name.clone(), JValue::StringVar(sv.clone()));
+      Ok(JValue::StringVar(sv.clone()))
+    } else {
+      self.err_func("Assignment to an unimplemented type.", result)
     }
   }
   /// Displays a message box.
   #[expect(clippy::single_call_fn, reason = "")]
   fn f_message(&mut self, first: &Json, args: &[Json], function: &mut String) -> JFuncResult {
     self.assert(args.len() == 2, "'message' requires two arguments.", first)?;
-    let title = match args.first().ok_or("Unreachable (f_message)")?.value {
-      JValue::String(ref st) => {
-        let name = self.get_name()?;
-        writeln!(self.sect.data, "  {name}: .string \"{st}\"")?;
-        name
-      }
-      JValue::StringVar(ref var) => var.clone(),
-      JValue::Array(_)
-      | JValue::ArrayVar(_)
-      | JValue::Bool(_)
-      | JValue::BoolVar(..)
-      | JValue::Float(_)
-      | JValue::FloatVar(_)
-      | JValue::FuncVar { .. }
-      | JValue::Int(_)
-      | JValue::IntVar(_)
-      | JValue::Null
-      | JValue::Object(_)
-      | JValue::ObjectVar(_) => {
-        return self.err_func(
-          "The first argument of message must be a string.",
-          args.first().ok_or("Unreachable (f_message)")?,
-        );
-      }
+    let title_json = args.first().ok_or("Unreachable (f_message)")?;
+    let title = if let JValue::String(ref st) = title_json.value {
+      let name = self.get_name()?;
+      writeln!(self.sect.data, "  {name}: .string \"{st}\"")?;
+      name
+    } else if let JValue::StringVar(ref var) = title_json.value {
+      var.clone()
+    } else {
+      return self.err_func("The first argument of message must be a string.", title_json);
     };
-    let msg = match args.get(1).ok_or("Unreachable (f_message)")?.value {
-      JValue::String(ref st) => {
-        let name = self.get_name()?;
-        writeln!(self.sect.data, "  {name}: .string \"{st}\"")?;
-        name
-      }
-      JValue::StringVar(ref var) => var.clone(),
-      JValue::Array(_)
-      | JValue::ArrayVar(_)
-      | JValue::Bool(_)
-      | JValue::BoolVar(..)
-      | JValue::Float(_)
-      | JValue::FloatVar(_)
-      | JValue::FuncVar { .. }
-      | JValue::Int(_)
-      | JValue::IntVar(_)
-      | JValue::Null
-      | JValue::Object(_)
-      | JValue::ObjectVar(_) => {
-        return self.err_func(
-          "The second argument of message require a string.",
-          args.get(1).ok_or("Unreachable (f_message)")?,
-        );
-      }
+    let msg_json = args.get(1).ok_or("Unreachable (f_message)")?;
+    let msg = if let JValue::String(ref st) = msg_json.value {
+      let name = self.get_name()?;
+      writeln!(self.sect.data, "  {name}: .string \"{st}\"")?;
+      name
+    } else if let JValue::StringVar(ref var) = msg_json.value {
+      var.clone()
+    } else {
+      return self.err_func(
+        "The second argument of message require a string.",
+        args.get(1).ok_or("Unreachable (f_message)")?,
+      );
     };
     let wtitle = self.get_name()?;
     let wmsg = self.get_name()?;
@@ -444,13 +338,12 @@ impl Jsonpiler {
     Ok(format!(".LC{:x}", self.seed))
   }
   /// Registers a function in the function table.
-  fn register(&mut self, name: &str, ev: bool, fu: JFunc<Self>) {
+  fn register(&mut self, name: &str, ev: bool, fu: JFunc) {
     self.f_table.insert(name.into(), BuiltinFunc { evaluated: ev, func: fu });
   }
   /// Writes the compiled assembly code to a file.
   fn write_file(&self, start: &str, filename: &str, json_file: &str) -> io::Result<()> {
-    let file = File::create(filename)?;
-    let mut writer = BufWriter::new(file);
+    let mut writer = BufWriter::new(File::create(filename)?);
     writer.write_all(format!(".file \"{json_file}\"\n.intel_syntax noprefix\n").as_bytes())?;
     writer.write_all(include_bytes!("asm/data.s"))?;
     writer.write_all(self.sect.data.as_bytes())?;
