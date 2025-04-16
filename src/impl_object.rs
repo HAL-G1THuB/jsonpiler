@@ -41,12 +41,9 @@ impl JObject {
   #[inline]
   pub fn insert(&mut self, key: String, value: JValue) -> Option<JValue> {
     if let Some(&idx) = self.idx.get(&key) {
-      if let Some(entry) = self.entries.get_mut(idx) {
-        let old_value = mem::replace(&mut entry.1, value);
-        Some(old_value)
-      } else {
-        None
-      }
+      let entry = self.entries.get_mut(idx)?;
+      let old_value = mem::replace(&mut entry.1, value);
+      Some(old_value)
     } else {
       let index = self.entries.len();
       self.entries.push((key.clone(), value));
@@ -72,19 +69,14 @@ impl JObject {
     self.entries.len()
   }
   /// Removes the entry with the given key and returns its value, if it exists.
-  /// Updates the index map to reflect the removal.
   #[inline]
   pub fn remove(&mut self, key: &String) -> Option<JValue> {
-    if let Some(&remove_idx) = self.idx.get(key) {
-      let (_removed_key, removed_value) = self.entries.remove(remove_idx);
-      self.idx.remove(key);
-      for i in remove_idx..self.entries.len() {
-        let ke = &self.entries.get(i)?.0;
-        self.idx.insert(ke.clone(), i);
-      }
-      Some(removed_value)
-    } else {
-      None
+    let remove_idx = *self.idx.get(key)?;
+    let removed_value = self.entries.remove(remove_idx).1;
+    self.idx.remove(key);
+    for (i, j) in self.entries.iter().enumerate().skip(remove_idx) {
+      self.idx.insert(j.0.clone(), i);
     }
+    Some(removed_value)
   }
 }

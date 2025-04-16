@@ -4,5 +4,5 @@
   .ascii "- Division by zero\n- null pointer dereference\n"
   .ascii "- invalid memory access\n- out-of-bounds array access\n"
   .ascii "- invalid input or arguments\n- stack overflow\n"
-  .ascii "- file not found\n...\000"
+  .asciz "- file not found\n..."
 .data
