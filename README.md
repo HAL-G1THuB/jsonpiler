@@ -23,7 +23,7 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 - `ld` (from MinGW-w64)  
 - `as` (from MinGW-w64)  
 
-**The following DLLs must be present in `C:\System32` for the program to work correctly:**
+**The following DLLs must be present in `C:\Windows\System32` for the program to work correctly:**
 
 - `kernel32.dll`  
 - `user32.dll`  
@@ -71,8 +71,8 @@ graph TD
   C -->|Compile| D[file.s]
   D --> |Assembling with GNU AS| E[file.obj]
   E --> |Linking with GNU LD| F[file.exe]
-  S[C:\System32\] --> KERNEL32[kernel32.dll] --> F[file.exe]
-  S[C:\System32\] --> USER32[user32.dll] --> F[file.exe]
-  S[C:\System32\] --> UCRTBASE[ucrtbase.dll] --> F[file.exe]
+  S[C:\Windows\System32\] --> KERNEL32[kernel32.dll] --> F[file.exe]
+  S --> USER32[user32.dll] --> F[file.exe]
+  S --> UCRTBASE[ucrtbase.dll] --> F[file.exe]
   F --> Execute[(Execute!)]
 ```
