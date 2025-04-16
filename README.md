@@ -12,6 +12,8 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 
 ## What's New
 
+- **Objects now preserve insertion order.**
+- **Object values are now evaluated in insertion order.**
 - Add MerMaid to README.md
 - Optimize message box functions.
 - Fixed a bug in the evaluation order.
@@ -61,6 +63,10 @@ as the final value of the `begin` block.
 ## Function Documentation
 
 [Function Reference (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/docs/functions.md)
+
+## Language Documentation
+
+[Language Reference (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/docs/specification.md)
 
 ## Execution
 

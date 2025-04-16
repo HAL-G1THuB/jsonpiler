@@ -1,11 +1,10 @@
 //! Implementation of the parser inside the `Jsonpiler`.
-use super::{JResult, JValue, Jsonpiler, Json, ParseInfo, utility::format_err};
+use super::{JObject, JResult, JValue, Json, Jsonpiler, ParseInfo, utility::format_err};
 use core::{char::from_u32, error::Error};
-use std::collections::HashMap;
 impl Jsonpiler {
   /// Create parse error.
   fn err_parse(&self, text: &str) -> JResult {
-    Err(format_err(text, self.info.pos, self.info.line, &self.source).into())
+    Err(format_err(text, &self.info, &self.source).into())
   }
   /// Checks if the next character in the input code matches the expected character.
   fn expect(&mut self, expected: char) -> Result<(), Box<dyn Error>> {
@@ -16,8 +15,7 @@ impl Jsonpiler {
       Err(
         format_err(
           &format!("Expected character '{expected}' not found."),
-          self.info.pos,
-          self.info.line,
+          &self.info,
           &self.source,
         )
         .into(),
@@ -52,20 +50,19 @@ impl Jsonpiler {
   }
   /// Parses an array from the input code.
   fn parse_array(&mut self) -> JResult {
-    let start_pos = self.info.pos;
-    let start_ln = self.info.line;
+    let start = self.info.clone();
     let mut array = vec![];
     self.expect('[')?;
     self.skip_ws()?;
     if self.source[self.info.pos..].starts_with(']') {
       self.info.pos = self.step(1)?;
-      return Ok(Json { pos: start_pos, line: start_ln, value: JValue::Array(array) });
+      return Ok(Json { info: start, value: JValue::Array(array) });
     }
     loop {
       array.push(self.parse_value()?);
       if self.source[self.info.pos..].starts_with(']') {
         self.info.pos = self.step(1)?;
-        return Ok(Json { pos: start_pos, line: start_ln, value: JValue::Array(array) });
+        return Ok(Json { info: start, value: JValue::Array(array) });
       } else if self.source[self.info.pos..].starts_with(',') {
         self.info.pos = self.step(1)?;
       } else {
@@ -76,16 +73,16 @@ impl Jsonpiler {
   /// Parses a specific name and returns a `Json` object with the associated value.
   fn parse_name(&mut self, name: &str, val: JValue) -> JResult {
     if self.source[self.info.pos..].starts_with(name) {
-      let start = self.info.pos;
+      let start = self.info.clone();
       self.info.pos = self.step(name.len())?;
-      Ok(Json { pos: start, line: self.info.line, value: val })
+      Ok(Json { info: start, value: val })
     } else {
       self.err_parse(&format!("Failed to parse '{name}'"))
     }
   }
   /// Parses a number (integer or float) from the input code.
   fn parse_number(&mut self) -> JResult {
-    let start = self.info.pos;
+    let start = self.info.clone();
     let mut num_str = String::new();
     let mut has_decimal = false;
     let mut has_exponent = false;
@@ -153,37 +150,36 @@ impl Jsonpiler {
     if has_decimal || has_exponent {
       num_str.parse::<f64>().map_or_else(
         |_| self.err_parse("Invalid numeric value."),
-        |float_val| Ok(Json { pos: start, line: self.info.line, value: JValue::Float(float_val) }),
+        |float_val| Ok(Json { info: start, value: JValue::Float(float_val) }),
       )
     } else {
       num_str.parse::<i64>().map_or_else(
         |_| self.err_parse("Invalid numeric value."),
-        |int_val| Ok(Json { pos: start, line: self.info.line, value: JValue::Int(int_val) }),
+        |int_val| Ok(Json { info: start, value: JValue::Int(int_val) }),
       )
     }
   }
   /// Parses an object from the input code.
   fn parse_object(&mut self) -> JResult {
-    let start_pos = self.info.pos;
-    let start_ln = self.info.line;
-    let mut object = HashMap::new();
+    let start = self.info.clone();
+    let mut object = JObject::default();
     self.expect('{')?;
     self.skip_ws()?;
     if self.source[self.info.pos..].starts_with('}') {
       self.info.pos = self.step(1)?;
-      return Ok(Json { pos: start_pos, line: start_ln, value: JValue::Object(object) });
+      return Ok(Json { info: start, value: JValue::Object(object) });
     }
     loop {
       let key = self.parse_value()?;
       let JValue::String(string) = key.value else {
-        return Err(format_err("Keys must be strings.", key.pos, key.line, &self.source).into());
+        return Err(format_err("Keys must be strings.", &key.info, &self.source).into());
       };
       self.expect(':')?;
       let value = self.parse_value()?;
       object.insert(string, value);
       if self.source[self.info.pos..].starts_with('}') {
         self.info.pos = self.step(1)?;
-        return Ok(Json { pos: start_pos, line: start_ln, value: JValue::Object(object) });
+        return Ok(Json { info: start, value: JValue::Object(object) });
       }
       if self.source[self.info.pos..].starts_with(',') {
         self.info.pos = self.step(1)?;
@@ -197,14 +193,14 @@ impl Jsonpiler {
     if !self.source[self.info.pos..].starts_with('\"') {
       return self.err_parse("Missing opening quotation for string.");
     }
-    let start = self.info.pos;
+    let start_info = self.info.clone();
     self.info.pos = self.step(1)?;
     let mut result = String::new();
     while self.info.pos < self.source.len() {
       let ch = self.next()?;
       match ch {
         '\"' => {
-          return Ok(Json { pos: start, line: self.info.line, value: JValue::String(result) });
+          return Ok(Json { info: start_info, value: JValue::String(result) });
         }
         '\n' => return self.err_parse("Invalid line breaks in strings."),
         '\\' => {

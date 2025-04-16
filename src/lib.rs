@@ -17,23 +17,23 @@ use std::{
   process::{Command, exit},
 };
 use utility::error_exit;
-/// Built-in function types.
-#[derive(Debug, Clone)]
 /// Built-in function.
-pub(crate) struct BuiltinFunc<T> {
+#[derive(Debug, Clone)]
+pub(crate) struct BuiltinFunc {
   /// Should arguments already be evaluated.
   pub evaluated: bool,
   /// Pointer of function.
-  pub func: JFunc<T>,
+  pub func: JFunc,
 }
-type JFunc<T> = fn(&mut T, &Json, &[Json], &mut String) -> JFuncResult;
+/// Built-in function types.
+type JFunc = fn(&mut Jsonpiler, &Json, &[Json], &mut String) -> JFuncResult;
 /// Contain `JValue` or `Box<dyn Error>`.
 type JFuncResult = Result<JValue, Box<dyn Error>>;
 /// Represents a JSON object with key-value pairs.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct JObject {
   /// Stores the key-value pairs in insertion order.
-  entries: Vec<(String, JValue)>,
+  entries: Vec<(String, Json)>,
   /// Maps keys to their index in the entries vector for quick lookup.
   idx: HashMap<String, usize>,
 }
@@ -74,7 +74,7 @@ pub(crate) enum JValue {
   #[default]
   Null,
   /// Object.
-  Object(HashMap<String, Json>),
+  Object(JObject),
   /// Object variable.
   #[expect(dead_code, reason = "todo")]
   ObjectVar(String),
@@ -87,9 +87,7 @@ pub(crate) enum JValue {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Json {
   /// Line number of objects in the source code.
-  line: usize,
-  /// Location of objects in the source code.
-  pos: usize,
+  info: ParseInfo,
   /// Type and value information.
   value: JValue,
 }
@@ -99,7 +97,7 @@ pub struct Jsonpiler {
   /// Global variables (now on Unused).
   _globals: HashMap<String, JValue>,
   /// Built-in function table.
-  f_table: HashMap<String, BuiltinFunc<Self>>,
+  f_table: HashMap<String, BuiltinFunc>,
   /// Information to be used during parsing.
   info: ParseInfo,
   /// Section of the assembly.
@@ -111,7 +109,7 @@ pub struct Jsonpiler {
   /// Variable table.
   vars: HashMap<String, JValue>,
 }
-/// Information to be used during parsing.
+/// line and pos in source code.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ParseInfo {
   /// Line number of the part being parsed.

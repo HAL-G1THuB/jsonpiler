@@ -46,13 +46,13 @@ impl JValue {
       }
       JValue::Object(ref obj) => {
         out.write_str("{\n")?;
-        for (i, (key, value)) in obj.iter().enumerate() {
+        for (i, kv) in obj.iter().enumerate() {
           if i > 0 {
             out.write_str(",\n")?;
           }
           out.write_str(&"  ".repeat(depth.saturating_add(1)))?;
-          write!(out, "\"{}\": ", escape_string(key)?)?;
-          value.value.write_json(out, depth.saturating_add(1))?;
+          write!(out, "\"{}\": ", escape_string(&kv.0)?)?;
+          kv.1.value.write_json(out, depth.saturating_add(1))?;
         }
         out.write_str("\n")?;
         out.write_str(&"  ".repeat(depth))?;

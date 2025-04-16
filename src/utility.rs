@@ -1,5 +1,5 @@
 //! Utility functions.
-use crate::{JValue, Json};
+use crate::{JValue, Json, ParseInfo};
 use core::{
   error::Error,
   fmt::{self, Write as _},
@@ -60,8 +60,9 @@ pub(crate) fn en64(input: &[u8]) -> Result<String, &str> {
   Ok(encoded)
 }
 /// Exit the program with exit code 1.
+#[expect(clippy::print_stderr, reason = "")]
 pub(crate) fn error_exit(text: &str) -> ! {
-  println!("{text}");
+  eprintln!("{text}");
   thread::sleep(Duration::from_secs(1));
   exit(-1)
 }
@@ -96,14 +97,14 @@ pub(crate) fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {
 /// # Errors
 /// `Box<dyn Error>` - Err is always returned.
 #[must_use]
-pub(crate) fn format_err(text: &str, pos: usize, ln: usize, source: &str) -> String {
+pub(crate) fn format_err(text: &str, info: &ParseInfo, source: &str) -> String {
   const MSG1: &str = "\nError occurred on line: ";
   const MSG2: &str = "\nError position:\n";
   if source.is_empty() {
-    return format!("{text}{MSG1}{ln}{MSG2}Error: Empty input");
+    return format!("{text}{MSG1}{}{MSG2}Error: Empty input", info.line);
   }
   let len = source.len();
-  let idx = pos.min(len.saturating_sub(1));
+  let idx = info.pos.min(len.saturating_sub(1));
   let start = if idx == 0 {
     0
   } else {
@@ -111,7 +112,7 @@ pub(crate) fn format_err(text: &str, pos: usize, ln: usize, source: &str) -> Str
       None => 0,
       Some(start_pos) => {
         let Some(res) = start_pos.checked_add(1) else {
-          return format!("{text}{MSG1}{ln}{MSG2}Error: Overflow");
+          return format!("{text}{MSG1}{}{MSG2}Error: Overflow", info.line);
         };
         res
       }
@@ -121,17 +122,17 @@ pub(crate) fn format_err(text: &str, pos: usize, ln: usize, source: &str) -> Str
     None => len,
     Some(end_pos) => {
       let Some(res) = idx.checked_add(end_pos) else {
-        return format!("{text}{MSG1}{ln}{MSG2}Error: Overflow");
+        return format!("{text}{MSG1}{}{MSG2}Error: Overflow", info.line);
       };
       res
     }
   };
   let ws = " ".repeat(idx.saturating_sub(start));
   let result = &source[start..end];
-  format!("{text}{MSG1}{ln}{MSG2}{result}\n{ws}^")
+  format!("{text}{MSG1}{}{MSG2}{result}\n{ws}^", info.line)
 }
 /// Change the value of another Json to create a new Json.
 #[must_use]
-pub(crate) const fn obj_json(val: JValue, obj: &Json) -> Json {
-  Json { pos: obj.pos, line: obj.line, value: val }
+pub(crate) const fn obj_json(val: JValue, inf: ParseInfo) -> Json {
+  Json { info: inf, value: val }
 }
