@@ -1,13 +1,13 @@
-# Jsompiler - JSON Syntax Programming Language
+# Jsonpiler - JSON Syntax Programming Language
 
-**Jsompiler** is a compiler for the JSON Syntax Programming Language.
+**Jsonpiler** is a compiler for the JSON Syntax Programming Language.
 
 This program converts a JSON-based program into GNU Assembly, compiles it, and executes the result.  
 
-- [GitHub Repository](https://github.com/HAL-G1THuB/jsompiler.git)  
-- [Crates.io](https://crates.io/crates/jsompiler)  
-- [Docs.rs](https://docs.rs/jsompiler/latest/jsompiler)  
-- [Fallback documentation (if docs.rs fails)](https://hal-g1thub.github.io/jsompiler-doc/jsompiler/index.html)  
+- [GitHub Repository](https://github.com/HAL-G1THuB/jsonpiler.git)  
+- [Crates.io](https://crates.io/crates/jsonpiler)  
+- [Docs.rs](https://docs.rs/jsonpiler/latest/jsonpiler)  
+- [Fallback documentation (if docs.rs fails)](https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html)  
 🚨 **This program only runs on Windows (x64)!** 🚨
 
 ## What's New
@@ -32,8 +32,8 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 ## Installation & Usage
 
 ```bash
-cargo install jsompiler
-jsompiler (input_json_file in UTF-8)
+cargo install jsonpiler
+jsonpiler (input_json_file in UTF-8)
 ```
 
 Replace `(input_json_file)` with the actual JSON file you want to compile.
@@ -46,7 +46,7 @@ Replace `(input_json_file)` with the actual JSON file you want to compile.
 
 **Execution order:**
 
-The jsompiler code consists of a single JSON object.
+The jsonpiler code consists of a single JSON object.
 
 Expressions inside `begin` are evaluated sequentially.
 
@@ -60,13 +60,13 @@ as the final value of the `begin` block.
 
 ## Function Documentation
 
-[Function Reference (Markdown)](https://github.com/HAL-G1THuB/jsompiler/tree/main/docs/functions.md)
+[Function Reference (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/docs/functions.md)
 
 ## Execution
 
 ```mermaid
 graph TD
-  A[file.json] --> B{Jsompiler}
+  A[file.json] --> B{Jsonpiler}
   B -->|Parse| C([AST])
   C -->|Compile| D[file.s]
   D --> |Assembling with GNU AS| E[file.obj]
