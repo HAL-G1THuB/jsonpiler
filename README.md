@@ -64,6 +64,10 @@ as the final value of the `begin` block.
 
 [Function Reference (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/docs/functions.md)
 
+## Language Documentation
+
+[Language Reference (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/docs/functions.md)
+
 ## Execution
 
 ```mermaid
