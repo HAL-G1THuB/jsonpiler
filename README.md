@@ -66,7 +66,7 @@ as the final value of the `begin` block.
 
 ## Language Documentation
 
-[Language Reference (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/docs/functions.md)
+[Language Reference (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/docs/specification.md)
 
 ## Execution
 
