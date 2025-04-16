@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "jsompiler"
-version = "0.2.4"
+name = "jsonpiler"
+version = "0.1.2"

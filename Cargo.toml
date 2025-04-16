@@ -1,16 +1,16 @@
 [package]
-name = "jsompiler"
-version = "0.2.4"
+name = "jsonpiler"
+version = "0.1.2"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
-documentation = "https://hal-g1thub.github.io/jsompiler-doc/jsompiler/index.html"
+documentation = "https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html"
 license = "Apache-2.0"
-repository = "https://github.com/HAL-G1THub/jsompiler.git"
+repository = "https://github.com/HAL-G1THub/jsonpiler.git"
 readme = "README.md"
 categories = ["compilers"]
 keywords = ["json", "parser"]
 [[bin]]
-name = "jsompiler"
+name = "jsonpiler"
 path = "src/main.rs"
 [profile.release]
 panic = "abort"

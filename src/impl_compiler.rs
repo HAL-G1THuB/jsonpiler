@@ -1,14 +1,14 @@
-//! Implementation of the compiler inside the `Jsompiler`.
+//! Implementation of the compiler inside the `Jsonpiler`.
 extern crate alloc;
 use super::{
-  BuiltinFunc, JFunc, JFuncResult, JResult, JValue, Jsompiler, Json, Section,
+  BuiltinFunc, JFunc, JFuncResult, JResult, JValue, Jsonpiler, Json, Section,
   utility::{format_err, obj_json},
 };
 use alloc::borrow::Cow;
 use core::{error::Error, fmt::Write as _};
 use std::fs::File;
 use std::io::{self, BufWriter, Write as _};
-impl Jsompiler {
+impl Jsonpiler {
   /// Assert condition.
   #[expect(clippy::panic_in_result_fn, reason = "panic don't occurred")]
   fn assert(&self, cond: bool, text: &str, obj: &Json) -> Result<(), Box<dyn Error>> {
@@ -38,12 +38,12 @@ impl Jsompiler {
   ) -> Result<(), Box<dyn Error>> {
     let json = self.parse(parsed)?;
     self.seed = 0;
-    self.register("=", true, Jsompiler::f_local_set);
-    self.register("$", true, Jsompiler::f_local_get);
-    self.register("+", true, Jsompiler::f_plus);
-    self.register("-", true, Jsompiler::f_minus);
-    self.register("message", true, Jsompiler::f_message);
-    self.register("begin", true, Jsompiler::f_begin);
+    self.register("=", true, Jsonpiler::f_local_set);
+    self.register("$", true, Jsonpiler::f_local_get);
+    self.register("+", true, Jsonpiler::f_plus);
+    self.register("-", true, Jsonpiler::f_minus);
+    self.register("message", true, Jsonpiler::f_message);
+    self.register("begin", true, Jsonpiler::f_begin);
     let mut start = String::new();
     self.sect = Section::default();
     let result = self.eval(&json, &mut start)?;

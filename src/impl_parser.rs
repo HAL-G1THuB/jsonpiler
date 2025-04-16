@@ -1,8 +1,8 @@
-//! Implementation of the parser inside the `Jsompiler`.
-use super::{JResult, JValue, Jsompiler, Json, ParseInfo, utility::format_err};
+//! Implementation of the parser inside the `Jsonpiler`.
+use super::{JResult, JValue, Jsonpiler, Json, ParseInfo, utility::format_err};
 use core::{char::from_u32, error::Error};
 use std::collections::HashMap;
-impl Jsompiler {
+impl Jsonpiler {
   /// Create parse error.
   fn err_parse(&self, text: &str) -> JResult {
     Err(format_err(text, self.info.pos, self.info.line, &self.source).into())

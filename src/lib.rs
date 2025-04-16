@@ -1,7 +1,7 @@
 //! (main.rs)
 //! ```should_panic
 //! fn main() -> ! {
-//!  jsompiler::run()
+//!  jsonpiler::run()
 //!}
 //! ```
 mod impl_compiler;
@@ -83,9 +83,19 @@ pub(crate) enum JValue {
   /// String variable.
   StringVar(String),
 }
+/// Json object.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Json {
+  /// Line number of objects in the source code.
+  line: usize,
+  /// Location of objects in the source code.
+  pos: usize,
+  /// Type and value information.
+  value: JValue,
+}
 /// Parser and compiler.
 #[derive(Debug, Clone, Default)]
-pub struct Jsompiler {
+pub struct Jsonpiler {
   /// Global variables (now on Unused).
   _globals: HashMap<String, JValue>,
   /// Built-in function table.
@@ -100,16 +110,6 @@ pub struct Jsompiler {
   source: String,
   /// Variable table.
   vars: HashMap<String, JValue>,
-}
-/// Json object.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct Json {
-  /// Line number of objects in the source code.
-  line: usize,
-  /// Location of objects in the source code.
-  pos: usize,
-  /// Type and value information.
-  value: JValue,
 }
 /// Information to be used during parsing.
 #[derive(Debug, Clone, Default)]
@@ -129,8 +129,8 @@ pub(crate) struct Section {
   /// Buffer to store the contents of the text section of the assembly.
   text: String,
 }
-/// Runs the Jsompiler, compiling and executing a JSON-based program.
-/// This is the main function of the Jsompiler.
+/// Runs the Jsonpiler, compiling and executing a JSON-based program.
+/// This is the main function of the Jsonpiler.
 /// It runs the full compilation process, step by step:
 /// 1. **Argument Parsing:** first command-line argument is the path to the input JSON file.
 /// 2. **File Reading:** It reads the content of the specified JSON file into a string.
@@ -162,7 +162,7 @@ pub(crate) struct Section {
 /// # Examples
 /// ```sh
 /// # Assuming you have a JSON file named "test.json"
-/// ./jsompiler test.json
+/// ./jsonpiler test.json
 /// ```
 /// # Platform Specific
 /// This function is designed to work exclusively on Windows operating systems.
@@ -180,7 +180,7 @@ pub fn run() -> ! {
   };
   let source = fs::read_to_string(input_file)
     .unwrap_or_else(|err| error_exit(&format!("Failed to read file ({input_file}): {err}")));
-  let mut jsompiler = Jsompiler::default();
+  let mut jsonpiler = Jsonpiler::default();
   let file = Path::new(input_file);
   let with_s = file.with_extension("s");
   let asm = &with_s.to_string_lossy().to_string();
@@ -188,7 +188,7 @@ pub fn run() -> ! {
   let obj = &with_obj.to_string_lossy().to_string();
   let with_exe = file.with_extension("exe");
   let exe = &with_exe.to_string_lossy().to_string();
-  jsompiler
+  jsonpiler
     .build(source, input_file, asm)
     .unwrap_or_else(|err| error_exit(&format!("Error: {err}")));
   (!Command::new("as")
