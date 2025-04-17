@@ -1,6 +1,6 @@
 # Specification
 
-Language specification of the Jsompiler.
+Language specification of the jsonpiler.
 
 ## Syntax
 
@@ -9,7 +9,7 @@ See: [JSON specification](https://www.rfc-editor.org/info/rfc8259)
 
 ## Evaluation
 
-A Jsompiler program is represented as a single JSON value.
+A jsonpiler program is represented as a single JSON value.
 
 Each JSON value is evaluated independently, except for lists (`[]`) and objects (`{}`).
 

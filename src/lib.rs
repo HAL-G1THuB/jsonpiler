@@ -25,6 +25,14 @@ pub(crate) struct BuiltinFunc {
   /// Pointer of function.
   pub func: JFunc,
 }
+/// line and pos in source code.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ErrorInfo {
+  /// Line number of the part being parsed.
+  line: usize,
+  /// Location of the part being parsed.
+  pos: usize,
+}
 /// Built-in function types.
 type JFunc = fn(&mut Jsonpiler, &Json, &[Json], &mut String) -> JFuncResult;
 /// Contain `JValue` or `Box<dyn Error>`.
@@ -87,7 +95,7 @@ pub(crate) enum JValue {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Json {
   /// Line number of objects in the source code.
-  info: ParseInfo,
+  info: ErrorInfo,
   /// Type and value information.
   value: JValue,
 }
@@ -99,7 +107,7 @@ pub struct Jsonpiler {
   /// Built-in function table.
   f_table: HashMap<String, BuiltinFunc>,
   /// Information to be used during parsing.
-  info: ParseInfo,
+  info: ErrorInfo,
   /// Section of the assembly.
   sect: Section,
   /// Seed to generate label names.
@@ -109,13 +117,45 @@ pub struct Jsonpiler {
   /// Variable table.
   vars: HashMap<String, JValue>,
 }
-/// line and pos in source code.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct ParseInfo {
-  /// Line number of the part being parsed.
-  line: usize,
-  /// Location of the part being parsed.
-  pos: usize,
+impl Jsonpiler {
+  /// Format error.
+  /// # Errors
+  /// `Box<dyn Error>` - Err is always returned.
+  #[must_use]
+  pub(crate) fn fmt_err(&self, text: &str, info: &ErrorInfo) -> String {
+    const MSG1: &str = "\nError occurred on line: ";
+    const MSG2: &str = "\nError position:\n";
+    if self.source.is_empty() {
+      return format!("{text}{MSG1}{}{MSG2}Error: Empty input", info.line);
+    }
+    let len = self.source.len();
+    let idx = info.pos.min(len.saturating_sub(1));
+    let start = if idx == 0 {
+      0
+    } else {
+      match self.source[..idx].rfind('\n') {
+        None => 0,
+        Some(start_pos) => {
+          let Some(res) = start_pos.checked_add(1) else {
+            return format!("{text}{MSG1}{}{MSG2}Error: Overflow", info.line);
+          };
+          res
+        }
+      }
+    };
+    let end = match self.source[idx..].find('\n') {
+      None => len,
+      Some(end_pos) => {
+        let Some(res) = idx.checked_add(end_pos) else {
+          return format!("{text}{MSG1}{}{MSG2}Error: Overflow", info.line);
+        };
+        res
+      }
+    };
+    let ws = " ".repeat(idx.saturating_sub(start));
+    let result = &self.source[start..end];
+    format!("{text}{MSG1}{}{MSG2}{result}\n{ws}^", info.line)
+  }
 }
 /// Section of the assembly.
 #[derive(Debug, Clone, Default)]
@@ -214,7 +254,6 @@ pub fn run() -> ! {
     .unwrap_or_else(|err| error_exit(&format!("Failed to link: {err}")))
     .success())
   .then(|| error_exit("Linking process returned Bad status."));
-  #[cfg(not(debug_assertions))]
   fs::remove_file(obj)
     .unwrap_or_else(|err| error_exit(&format!("Failed to remove '{obj}': {err}")));
   let mut path = env::current_dir()

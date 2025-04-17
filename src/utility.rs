@@ -1,11 +1,10 @@
 //! Utility functions.
-use crate::{JValue, Json, ParseInfo};
+use crate::{ErrorInfo, JValue, Json};
 use core::{
   error::Error,
   fmt::{self, Write as _},
-  time::Duration,
 };
-use std::{process::exit, thread};
+use std::process::exit;
 /// Decoding base64 variants.
 /// # Errors
 /// `Box<dyn Error(String)>` - If an invalid encoded value is passed, return `Err`
@@ -38,6 +37,9 @@ pub(crate) fn de64(encoded: &str) -> Result<Vec<u8>, Box<dyn Error>> {
 #[expect(dead_code, reason = "todo")]
 pub(crate) fn en64(input: &[u8]) -> Result<String, &str> {
   const ERR: &str = "Unreachable (en64)";
+  fn helper(enc: u8) -> Result<char, &'static str> {
+    char::from_u32(u32::from(enc).checked_add(48).ok_or(ERR)?).ok_or(ERR)
+  }
   let mut encoded = String::new();
   let chunks = input.chunks(3);
   for chunk in chunks {
@@ -48,13 +50,13 @@ pub(crate) fn en64(input: &[u8]) -> Result<String, &str> {
     let enc2 = ((b0 << 4u8) | (b1 >> 4u8)) & 0x3F;
     let enc3 = ((b1 << 2u8) | (b2 >> 6u8)) & 0x3F;
     let enc4 = b2 & 0x3F;
-    encoded.push(char::from_u32(u32::from(enc1).checked_add(48).ok_or(ERR)?).ok_or(ERR)?);
-    encoded.push(char::from_u32(u32::from(enc2).checked_add(48).ok_or(ERR)?).ok_or(ERR)?);
+    encoded.push(helper(enc1)?);
+    encoded.push(helper(enc2)?);
     if chunk.len() >= 2 {
-      encoded.push(char::from_u32(u32::from(enc3).checked_add(48).ok_or(ERR)?).ok_or(ERR)?);
-    }
-    if chunk.len() == 3 {
-      encoded.push(char::from_u32(u32::from(enc4).checked_add(48).ok_or(ERR)?).ok_or(ERR)?);
+      encoded.push(helper(enc3)?);
+      if chunk.len() == 3 {
+        encoded.push(helper(enc4)?);
+      }
     }
   }
   Ok(encoded)
@@ -63,7 +65,6 @@ pub(crate) fn en64(input: &[u8]) -> Result<String, &str> {
 #[expect(clippy::print_stderr, reason = "")]
 pub(crate) fn error_exit(text: &str) -> ! {
   eprintln!("{text}");
-  thread::sleep(Duration::from_secs(1));
   exit(-1)
 }
 /// Escapes special characters in a string for proper JSON formatting.
@@ -93,46 +94,8 @@ pub(crate) fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {
   }
   Ok(escaped)
 }
-/// Format error.
-/// # Errors
-/// `Box<dyn Error>` - Err is always returned.
-#[must_use]
-pub(crate) fn format_err(text: &str, info: &ParseInfo, source: &str) -> String {
-  const MSG1: &str = "\nError occurred on line: ";
-  const MSG2: &str = "\nError position:\n";
-  if source.is_empty() {
-    return format!("{text}{MSG1}{}{MSG2}Error: Empty input", info.line);
-  }
-  let len = source.len();
-  let idx = info.pos.min(len.saturating_sub(1));
-  let start = if idx == 0 {
-    0
-  } else {
-    match source[..idx].rfind('\n') {
-      None => 0,
-      Some(start_pos) => {
-        let Some(res) = start_pos.checked_add(1) else {
-          return format!("{text}{MSG1}{}{MSG2}Error: Overflow", info.line);
-        };
-        res
-      }
-    }
-  };
-  let end = match source[idx..].find('\n') {
-    None => len,
-    Some(end_pos) => {
-      let Some(res) = idx.checked_add(end_pos) else {
-        return format!("{text}{MSG1}{}{MSG2}Error: Overflow", info.line);
-      };
-      res
-    }
-  };
-  let ws = " ".repeat(idx.saturating_sub(start));
-  let result = &source[start..end];
-  format!("{text}{MSG1}{}{MSG2}{result}\n{ws}^", info.line)
-}
 /// Change the value of another Json to create a new Json.
 #[must_use]
-pub(crate) const fn obj_json(val: JValue, inf: ParseInfo) -> Json {
+pub(crate) const fn obj_json(val: JValue, inf: ErrorInfo) -> Json {
   Json { info: inf, value: val }
 }
