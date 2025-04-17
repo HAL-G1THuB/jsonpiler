@@ -1,4 +1,4 @@
 //! (main.rs)
 fn main() -> ! {
-  jsonpiler::run()
+  jsompiler::run()
 }

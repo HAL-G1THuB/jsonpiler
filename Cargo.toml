@@ -1,8 +1,8 @@
 [package]
-name = "jsonpiler"
-version = "0.1.3"
+name = "jsompiler"
+version = "0.2.6"
 edition = "2024"
-description = "a Json syntax programming language for Windows"
+description = "(--> jsonpiler)"
 documentation = "https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html"
 license = "Apache-2.0"
 repository = "https://github.com/HAL-G1THub/jsonpiler.git"

@@ -1,3 +1,4 @@
+.text
 .section .text.startup,"x"
 .p2align 4
 .globl _start

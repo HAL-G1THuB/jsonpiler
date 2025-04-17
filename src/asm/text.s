@@ -33,22 +33,13 @@
   mov ecx, -1
   call [qword ptr __imp_ExitProcess[rip]]
 .section .text$U8TO16, "x"
-.seh_proc .L_U8TO16
 .L_U8TO16:
 	push	rdi
-	.seh_pushreg	rdi
 	push	rsi
-	.seh_pushreg	rsi
 	push	rbx
-	.seh_pushreg	rbx
   push rbp
-  .seh_pushreg rbp
   mov rbp, rsp
-  .seh_setframe rbp, 0
   sub rsp, 48
-  .seh_stackalloc 48
-  .seh_endprologue
-  .seh_handler .L_SEH_HANDLER, @except
   mov rdi, rcx
   mov ecx, 65001
   xor edx, edx
@@ -80,4 +71,3 @@
 	pop	rsi
 	pop	rdi
   ret
-.seh_endproc
