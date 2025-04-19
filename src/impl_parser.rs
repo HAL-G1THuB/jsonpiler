@@ -1,21 +1,38 @@
 //! Implementation of the parser inside the `Jsonpiler`.
-use super::{ErrorInfo, JObject, JResult, JValue, Json, Jsonpiler};
-use core::{char::from_u32, error::Error};
+use super::{ErrOR, ErrorInfo, JObject, JResult, JValue, Json, Jsonpiler};
+use core::char;
 impl Jsonpiler {
+  /// Advances the position by `num` characters.
+  fn advance(&mut self, num: usize) -> ErrOR<()> {
+    self.info.pos = self.step(num)?;
+    Ok(())
+  }
+  /// Returns true if the next character matches the expected one.
+  fn advance_if(&mut self, ch: char) -> ErrOR<bool> {
+    let flag = self.peek()? == ch;
+    if flag {
+      self.advance(ch.len_utf8())?;
+    }
+    Ok(flag)
+  }
   /// Checks if the next character in the input code matches the expected character.
-  fn expect(&mut self, expected: char) -> Result<(), Box<dyn Error>> {
+  fn expect(&mut self, expected: char) -> ErrOR<()> {
     let ch = self.peek()?;
     if ch == expected {
-      self.info.pos = self.step(ch.len_utf8())?;
+      self.advance(ch.len_utf8())?;
       Ok(())
     } else {
       Err(self.fmt_err(&format!("Expected character '{expected}' not found."), &self.info).into())
     }
   }
+  /// Advances the position by `n` characters.
+  fn inc(&mut self) -> ErrOR<()> {
+    self.advance(1)
+  }
   /// Advances the current position in the input code and returns the next character.
-  fn next(&mut self) -> Result<char, Box<dyn Error>> {
+  fn next(&mut self) -> ErrOR<char> {
     let ch = self.peek()?;
-    self.info.pos = self.step(ch.len_utf8())?;
+    self.advance(ch.len_utf8())?;
     Ok(ch)
   }
   /// Parses the entire input code and returns the resulting `Json` object.
@@ -26,7 +43,6 @@ impl Jsonpiler {
   /// * `Err(Box<dyn Error>)` - An error if the input code is invalid.
   /// # Errors
   /// * `Box<dyn Error>` - An error if the input code is invalid.
-  #[inline]
   pub(crate) fn parse(&mut self, code: String) -> JResult {
     self.source = code;
     self.info = ErrorInfo { pos: 0, line: 1 };
@@ -43,14 +59,12 @@ impl Jsonpiler {
     let mut array = vec![];
     self.expect('[')?;
     self.skip_ws()?;
-    if self.source[self.info.pos..].starts_with(']') {
-      self.info.pos = self.step(1)?;
+    if self.advance_if(']')? {
       return Ok(Json { info: start, value: JValue::Array(array) });
     }
     loop {
       array.push(self.parse_value()?);
-      if self.source[self.info.pos..].starts_with(']') {
-        self.info.pos = self.step(1)?;
+      if self.advance_if(']')? {
         return Ok(Json { info: start, value: JValue::Array(array) });
       }
       self.expect(',')?;
@@ -58,9 +72,14 @@ impl Jsonpiler {
   }
   /// Parses a specific name and returns a `Json` object with the associated value.
   fn parse_name(&mut self, name: &str, val: JValue) -> JResult {
-    if self.source[self.info.pos..].starts_with(name) {
+    if self
+      .source
+      .get(self.info.pos..)
+      .ok_or(self.fmt_err("Unexpected end of text.", &self.info))?
+      .starts_with(name)
+    {
       let start = self.info.clone();
-      self.info.pos = self.step(name.len())?;
+      self.advance(name.len())?;
       Ok(Json { info: start, value: val })
     } else {
       Err(self.fmt_err(&format!("Failed to parse '{name}'"), &self.info).into())
@@ -68,72 +87,51 @@ impl Jsonpiler {
   }
   /// Parses a number (integer or float) from the input code.
   fn parse_number(&mut self) -> JResult {
+    fn push_number(parser: &mut Jsonpiler, num_str: &mut String, err: &str) -> ErrOR<()> {
+      if !matches!(parser.peek()?, ch if ch.is_ascii_digit()) {
+        return Err(parser.fmt_err(err, &parser.info).into());
+      }
+      loop {
+        let ch = parser.peek()?;
+        if !ch.is_ascii_digit() {
+          break Ok(());
+        }
+        num_str.push(ch);
+        parser.inc()?;
+      }
+    }
     let start = self.info.clone();
     let mut num_str = String::new();
     let mut has_decimal = false;
     let mut has_exponent = false;
-    if self.source[self.info.pos..].starts_with('-') {
+    if self.advance_if('-')? {
       num_str.push('-');
-      self.next()?;
     }
-    let num_char = self.peek()?;
-    match num_char {
+    match self.peek()? {
       '0' => {
         num_str.push('0');
-        self.next()?;
+        self.inc()?;
         if matches!(self.peek()?, ch if ch.is_ascii_digit()) {
           return Err(self.fmt_err("Leading zeros are not allowed in numbers", &self.info).into());
         }
       }
-      '1'..='9' => loop {
-        let ch = self.peek()?;
-        if ch.is_ascii_digit() {
-          num_str.push(ch);
-          self.next()?;
-        } else {
-          break;
-        }
-      },
-      _ => return Err(self.fmt_err("Invalid number format.", &self.info).into()),
+      _ => push_number(self, &mut num_str, "Invalid number format.")?,
     }
     if matches!(self.peek()?, '.') {
       has_decimal = true;
       num_str.push('.');
-      self.next()?;
-      if !matches!(self.peek()?, ch if ch.is_ascii_digit()) {
-        return Err(
-          self.fmt_err("A digit is required after the decimal point.", &self.info).into(),
-        );
-      }
-      loop {
-        let ch = self.peek()?;
-        if ch.is_ascii_digit() {
-          num_str.push(ch);
-          self.next()?;
-        } else {
-          break;
-        }
-      }
+      self.inc()?;
+      push_number(self, &mut num_str, "A digit is required after the decimal point.")?;
     }
     if matches!(self.peek()?, 'e' | 'E') {
       has_exponent = true;
-      num_str.push('e');
-      self.next()?;
+      num_str.push(self.peek()?);
+      self.inc()?;
       if matches!(self.peek()?, '+' | '-') {
-        num_str.push(self.next()?);
+        num_str.push(self.peek()?);
+        self.inc()?;
       }
-      if !matches!(self.peek()?, ch if ch.is_ascii_digit()) {
-        return Err(self.fmt_err("A digit is required in the exponent part.", &self.info).into());
-      }
-      loop {
-        let ch = self.peek()?;
-        if ch.is_ascii_digit() {
-          num_str.push(ch);
-          self.next()?;
-        } else {
-          break;
-        }
-      }
+      push_number(self, &mut num_str, "A digit is required after the exponent notation.")?;
     }
     if has_decimal || has_exponent {
       num_str.parse::<f64>().map_or_else(
@@ -153,8 +151,7 @@ impl Jsonpiler {
     let mut object = JObject::default();
     self.expect('{')?;
     self.skip_ws()?;
-    if self.source[self.info.pos..].starts_with('}') {
-      self.info.pos = self.step(1)?;
+    if self.advance_if('}')? {
       return Ok(Json { info: start, value: JValue::Object(object) });
     }
     loop {
@@ -165,54 +162,49 @@ impl Jsonpiler {
       self.expect(':')?;
       let value = self.parse_value()?;
       object.insert(string, value);
-      if self.source[self.info.pos..].starts_with('}') {
-        self.info.pos = self.step(1)?;
+      if self.advance_if('}')? {
         return Ok(Json { info: start, value: JValue::Object(object) });
       }
       self.expect(',')?;
-      self.info.pos = self.step(1)?;
     }
   }
   /// Parses a string from the input code.
   fn parse_string(&mut self) -> JResult {
-    self.expect('\"')?;
-    let start_info = self.info.clone();
+    self.expect('"')?;
+    let start = self.info.clone();
     let mut result = String::new();
     while let Ok(ch) = self.next() {
       match ch {
-        '\"' => return Ok(Json { info: start_info, value: JValue::String(result) }),
+        '"' => return Ok(Json { info: start, value: JValue::String(result) }),
         '\n' => return Err(self.fmt_err("Invalid line breaks in strings.", &self.info).into()),
-        '\\' => {
-          let escaped = self.next()?;
-          match escaped {
-            'n' => result.push('\n'),
-            't' => result.push('\t'),
-            'r' => result.push('\r'),
-            'b' => result.push('\x08'),
-            'f' => result.push('\x0C'),
-            'u' => {
-              let mut hex = String::new();
-              for _ in 0u32..4u32 {
-                let cha = self.next()?;
-                if !cha.is_ascii_hexdigit() {
-                  return Err(self.fmt_err("Invalid hex digit.", &self.info).into());
-                }
-                hex.push(cha);
+        '\\' => match self.next()? {
+          'n' => result.push('\n'),
+          't' => result.push('\t'),
+          'r' => result.push('\r'),
+          'b' => result.push('\x08'),
+          'f' => result.push('\x0C'),
+          'u' => {
+            let mut hex = String::new();
+            for _ in 0u32..4u32 {
+              let cha = self.next()?;
+              if !cha.is_ascii_hexdigit() {
+                return Err(self.fmt_err("Invalid hex digit.", &self.info).into());
               }
-              let cp = u32::from_str_radix(&hex, 16)
-                .map_err(|err_msg| format!("Invalid code point: {err_msg}"))?;
-              if (0xD800..=0xDFFF).contains(&cp) {
-                return Err(self.fmt_err("Invalid unicode.", &self.info).into());
-              }
-              let Some(u32_cp) = from_u32(cp) else {
-                return Err(self.fmt_err("Invalid unicode.", &self.info).into());
-              };
-              result.push(u32_cp);
+              hex.push(cha);
             }
-            esc_ch @ ('\\' | '"' | '/') => result.push(esc_ch),
-            _ => return Err(self.fmt_err("Invalid escape sequence.", &self.info).into()),
+            let cp = u32::from_str_radix(&hex, 16)
+              .map_err(|err_msg| format!("Invalid code point: {err_msg}"))?;
+            if (0xD800..=0xDFFF).contains(&cp) {
+              return Err(self.fmt_err("Invalid unicode.", &self.info).into());
+            }
+            let Some(u32_cp) = char::from_u32(cp) else {
+              return Err(self.fmt_err("Invalid unicode.", &self.info).into());
+            };
+            result.push(u32_cp);
           }
-        }
+          esc_ch @ ('\\' | '"' | '/') => result.push(esc_ch),
+          _ => return Err(self.fmt_err("Invalid escape sequence.", &self.info).into()),
+        },
         cha if cha < '\u{20}' => {
           return Err(self.fmt_err("Invalid control character.", &self.info).into());
         }
@@ -238,25 +230,26 @@ impl Jsonpiler {
     result
   }
   /// Peek next character.
-  fn peek(&mut self) -> Result<char, String> {
-    self.source[self.info.pos..]
+  fn peek(&self) -> Result<char, String> {
+    self
+      .source
+      .get(self.info.pos..)
+      .ok_or(self.fmt_err("Unexpected end of text.", &self.info))?
       .chars()
       .next()
       .ok_or(self.fmt_err("Unexpected end of text.", &self.info))
   }
   /// Skips whitespace characters in the input code.
-  fn skip_ws(&mut self) -> Result<(), Box<dyn Error>> {
+  fn skip_ws(&mut self) -> ErrOR<()> {
     while let Ok(ch) = self.peek() {
-      match ch {
-        ws if ws.is_whitespace() => {
-          if ws == '\n' {
-            self.info.line =
-              self.info.line.checked_add(1).ok_or(self.fmt_err("LineOverflowError", &self.info))?;
-          }
-          self.info.pos = self.step(ws.len_utf8())?;
-        }
-        _ => break,
+      if !ch.is_ascii_whitespace() {
+        break;
       }
+      if ch == '\n' {
+        self.info.line =
+          self.info.line.checked_add(1).ok_or(self.fmt_err("LineOverflowError", &self.info))?;
+      }
+      self.inc()?;
     }
     Ok(())
   }

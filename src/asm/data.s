@@ -1,4 +1,4 @@
-.section	.rdata,"dr"
+.section	.rdata, "dr"
   .L_SEH_HANDLER_MSG:
   .ascii "An exception occurred!\nPossible causes:\n"
   .ascii "- Division by zero\n- null pointer dereference\n"

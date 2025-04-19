@@ -1,6 +1,6 @@
 [package]
 name = "jsonpiler"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
 documentation = "https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html"
@@ -8,7 +8,7 @@ license = "Apache-2.0"
 repository = "https://github.com/HAL-G1THub/jsonpiler.git"
 readme = "README.md"
 categories = ["compilers"]
-keywords = ["json", "parser"]
+keywords = ["json", "parser", "compiler", "cli"]
 [[bin]]
 name = "jsonpiler"
 path = "src/main.rs"
@@ -17,18 +17,17 @@ panic = "abort"
 [badges]
 maintenance = { status = "actively-developed" }
 [lints.clippy]
-pedantic = {level = "warn", priority = -1}
-perf = {level = "warn", priority = -1}
-style = {level = "warn", priority = -1}
-cargo = {level = "warn", priority = -1}
-all = {level = "warn", priority = -1}
-restriction = {level = "warn", priority = -1}
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+all = { level = "warn", priority = -1 }
+restriction = { level = "warn", priority = -1 }
 implicit_return = "allow"
 unseparated-literal-suffix = "allow"
 question_mark_used = "allow"
-ref_patterns = "allow"
+pattern_type_mismatch = "allow"
 exit = "allow"
-string_slice = "allow"
 pub-with-shorthand = "allow"
 blanket_clippy_restriction_lints = "allow"
 multiple_inherent_impl = "allow"
