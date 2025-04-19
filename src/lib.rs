@@ -1,22 +1,17 @@
 //! (main.rs)
 //! ```should_panic
+//! use jsonpiler::functions::run;
 //! fn main() -> ! {
-//!  jsonpiler::run()
+//!  run()
 //!}
 //! ```
+pub mod functions;
 mod impl_compiler;
 mod impl_object;
 mod impl_parser;
 mod impl_value;
-mod utility;
 use core::error::Error;
-use std::{
-  collections::HashMap,
-  env, fs,
-  path::Path,
-  process::{Command, exit},
-};
-use utility::error_exit;
+use std::collections::HashMap;
 /// Built-in function.
 #[derive(Debug, Clone)]
 pub(crate) struct BuiltinFunc {
@@ -25,8 +20,10 @@ pub(crate) struct BuiltinFunc {
   /// Pointer of function.
   pub func: JFunc,
 }
+type ErrOR<T> = Result<T, Box<dyn Error>>;
 /// line and pos in source code.
 #[derive(Debug, Clone, Default)]
+
 pub(crate) struct ErrorInfo {
   /// Line number of the part being parsed.
   line: usize,
@@ -36,7 +33,7 @@ pub(crate) struct ErrorInfo {
 /// Built-in function types.
 type JFunc = fn(&mut Jsonpiler, &Json, &[Json], &mut String) -> JFuncResult;
 /// Contain `JValue` or `Box<dyn Error>`.
-type JFuncResult = Result<JValue, Box<dyn Error>>;
+type JFuncResult = ErrOR<JValue>;
 /// Represents a JSON object with key-value pairs.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct JObject {
@@ -46,7 +43,7 @@ pub(crate) struct JObject {
   idx: HashMap<String, usize>,
 }
 /// Contain `Json` or `Box<dyn Error>`.
-type JResult = Result<Json, Box<dyn Error>>;
+type JResult = ErrOR<Json>;
 /// Type and value information.
 #[derive(Debug, Clone, Default)]
 pub(crate) enum JValue {
@@ -66,7 +63,7 @@ pub(crate) enum JValue {
   #[expect(dead_code, reason = "todo")]
   FloatVar(String),
   /// Function.
-  FuncVar {
+  Function {
     /// Name of function.
     name: String,
     /// Parameters of function.
@@ -119,42 +116,48 @@ pub struct Jsonpiler {
 }
 impl Jsonpiler {
   /// Format error.
-  /// # Errors
-  /// `Box<dyn Error>` - Err is always returned.
   #[must_use]
-  pub(crate) fn fmt_err(&self, text: &str, info: &ErrorInfo) -> String {
+  pub(crate) fn fmt_err(&self, err: &str, info: &ErrorInfo) -> String {
     const MSG1: &str = "\nError occurred on line: ";
     const MSG2: &str = "\nError position:\n";
     if self.source.is_empty() {
-      return format!("{text}{MSG1}{}{MSG2}Error: Empty input", info.line);
+      return format!("{err}{MSG1}{}{MSG2}Error: Empty input", info.line);
     }
     let len = self.source.len();
     let idx = info.pos.min(len.saturating_sub(1));
     let start = if idx == 0 {
       0
     } else {
-      match self.source[..idx].rfind('\n') {
+      let Some(left) = self.source.get(..idx) else {
+        return format!("{err}{MSG1}{}{MSG2}Error: Failed to get substring", info.line);
+      };
+      match left.rfind('\n') {
         None => 0,
         Some(start_pos) => {
           let Some(res) = start_pos.checked_add(1) else {
-            return format!("{text}{MSG1}{}{MSG2}Error: Overflow", info.line);
+            return format!("{err}{MSG1}{}{MSG2}Error: Overflow", info.line);
           };
           res
         }
       }
     };
-    let end = match self.source[idx..].find('\n') {
+    let Some(right) = self.source.get(idx..) else {
+      return format!("{err}{MSG1}{}{MSG2}Error: Failed to get substring", info.line);
+    };
+    let end = match right.find('\n') {
       None => len,
       Some(end_pos) => {
         let Some(res) = idx.checked_add(end_pos) else {
-          return format!("{text}{MSG1}{}{MSG2}Error: Overflow", info.line);
+          return format!("{err}{MSG1}{}{MSG2}Error: Overflow", info.line);
         };
         res
       }
     };
     let ws = " ".repeat(idx.saturating_sub(start));
-    let result = &self.source[start..end];
-    format!("{text}{MSG1}{}{MSG2}{result}\n{ws}^", info.line)
+    let Some(result) = self.source.get(start..end) else {
+      return format!("{err}{MSG1}{}{MSG2}Error: Failed to get substring", info.line);
+    };
+    format!("{err}{MSG1}{}{MSG2}{result}\n{ws}^", info.line)
   }
 }
 /// Section of the assembly.
@@ -166,106 +169,4 @@ pub(crate) struct Section {
   data: String,
   /// Buffer to store the contents of the text section of the assembly.
   text: String,
-}
-/// Runs the Jsonpiler, compiling and executing a JSON-based program.
-/// This is the main function of the Jsonpiler.
-/// It runs the full compilation process, step by step:
-/// 1. **Argument Parsing:** first command-line argument is the path to the input JSON file.
-/// 2. **File Reading:** It reads the content of the specified JSON file into a string.
-/// 3. **Parsing:** Converts the JSON text into an internal `Json` data structure.
-/// 4. **Compilation:** It compiles the parsed `Json` into assembly code.
-/// 5. **Assembly:** It assembles the generated `.asm` code into an `.obj` file.
-/// 6. **Linking:** It links the `.obj` file with necessary libraries to create an `.exe` file.
-/// 7. **Execution:** It executes the generated `.exe` file.
-/// 8. **Exit Code Handling:** It exits with the exit code of the executed program.
-/// # Panics
-/// This function uses external commands (`as` and `ld`) for assembly and linking.
-/// Ensure that these commands are available in the system's PATH.
-/// This function will panic if:
-/// *   The program is not run on Windows.
-/// *   The number of command-line arguments is not exactly two.
-/// *   The input file cannot be read.
-/// *   The JSON input cannot be parsed.
-/// *   The compilation process fails.
-/// *   The assembly process fails.
-/// *   The linking process fails.
-/// *   The generated executable cannot be spawned.
-/// *   The program fails to wait for the child process.
-/// *   The program fails to retrieve the exit code.
-/// *   The current directory cannot be retrieved.
-/// *   The filename is invalid.
-/// # Errors
-/// This function does not return a `Result` type,
-/// but instead uses `error_exit` to terminate the program with an error message.
-/// # Examples
-/// ```sh
-/// # Assuming you have a JSON file named "test.json"
-/// ./jsonpiler test.json
-/// ```
-/// # Platform Specific
-/// This function is designed to work exclusively on Windows operating systems.
-/// # Exits
-/// This function will exit the program with the exit code of the executed program.
-/// If any error occurs during the process, it will exit with code 1.
-#[inline]
-pub fn run() -> ! {
-  #[cfg(not(target_os = "windows"))]
-  compile_error!("This program can only run on Windows.");
-  let args: Vec<String> = env::args().collect();
-  let Some(program_name) = args.first() else { error_exit("Failed to get name of the program") };
-  let Some(input_file) = args.get(1) else {
-    error_exit(&format!("Usage: {program_name} <input json file> [arguments of .exe...]"))
-  };
-  let source = fs::read_to_string(input_file)
-    .unwrap_or_else(|err| error_exit(&format!("Failed to read file ({input_file}): {err}")));
-  let mut jsonpiler = Jsonpiler::default();
-  let file = Path::new(input_file);
-  let with_s = file.with_extension("s");
-  let asm = &with_s.to_string_lossy().to_string();
-  let with_obj = file.with_extension("obj");
-  let obj = &with_obj.to_string_lossy().to_string();
-  let with_exe = file.with_extension("exe");
-  let exe = &with_exe.to_string_lossy().to_string();
-  jsonpiler
-    .build(source, input_file, asm)
-    .unwrap_or_else(|err| error_exit(&format!("Error: {err}")));
-  (!Command::new("as")
-    .args([asm, "-o", obj])
-    .status()
-    .unwrap_or_else(|err| error_exit(&format!("Failed to assemble: {err}")))
-    .success())
-  .then(|| error_exit("Assembling process returned Bad status."));
-  #[cfg(not(debug_assertions))]
-  fs::remove_file(asm)
-    .unwrap_or_else(|err| error_exit(&format!("Failed to remove '{asm}': {err}")));
-  (!Command::new("ld")
-    .args([
-      obj,
-      "-o",
-      exe,
-      "-LC:/Windows/System32",
-      "-luser32",
-      "-lkernel32",
-      "-lucrtbase",
-      "--gc-sections",
-      "-e_start",
-    ])
-    .status()
-    .unwrap_or_else(|err| error_exit(&format!("Failed to link: {err}")))
-    .success())
-  .then(|| error_exit("Linking process returned Bad status."));
-  fs::remove_file(obj)
-    .unwrap_or_else(|err| error_exit(&format!("Failed to remove '{obj}': {err}")));
-  let mut path = env::current_dir()
-    .unwrap_or_else(|err| error_exit(&format!("Failed to get current directory: {err}")));
-  path.push(exe);
-  let exit_code = Command::new(path)
-    .args(args.get(2..).unwrap_or(&[]))
-    .spawn()
-    .unwrap_or_else(|err| error_exit(&format!("Failed to spawn child process: {err}")))
-    .wait()
-    .unwrap_or_else(|err| error_exit(&format!("Failed to wait for child process: {err}")))
-    .code()
-    .unwrap_or_else(|| error_exit("Failed to retrieve the exit code."));
-  exit(exit_code)
 }

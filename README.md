@@ -12,11 +12,11 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 
 ## What's New
 
+- **Added `CHANGELOG.md` to track updates.**
 - **Objects now preserve insertion order.**
 - **Object values are now evaluated in insertion order.**
-- Add MerMaid to README.md
-- Optimize message box functions.
-- Fixed a bug in the evaluation order.
+
+[CHANGELOG (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 - `ld` (from MinGW-w64)  
 - `as` (from MinGW-w64)  
 
-**The following DLLs must be present in `C:\Windows\System32` for the program to work correctly:**
+**The following DLLs must be present in `C:\Windows\System32\` for the program to work correctly:**
 
 - `kernel32.dll`  
 - `user32.dll`  
