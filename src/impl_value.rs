@@ -1,66 +1,56 @@
 //! Implementation of the `JValue`
 use super::{JValue, Json, functions::escape_string};
 use core::fmt;
-impl JValue {
-  /// Recursively writes the `Json` value to the formatter, with indentation based on depth.
-  fn write_json(&self, out: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    match self {
-      JValue::Null => out.write_str("null"),
-      JValue::Bool(bo) => write!(out, "{bo}"),
-      JValue::BoolVar(bv, bit) => write!(out, "({bv}-{bit}: bool)"),
-      JValue::Int(int) => write!(out, "{int}"),
-      JValue::IntVar(iv) => write!(out, "({iv}: int)"),
-      JValue::Float(fl) => write!(out, "{fl}"),
-      JValue::FloatVar(fv) => write!(out, "({fv}: float)"),
-      JValue::String(st) => out.write_str(&escape_string(st)?),
-      JValue::StringVar(sv) => write!(out, "({sv}: string)"),
-      JValue::Array(ar) => {
-        iter_write(ar, out, depth.saturating_add(1))?;
-        out.write_str(&format!("\n{}]", "  ".repeat(depth)))
-      }
-      JValue::ArrayVar(av) => write!(out, "({av}: array)"),
-      JValue::Function { name: na, params: pa, ret: re } => {
-        out.write_str(&format!("{na}("))?;
-        iter_write(pa, out, depth.saturating_add(1))?;
-        out.write_str(") -> ")?;
-        (*re).clone().write_json(out, depth)
-      }
-      JValue::Object(obj) => {
-        out.write_str("{\n")?;
-        for (i, kv) in obj.iter().enumerate() {
-          if i > 0 {
-            out.write_str(",\n")?;
-          }
-          out.write_str(&"  ".repeat(depth.saturating_add(1)))?;
-          out.write_str(&escape_string(&kv.0)?)?;
-          write!(out, ": ")?;
-          kv.1.value.write_json(out, depth.saturating_add(1))?;
-        }
-        out.write_str(&format!("\n{}}}", "  ".repeat(depth)))
-      }
-      JValue::ObjectVar(ov) => write!(out, "({ov}: object)"),
-    }
-  }
-}
+
 impl fmt::Display for JValue {
-  /// Formats the `Json` object as a human-readable string.
-  /// # Arguments
-  /// * `f: fmt::Formatter`  - Used to write the formatted string.
-  /// # Returns
-  /// * `fmt::Result` - The result of the formatting operation, indicating success or failure.
+  /// Formats the `Json` object as a compact string without indentation.
   #[expect(clippy::min_ident_chars, reason = "default name is 'f'")]
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    self.write_json(f, 0)
+    match self {
+      JValue::Null => f.write_str("null"),
+      JValue::LBool(bo) => write!(f, "{bo}"),
+      JValue::VBool(bv, bit) => write!(f, "({bv}-{bit}: bool)"),
+      JValue::LInt(int) => write!(f, "{int}"),
+      JValue::VInt(iv) => write!(f, "({iv}: int)"),
+      JValue::LFloat(fl) => write!(f, "{fl}"),
+      JValue::VFloat(fv) => write!(f, "({fv}: float)"),
+      JValue::LString(st) => f.write_str(&escape_string(st)?),
+      JValue::VString(sv) => write!(f, "({sv}: string)"),
+      JValue::LArray(ar) => {
+        f.write_str("[")?;
+        iter_write(ar, f)?;
+        f.write_str("]")
+      }
+      JValue::VArray(av) => write!(f, "({av}: array)"),
+      JValue::Function { name: na, params: pa, ret: re } => {
+        write!(f, "{na}(")?;
+        iter_write(pa, f)?;
+        write!(f, ") -> ")?;
+        (*re).clone().fmt(f)
+      }
+      JValue::LObject(obj) => {
+        f.write_str("{")?;
+        for (i, kv) in obj.iter().enumerate() {
+          if i > 0 {
+            f.write_str(", ")?;
+          }
+          write!(f, "{}: ", escape_string(&kv.0)?)?;
+          kv.1.value.fmt(f)?;
+        }
+        f.write_str("}")
+      }
+      JValue::VObject(ov) => write!(f, "({ov}: object)"),
+    }
   }
 }
-/// Iterates over a list of `Json` objects and writes them to the formatter.
-fn iter_write(list: &[Json], out: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+
+/// Iterates over a list of `Json` objects and writes them without indentation.
+fn iter_write(list: &[Json], out: &mut fmt::Formatter) -> fmt::Result {
   for (i, item) in list.iter().enumerate() {
     if i > 0 {
-      out.write_str(",\n")?;
+      out.write_str(", ")?;
     }
-    out.write_str(&"  ".repeat(depth))?;
-    item.value.write_json(out, depth)?;
+    write!(out, "{}", item.value)?;
   }
   Ok(())
 }

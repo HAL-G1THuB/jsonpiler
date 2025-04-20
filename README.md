@@ -12,9 +12,11 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 
 ## What's New
 
-- **Added `CHANGELOG.md` to track updates.**
-- **Objects now preserve insertion order.**
-- **Object values are now evaluated in insertion order.**
+- **"=" function now returns null.**
+- **"$" for more assignable values.**
+- **Fixed problem with docs.rs documents failing to build.**
+- Added `CHANGELOG.md` to track updates.
+- Object values are now evaluated in insertion order.
 
 [CHANGELOG (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 

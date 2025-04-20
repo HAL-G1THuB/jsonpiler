@@ -5,17 +5,18 @@
 - `-> T` — Returns a value of type `T`  
 - `=> V` — Evaluates to the value `V`  
 - `L...` — A literal of type `...`  
+- `V...` — A non-literal value of type `...`  
 - `"..."` — Zero or more arguments matching the previous pattern  
 
 ---
 
-## begin
+## `begin`
 
 ```json
 ["begin", {"expr": "Any"}, "...", {"return_value": "Any"}] -> {"return_value": "Any"}
 ```
 
-Evaluates each expression in sequence and returns the value of the last one.
+Evaluates each expression in order and returns the result of the last one.
 
 ```json
 ["begin", ["+", 1, 3], 0] => 0
@@ -23,13 +24,13 @@ Evaluates each expression in sequence and returns the value of the last one.
 
 ---
 
-## +
+## `+`
 
 ```json
-["+", {"augend": "Int"}, {"addend": "Int"}, "..."] -> {"return_value": "Int"}
+["+", {"augend": "Int"}, {"addend": "Int"}, "..."] -> {"return_value": "VInt"}
 ```
 
-Adds all operands and returns the result.
+Returns the sum of all operands.
 
 ```json
 ["+", 1, 5, ["+", 4, 6]] => 16
@@ -37,13 +38,13 @@ Adds all operands and returns the result.
 
 ---
 
-## -
+## `-`
 
 ```json
-["-", {"minuend": "Int"}, {"subtrahend": "Int"}, "..."] -> {"return_value": "Int"}
+["-", {"minuend": "Int"}, {"subtrahend": "Int"}, "..."] -> {"return_value": "VInt"}
 ```
 
-Subtracts all subsequent operands from the first operand and returns the result.
+Subtracts all following operands from the first one and returns the result.
 
 ```json
 ["-", 30, 5, ["+", 4, 6]] => 15
@@ -51,15 +52,16 @@ Subtracts all subsequent operands from the first operand and returns the result.
 
 ---
 
-## lambda
+## `lambda`
 
 ```json
 ["lambda", {"params": "empty [] (todo)"}, {"body": "Any"}, "..."] -> "Function"
 ```
 
 Creates a function.  
-The first argument is the parameter list, and the remaining arguments are treated as expressions in the function body.  
-Returns the created function object.
+The first argument specifies the parameter list; the remaining arguments are evaluated as expressions within the function body.  
+Returns the resulting function object.
+`lambda` has scope.
 
 ```json
 ["lambda", [], ["+", 4, 6], "this function returns a string"]
@@ -67,33 +69,44 @@ Returns the created function object.
 
 ---
 
-## message
+## `message`
 
 ```json
 ["message", {"title": "String"}, {"text": "String"}] => 1
 ```
 
 Displays a message box.  
-The first argument specifies the title, and the second specifies the message body.  
-Returns the ID of the button pressed (currently always `1`, corresponding to `IDOK` in C/C++).
+The first argument is the title; the second is the body text.  
+Returns the ID of the button pressed — currently always `1` (equivalent to `IDOK` in C/C++).
 
 ---
 
-## =
+## `=`
 
 ```json
-["=", {"variable": "LString"}, {"value": "Any"}] -> {"value": "Any (non-Literal)"}
+["=", {"variable": "LString"}, {"value": "Any"}] -> "Null"
 ```
 
-Assigns the value of the second argument to the variable named by the first argument.  
+Assigns the given value to the specified variable name.  
 Returns the assigned value.
 
+Currently, the following types are **not assignable**:
+
+- LArray  
+- LBool  
+- LFloat  
+- LObject  
+
+**Reassignment is not yet implemented.**
+
 ---
 
-## $
+## `$`
 
 ```json
-["$", {"variable": "LString"}] -> {"value": "Any (non-Literal)"}
+["$", {"variable": "LString"}] -> {"value": "VAny"}
 ```
 
-Retrieves and returns the value associated with the specified variable.
+Returns the value bound to the given variable name.
+
+---

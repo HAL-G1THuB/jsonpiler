@@ -1,6 +1,5 @@
 //! Implementation of the parser inside the `Jsonpiler`.
 use super::{ErrOR, ErrorInfo, JObject, JResult, JValue, Json, Jsonpiler};
-use core::char;
 impl Jsonpiler {
   /// Advances the position by `num` characters.
   fn advance(&mut self, num: usize) -> ErrOR<()> {
@@ -60,12 +59,12 @@ impl Jsonpiler {
     self.expect('[')?;
     self.skip_ws()?;
     if self.advance_if(']')? {
-      return Ok(Json { info: start, value: JValue::Array(array) });
+      return Ok(Json { info: start, value: JValue::LArray(array) });
     }
     loop {
       array.push(self.parse_value()?);
       if self.advance_if(']')? {
-        return Ok(Json { info: start, value: JValue::Array(array) });
+        return Ok(Json { info: start, value: JValue::LArray(array) });
       }
       self.expect(',')?;
     }
@@ -136,12 +135,12 @@ impl Jsonpiler {
     if has_decimal || has_exponent {
       num_str.parse::<f64>().map_or_else(
         |_| Err(self.fmt_err("Invalid numeric value.", &self.info).into()),
-        |float_val| Ok(Json { info: start, value: JValue::Float(float_val) }),
+        |float_val| Ok(Json { info: start, value: JValue::LFloat(float_val) }),
       )
     } else {
       num_str.parse::<i64>().map_or_else(
         |_| Err(self.fmt_err("Invalid numeric value.", &self.info).into()),
-        |int_val| Ok(Json { info: start, value: JValue::Int(int_val) }),
+        |int_val| Ok(Json { info: start, value: JValue::LInt(int_val) }),
       )
     }
   }
@@ -152,18 +151,18 @@ impl Jsonpiler {
     self.expect('{')?;
     self.skip_ws()?;
     if self.advance_if('}')? {
-      return Ok(Json { info: start, value: JValue::Object(object) });
+      return Ok(Json { info: start, value: JValue::LObject(object) });
     }
     loop {
       let key = self.parse_value()?;
-      let JValue::String(string) = key.value else {
+      let JValue::LString(string) = key.value else {
         return Err(self.fmt_err("Keys must be strings.", &key.info).into());
       };
       self.expect(':')?;
       let value = self.parse_value()?;
       object.insert(string, value);
       if self.advance_if('}')? {
-        return Ok(Json { info: start, value: JValue::Object(object) });
+        return Ok(Json { info: start, value: JValue::LObject(object) });
       }
       self.expect(',')?;
     }
@@ -175,7 +174,7 @@ impl Jsonpiler {
     let mut result = String::new();
     while let Ok(ch) = self.next() {
       match ch {
-        '"' => return Ok(Json { info: start, value: JValue::String(result) }),
+        '"' => return Ok(Json { info: start, value: JValue::LString(result) }),
         '\n' => return Err(self.fmt_err("Invalid line breaks in strings.", &self.info).into()),
         '\\' => match self.next()? {
           'n' => result.push('\n'),
@@ -220,8 +219,8 @@ impl Jsonpiler {
       '"' => self.parse_string(),
       '{' => self.parse_object(),
       '[' => self.parse_array(),
-      't' => self.parse_name("true", JValue::Bool(true)),
-      'f' => self.parse_name("false", JValue::Bool(false)),
+      't' => self.parse_name("true", JValue::LBool(true)),
+      'f' => self.parse_name("false", JValue::LBool(false)),
       'n' => self.parse_name("null", JValue::Null),
       '0'..='9' | '-' => self.parse_number(),
       _ => Err(self.fmt_err("This is not a json value.", &self.info).into()),

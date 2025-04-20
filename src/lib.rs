@@ -11,7 +11,7 @@ mod impl_object;
 mod impl_parser;
 mod impl_value;
 use core::error::Error;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 /// Built-in function.
 #[derive(Debug, Clone)]
 pub(crate) struct BuiltinFunc {
@@ -47,21 +47,6 @@ type JResult = ErrOR<Json>;
 /// Type and value information.
 #[derive(Debug, Clone, Default)]
 pub(crate) enum JValue {
-  /// Array.
-  Array(Vec<Json>),
-  /// Array variable.
-  #[expect(dead_code, reason = "todo")]
-  ArrayVar(String),
-  /// Bool.
-  Bool(bool),
-  /// Bool variable.
-  #[expect(dead_code, reason = "todo")]
-  BoolVar(String, usize),
-  /// Float.
-  Float(f64),
-  /// Float variable.
-  #[expect(dead_code, reason = "todo")]
-  FloatVar(String),
   /// Function.
   Function {
     /// Name of function.
@@ -71,22 +56,37 @@ pub(crate) enum JValue {
     /// Return type of function.
     ret: Box<JValue>,
   },
+  /// Array.
+  LArray(Vec<Json>),
+  /// Bool.
+  LBool(bool),
+  /// Float.
+  LFloat(f64),
   /// Integer.
-  Int(i64),
-  /// Integer variable.
-  IntVar(String),
+  LInt(i64),
+  /// Object.
+  LObject(JObject),
+  /// String.
+  LString(String),
   /// Null.
   #[default]
   Null,
-  /// Object.
-  Object(JObject),
+  /// Array variable.
+  #[expect(dead_code, reason = "todo")]
+  VArray(String),
+  /// Bool variable.
+  #[expect(dead_code, reason = "todo")]
+  VBool(String, usize),
+  /// Float variable.
+  #[expect(dead_code, reason = "todo")]
+  VFloat(String),
+  /// Integer variable.
+  VInt(String),
   /// Object variable.
   #[expect(dead_code, reason = "todo")]
-  ObjectVar(String),
-  /// String.
-  String(String),
+  VObject(String),
   /// String variable.
-  StringVar(String),
+  VString(String),
 }
 /// Json object.
 #[derive(Debug, Clone, Default)]
@@ -103,11 +103,13 @@ pub struct Jsonpiler {
   _globals: HashMap<String, JValue>,
   /// Built-in function table.
   f_table: HashMap<String, BuiltinFunc>,
+  /// Flag to avoid including the same file twice.
+  include_flag: HashSet<String>,
   /// Information to be used during parsing.
   info: ErrorInfo,
   /// Section of the assembly.
   sect: Section,
-  /// Seed to generate label names.
+  /// Seed to generate names.
   seed: usize,
   /// Source code.
   source: String,

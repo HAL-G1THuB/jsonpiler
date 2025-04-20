@@ -2,6 +2,12 @@
 
 ## jsonpiler 0.1
 
+### jsonpiler 0.1.6
+
+- "=" function now returns null.
+- Fixed problem with docs.rs documents failing to build.
+- "$" for more assignable values.
+
 ### jsonpiler 0.1.5
 
 - Added `CHANGELOG.md` to track updates.

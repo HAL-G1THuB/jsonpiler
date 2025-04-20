@@ -1,5 +1,4 @@
 .text
-.section .text.startup, "x"
 .p2align 4
 .globl _start
 .def _start;.scl 2;.type 32;.endef

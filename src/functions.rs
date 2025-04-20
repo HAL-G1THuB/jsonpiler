@@ -99,49 +99,34 @@ pub(crate) fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {
 pub(crate) const fn obj_json(val: JValue, e_info: ErrorInfo) -> Json {
   Json { info: e_info, value: val }
 }
-/// Runs the Jsonpiler, compiling and executing a JSON-based program.
-/// This is the main function of the Jsonpiler.
-/// It runs the full compilation process, step by step:
-/// 1. **Argument Parsing:** first command-line argument is the path to the input JSON file.
-/// 2. **File Reading:** It reads the content of the specified JSON file into a string.
-/// 3. **Parsing:** Converts the JSON text into an internal `Json` data structure.
-/// 4. **Compilation:** It compiles the parsed `Json` into assembly code.
-/// 5. **Assembly:** It assembles the generated `.asm` code into an `.obj` file.
-/// 6. **Linking:** It links the `.obj` file with necessary libraries to create an `.exe` file.
-/// 7. **Execution:** It executes the generated `.exe` file.
-/// 8. **Exit Code Handling:** It exits with the exit code of the executed program.
+/// Compiles and runs a JSON-based program using the Jsonpiler.
+/// This function performs the following steps:
+/// 1. Parses the first CLI argument as the input JSON file path.
+/// 2. Reads the file content into a string.
+/// 3. Parses it into a `Json` structure.
+/// 4. Compiles it into assembly.
+/// 5. Assembles to `.obj`.
+/// 6. Links to `.exe`.
+/// 7. Executes the `.exe`.
+/// 8. Exits with its exit code.
 /// # Panics
-/// This function uses external commands (`as` and `ld`) for assembly and linking.
-/// Ensure that these commands are available in the system's PATH.
-/// This function will panic if:
-/// *   The program is not run on Windows.
-/// *   The number of command-line arguments is not exactly two.
-/// *   The input file cannot be read.
-/// *   The JSON input cannot be parsed.
-/// *   The compilation process fails.
-/// *   The assembly process fails.
-/// *   The linking process fails.
-/// *   The generated executable cannot be spawned.
-/// *   The program fails to wait for the child process.
-/// *   The program fails to retrieve the exit code.
-/// *   The current directory cannot be retrieved.
-/// *   The filename is invalid.
-/// # Errors
-/// This function does not return a `Result` type,
-/// but instead uses `error_exit` to terminate the program with an error message.
-/// # Examples
+/// Panics if:
+/// - Not on Windows
+/// - Incorrect CLI arguments
+/// - File read, parse, compile, assemble, link, execute, or wait fails
+/// - Invalid filename or working directory
+/// # Notes
+/// Requires `as` and `ld` in PATH.
+/// Terminates with `error_exit` on failure (exit code 1).
+/// # Example
 /// ```sh
-/// # Assuming you have a JSON file named "test.json"
 /// ./jsonpiler test.json
 /// ```
-/// # Platform Specific
-/// This function is designed to work exclusively on Windows operating systems.
-/// # Exits
-/// This function will exit the program with the exit code of the executed program.
-/// If any error occurs during the process, it will exit with code 1.
+/// # Platform
+/// Windows only.
 #[inline]
 pub fn run() -> ! {
-  #[cfg(not(target_os = "windows"))]
+  #[cfg(all(not(doc), not(target_os = "windows")))]
   compile_error!("This program can only run on Windows.");
   let args: Vec<String> = env::args().collect();
   let Some(program_name) = args.first() else { error_exit("Failed to get name of the program") };
