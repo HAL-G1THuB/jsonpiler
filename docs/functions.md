@@ -13,7 +13,7 @@
 ## `begin`
 
 ```json
-["begin", {"expr": "Any"}, "...", {"return_value": "Any"}] -> {"return_value": "Any"}
+["begin", {"expr": "Any"}, "...", {"return_value": "Any"}] -> "Any"
 ```
 
 Evaluates each expression in order and returns the result of the last one.
@@ -27,7 +27,7 @@ Evaluates each expression in order and returns the result of the last one.
 ## `+`
 
 ```json
-["+", {"augend": "Int"}, {"addend": "Int"}, "..."] -> {"return_value": "VInt"}
+["+", {"augend": "Int"}, {"addend": "Int"}, "..."] -> "VInt"
 ```
 
 Returns the sum of all operands.
@@ -41,7 +41,7 @@ Returns the sum of all operands.
 ## `-`
 
 ```json
-["-", {"minuend": "Int"}, {"subtrahend": "Int"}, "..."] -> {"return_value": "VInt"}
+["-", {"minuend": "Int"}, {"subtrahend": "Int"}, "..."] -> "VInt"
 ```
 
 Subtracts all following operands from the first one and returns the result.
@@ -104,7 +104,7 @@ Currently, the following types are **not assignable**:
 ## `$`
 
 ```json
-["$", {"variable": "LString"}] -> {"value": "VAny"}
+["$", {"variable": "LString"}] -> "VAny"
 ```
 
 Returns the value bound to the given variable name.

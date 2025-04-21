@@ -1,10 +1,12 @@
 //! Utility functions.
-use crate::{ErrOR, ErrorInfo, JValue, Json, Jsonpiler};
-use core::fmt::{self, Display, Write as _};
-use std::{
-  env, fs,
-  path::Path,
-  process::{Command, exit},
+use {
+  crate::{ErrOR, ErrorInfo, JValue, Json, Jsonpiler},
+  core::fmt::{self, Write as _},
+  std::{
+    env, fs,
+    path::Path,
+    process::{Command, ExitCode},
+  },
 };
 /// Decoding base64 variants.
 /// # Errors
@@ -23,10 +25,8 @@ pub(crate) fn de64(encoded: &str) -> ErrOR<Vec<u8>> {
     buffer = (buffer << 6u32) | val;
     buffer_len = buffer_len.checked_add(6).ok_or(ERR)?;
     while buffer_len >= 8 {
-      let shift = buffer_len.checked_sub(8).ok_or(ERR)?;
-      let byte = u8::try_from(buffer >> shift)?;
-      decoded.push(byte);
-      buffer_len = shift;
+      buffer_len = buffer_len.checked_sub(8).ok_or(ERR)?;
+      decoded.push(u8::try_from(buffer >> buffer_len)?);
       buffer &= (1u32 << buffer_len).checked_sub(1).ok_or(ERR)?;
     }
   }
@@ -59,16 +59,7 @@ pub(crate) fn en64(input: &[u8]) -> Result<String, &str> {
   }
   Ok(encoded)
 }
-/// Exit the program with exit code 1.
-#[expect(clippy::print_stderr, reason = "")]
-pub(crate) fn error_exit(text: &str) -> ! {
-  eprintln!("{text}");
-  exit(-1)
-}
 /// Escapes special characters in a string for proper JSON formatting.
-/// This method ensures that characters like quotes (`"`) and backslashes (`\`)
-/// are escaped in a way that conforms to the JSON specification.
-/// It also escapes control characters and non-ASCII characters using Unicode escapes.
 /// # Arguments
 /// * `s` - The string to be escaped.
 /// # Errors
@@ -96,67 +87,91 @@ pub(crate) fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {
 }
 /// Change the value of another Json to create a new Json.
 #[must_use]
-pub(crate) const fn obj_json(val: JValue, e_info: ErrorInfo) -> Json {
+pub(crate) const fn gen_json(val: JValue, e_info: ErrorInfo) -> Json {
   Json { info: e_info, value: val }
 }
-/// Compiles and runs a JSON-based program using the Jsonpiler.
+/// Compiles and executes a JSON-based program using the Jsonpiler.
+///
 /// This function performs the following steps:
 /// 1. Parses the first CLI argument as the input JSON file path.
 /// 2. Reads the file content into a string.
-/// 3. Parses it into a `Json` structure.
-/// 4. Compiles it into assembly.
-/// 5. Assembles to `.obj`.
-/// 6. Links to `.exe`.
-/// 7. Executes the `.exe`.
-/// 8. Exits with its exit code.
+/// 3. Parses the string into a `Json` structure.
+/// 4. Compiles the structure into assembly code.
+/// 5. Assembles it into an `.obj` file.
+/// 6. Links it into an `.exe`.
+/// 7. Executes the resulting binary.
+/// 8. Returns its exit code.
+///
 /// # Panics
-/// Panics if:
-/// - Not on Windows
-/// - Incorrect CLI arguments
-/// - File read, parse, compile, assemble, link, execute, or wait fails
-/// - Invalid filename or working directory
-/// # Notes
-/// Requires `as` and `ld` in PATH.
-/// Terminates with `error_exit` on failure (exit code 1).
+/// This function will panic if:
+/// - The platform is not Windows.
+/// - CLI arguments are invalid.
+/// - File reading, parsing, compilation, assembling, linking, or execution fails.
+/// - The working directory or executable filename is invalid.
+///
+/// # Requirements
+/// - `as` and `ld` must be available in the system PATH.
+/// - On failure, exits with code 1 using `error_exit`.
+///
 /// # Example
 /// ```sh
 /// ./jsonpiler test.json
 /// ```
+///
 /// # Platform
 /// Windows only.
 #[inline]
-pub fn run() -> ! {
+#[must_use]
+#[expect(clippy::print_stderr, reason = "User-facing diagnostics")]
+pub fn run() -> ExitCode {
   #[cfg(all(not(doc), not(target_os = "windows")))]
-  compile_error!("This program can only run on Windows.");
+  compile_error!("This program is supported on Windows only.");
   let args: Vec<String> = env::args().collect();
-  let Some(program_name) = args.first() else { error_exit("Failed to get name of the program") };
-  let input_file = unwrap_or_exit(
-    args.get(1).ok_or_else(|| format!("{program_name} <input json file> [arguments of .exe...]")),
-    "Usage",
-  );
-  let source =
-    unwrap_or_exit(fs::read_to_string(input_file), &format!("Failed to read file '{input_file}'"));
+  let Some(program_name) = args.first() else {
+    eprintln!("Failed to get the program name.");
+    return ExitCode::FAILURE;
+  };
+  let Some(input_file) = args.get(1) else {
+    eprintln!("Usage: {program_name} <input_json_file> [args for .exe]");
+    return ExitCode::FAILURE;
+  };
+  let source = match fs::read_to_string(input_file) {
+    Ok(content) => content,
+    Err(err) => {
+      eprintln!("Failed to read '{input_file}': {err}");
+      return ExitCode::FAILURE;
+    }
+  };
   let mut jsonpiler = Jsonpiler::default();
   let file = Path::new(input_file);
-  let asm = &file.with_extension("s").to_string_lossy().to_string();
-  let obj = &file.with_extension("obj").to_string_lossy().to_string();
-  let exe = &file.with_extension("exe").to_string_lossy().to_string();
-  unwrap_or_exit(jsonpiler.build(source, input_file, asm), "Error");
-  (!Command::new("as")
-    .args([asm, "-o", obj])
-    .status()
-    .unwrap_or_else(|err| error_exit(&format!("Failed to assemble: {err}")))
-    .success())
-  .then(|| error_exit("Assembling process returned Bad status."));
-  #[cfg(not(debug_assertions))]
-  {
-    unwrap_or_exit(fs::remove_file(asm), &format!("Failed to remove '{asm}'"))
+  let asm = file.with_extension("s").to_string_lossy().to_string();
+  let obj = file.with_extension("obj").to_string_lossy().to_string();
+  let exe = file.with_extension("exe").to_string_lossy().to_string();
+  if let Err(err) = jsonpiler.build(source, input_file, &asm) {
+    eprintln!("Compilation error: {err}");
+    return ExitCode::FAILURE;
   }
-  (!Command::new("ld")
+  match Command::new("as").args([&asm, "-o", &obj]).status() {
+    Ok(status) if status.success() => status,
+    Ok(_) => {
+      eprintln!("Assembler returned a non-zero exit status.");
+      return ExitCode::FAILURE;
+    }
+    Err(err) => {
+      eprintln!("Failed to invoke assembler: {err}");
+      return ExitCode::FAILURE;
+    }
+  };
+  #[cfg(not(debug_assertions))]
+  if let Err(err) = fs::remove_file(&asm) {
+    eprintln!("Failed to delete '{asm}': {err}");
+    return ExitCode::FAILURE;
+  }
+  match Command::new("ld")
     .args([
-      obj,
+      &obj,
       "-o",
-      exe,
+      &exe,
       "-LC:/Windows/System32",
       "-luser32",
       "-lkernel32",
@@ -165,22 +180,43 @@ pub fn run() -> ! {
       "-e_start",
     ])
     .status()
-    .unwrap_or_else(|err| error_exit(&format!("Failed to link: {err}")))
-    .success())
-  .then(|| error_exit("Linking process returned Bad status."));
-  unwrap_or_exit(fs::remove_file(obj), &format!("Failed to remove '{obj}'"));
-  let exit_code =
-    Command::new(unwrap_or_exit(env::current_dir(), "Failed to get current directory").join(exe))
-      .args(args.get(2..).unwrap_or(&[]))
-      .spawn()
-      .unwrap_or_else(|err| error_exit(&format!("Failed to spawn child process: {err}")))
-      .wait()
-      .unwrap_or_else(|err| error_exit(&format!("Failed to wait for child process: {err}")))
-      .code()
-      .unwrap_or_else(|| error_exit("Failed to retrieve the exit code."));
-  exit(exit_code)
-}
-/// Unwraps the result. Exits the program on error.
-pub(crate) fn unwrap_or_exit<T, U: Display>(result: Result<T, U>, text: &str) -> T {
-  result.unwrap_or_else(|err| error_exit(&format!("{text}: {err}")))
+  {
+    Ok(status) if status.success() => status,
+    Ok(_) => {
+      eprintln!("Linker returned a non-zero exit status.");
+      return ExitCode::FAILURE;
+    }
+    Err(err) => {
+      eprintln!("Failed to invoke linker: {err}");
+      return ExitCode::FAILURE;
+    }
+  };
+  if let Err(err) = fs::remove_file(&obj) {
+    eprintln!("Failed to delete '{obj}': {err}");
+    return ExitCode::FAILURE;
+  }
+  let cwd = match env::current_dir() {
+    Ok(dir) => dir,
+    Err(err) => {
+      eprintln!("Failed to get current directory: {err}");
+      return ExitCode::FAILURE;
+    }
+  };
+  let exe_status = match Command::new(cwd.join(&exe)).args(args.get(2..).unwrap_or(&[])).status() {
+    Ok(status) => status,
+    Err(err) => {
+      eprintln!("Failed to execute compiled program: {err}");
+      return ExitCode::FAILURE;
+    }
+  };
+  let Some(exit_code) = exe_status.code() else {
+    eprintln!("Could not retrieve the child process's exit code.");
+    return ExitCode::FAILURE;
+  };
+  if let Ok(code) = u8::try_from(exit_code.rem_euclid(256)) {
+    ExitCode::from(code)
+  } else {
+    eprintln!("Internal error: Unexpected failure in exit code conversion.");
+    ExitCode::FAILURE
+  }
 }

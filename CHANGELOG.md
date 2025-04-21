@@ -2,6 +2,13 @@
 
 ## jsonpiler 0.1
 
+### jsonpiler 0.1.7
+
+- main function now returns `ExitCode` instead of `!`
+- Added functionality to store temporary values in registers,
+ saving and restoring previous values as needed.
+- Added functionality to include internal functions in the binary only when needed.
+
 ### jsonpiler 0.1.6
 
 - "=" function now returns null.
@@ -24,5 +31,4 @@
 ### jsonpiler 0.1.2
 
 - Added a Mermaid diagram to `README.md`.
-- Optimized message box-related functions.
 - Fixed a bug affecting the evaluation order of expressions.

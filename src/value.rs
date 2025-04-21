@@ -1,6 +1,8 @@
 //! Implementation of the `JValue`
-use super::{JValue, Json, functions::escape_string};
-use core::fmt;
+use {
+  super::{AsmFunc, JValue, Json, functions::escape_string},
+  core::fmt,
+};
 
 impl fmt::Display for JValue {
   /// Formats the `Json` object as a compact string without indentation.
@@ -22,7 +24,7 @@ impl fmt::Display for JValue {
         f.write_str("]")
       }
       JValue::VArray(av) => write!(f, "({av}: array)"),
-      JValue::Function { name: na, params: pa, ret: re } => {
+      JValue::Function(AsmFunc { name: na, params: pa, ret: re }) => {
         write!(f, "{na}(")?;
         iter_write(pa, f)?;
         write!(f, ") -> ")?;

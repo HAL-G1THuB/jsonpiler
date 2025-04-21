@@ -1,10 +1,19 @@
-.L_U8TO16:
+.seh_proc .L__U8TO16
+.L__U8TO16:
 	push	rdi
+  .seh_pushreg rdi
 	push	rsi
+  .seh_pushreg rsi
 	push	rbx
+  .seh_pushreg rbx
   push rbp
+  .seh_pushreg rbp
   mov rbp, rsp
+  .seh_setframe rbp, 0
   sub rsp, 48
+  .seh_stackalloc 48
+  .seh_endprologue
+  .seh_handler .L__SEH_HANDLER, @except
   mov rdi, rcx
   mov ecx, 65001
   xor edx, edx
@@ -14,7 +23,7 @@
   mov qword ptr 0x28[rsp], 0
   call [qword ptr __imp_MultiByteToWideChar[rip]]
   test eax, eax
-  jz .L_WIN_HANDLER
+  jz .L__WIN_HANDLER
   shl rax, 1
   mov rsi, rax
   mov rcx, rsi
@@ -28,11 +37,11 @@
   mov qword ptr 0x28[rsp], rsi
   call [qword ptr __imp_MultiByteToWideChar[rip]]
   test eax, eax
-  jz .L_WIN_HANDLER
+  jz .L__WIN_HANDLER
   mov rax, rbx
-  mov rsp, rbp
-  pop rbp
+  leave
 	pop	rbx
 	pop	rsi
 	pop	rdi
   ret
+.seh_endproc

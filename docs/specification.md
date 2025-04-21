@@ -28,3 +28,7 @@ Objects are evaluated as follows:
 
 - The object preserves insertion order.
 - The values of the object's properties are evaluated in that order.
+
+## Exits
+
+The Exit Code returned by jsonpiler::functions::run is the actual exit code wrapped to a value between 0 and 255 using modulo 256.

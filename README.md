@@ -12,11 +12,13 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 
 ## What's New
 
-- **"=" function now returns null.**
-- **"$" for more assignable values.**
-- **Fixed problem with docs.rs documents failing to build.**
-- Added `CHANGELOG.md` to track updates.
-- Object values are now evaluated in insertion order.
+- main function now returns `ExitCode` instead of `!`
+- Added functionality to store temporary values in registers,
+ saving and restoring previous values as needed.
+- Added functionality to include internal functions in the binary only when needed.
+- `"="` function now returns null.
+- `"$"` for more assignable values.
+- Fixed problem with docs.rs documents failing to build.
 
 [CHANGELOG (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 

@@ -1,17 +1,30 @@
 //! (main.rs)
-//! ```should_panic
-//! use jsonpiler::functions::run;
-//! fn main() -> ! {
-//!  run()
-//!}
 //! ```
+//! use jsonpiler::functions::run;
+//! use std::process::ExitCode;
+//! fn main() -> ExitCode {
+//!   run()
+//! }
+//! ```
+mod compiler;
 pub mod functions;
-mod impl_compiler;
-mod impl_object;
-mod impl_parser;
-mod impl_value;
-use core::error::Error;
-use std::collections::{HashMap, HashSet};
+mod object;
+mod parser;
+mod value;
+use {
+  core::error::Error,
+  std::collections::{HashMap, HashSet},
+};
+#[derive(Debug, Clone)]
+/// Assembly function representation.
+pub(crate) struct AsmFunc {
+  /// Name of function.
+  pub name: String,
+  /// Parameters of function.
+  pub params: Vec<Json>,
+  /// Return type of function.
+  pub ret: Box<JValue>,
+}
 /// Built-in function.
 #[derive(Debug, Clone)]
 pub(crate) struct BuiltinFunc {
@@ -30,8 +43,16 @@ pub(crate) struct ErrorInfo {
   /// Location of the part being parsed.
   pos: usize,
 }
-/// Built-in function types.
-type JFunc = fn(&mut Jsonpiler, &Json, &[Json], &mut String) -> JFuncResult;
+/// Information of Function.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct FuncInfo {
+  /// Body of function.
+  pub body: String,
+  /// Registers used.
+  pub using_reg: HashSet<String>,
+}
+/// Type of built-in function.
+type JFunc = fn(&mut Jsonpiler, &Json, &[Json], &mut FuncInfo) -> JFuncResult;
 /// Contain `JValue` or `Box<dyn Error>`.
 type JFuncResult = ErrOR<JValue>;
 /// Represents a JSON object with key-value pairs.
@@ -48,14 +69,7 @@ type JResult = ErrOR<Json>;
 #[derive(Debug, Clone, Default)]
 pub(crate) enum JValue {
   /// Function.
-  Function {
-    /// Name of function.
-    name: String,
-    /// Parameters of function.
-    params: Vec<Json>,
-    /// Return type of function.
-    ret: Box<JValue>,
-  },
+  Function(AsmFunc),
   /// Array.
   LArray(Vec<Json>),
   /// Bool.
@@ -109,10 +123,10 @@ pub struct Jsonpiler {
   info: ErrorInfo,
   /// Section of the assembly.
   sect: Section,
-  /// Seed to generate names.
-  seed: usize,
   /// Source code.
   source: String,
+  /// Seed to generate names.
+  symbol_seeds: HashMap<String, usize>,
   /// Variable table.
   vars: HashMap<String, JValue>,
 }

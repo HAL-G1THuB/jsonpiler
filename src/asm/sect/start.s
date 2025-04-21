@@ -9,27 +9,27 @@ _start:
   sub rsp, 40
   .seh_stackalloc 40
   .seh_endprologue
-  .seh_handler .L_SEH_HANDLER, @except
+  .seh_handler .L__SEH_HANDLER, @except
   mov ecx, 65001
   call [qword ptr __imp_SetConsoleCP[rip]]
   test eax, eax
-  jz .L_WIN_HANDLER
+  jz .L__WIN_HANDLER
   mov ecx, 65001
   call [qword ptr __imp_SetConsoleOutputCP[rip]]
   test eax, eax
-  jz .L_WIN_HANDLER
+  jz .L__WIN_HANDLER
   mov ecx, -10
   call [qword ptr __imp_GetStdHandle[rip]]
   cmp rax, -1
-  je .L_WIN_HANDLER
-  mov qword ptr .L_STDI[rip], rax
+  je .L__WIN_HANDLER
+  mov qword ptr .L__STDI[rip], rax
   mov ecx, -11
   call [qword ptr __imp_GetStdHandle[rip]]
   cmp rax, -1
-  je .L_WIN_HANDLER
-  mov qword ptr .L_STDO[rip], rax
+  je .L__WIN_HANDLER
+  mov qword ptr .L__STDO[rip], rax
   mov ecx, -12
   call [qword ptr __imp_GetStdHandle[rip]]
   cmp rax, -1
-  je .L_WIN_HANDLER
-  mov qword ptr .L_STDE[rip], rax
+  je .L__WIN_HANDLER
+  mov qword ptr .L__STDE[rip], rax
