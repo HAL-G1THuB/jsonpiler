@@ -16,7 +16,8 @@
 ["begin", {"expr": "Any"}, "...", {"return_value": "Any"}] -> "Any"
 ```
 
-Evaluates each expression in order and returns the result of the last one.
+Evaluates each expression in order and returns the result of the last one.  
+`begin` introduces a new scope.
 
 ```json
 ["begin", ["+", 1, 3], 0] => 0
@@ -59,9 +60,10 @@ Subtracts all following operands from the first one and returns the result.
 ```
 
 Creates a function.  
-The first argument specifies the parameter list; the remaining arguments are evaluated as expressions within the function body.  
-Returns the resulting function object.
-`lambda` has scope.
+The first argument specifies the parameter list;  
+the remaining arguments are evaluated as expressions within the function body.  
+Returns the resulting function object.  
+`lambda` introduces a new scope.
 
 ```json
 ["lambda", [], ["+", 4, 6], "this function returns a string"]
@@ -81,15 +83,19 @@ Returns the ID of the button pressed — currently always `1` (equivalent to `ID
 
 ---
 
-## `=`
+## `=`, `global`
 
 ```json
 ["=", {"variable": "LString"}, {"value": "Any"}] -> "Null"
 ```
 
+```json
+["global", {"variable": "LString"}, {"value": "Any"}] -> "Null"
+```
+
 Assigns the given value to the specified variable name.  
 Returns the assigned value.
-
+Assigned to local scope for `=` and to global scope for `global`.
 Currently, the following types are **not assignable**:
 
 - LArray  

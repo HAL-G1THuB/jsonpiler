@@ -2,6 +2,12 @@
 
 ## jsonpiler 0.1
 
+### jsonpiler 0.1.8
+
+- Created a new function `global`.
+- Changed the structure of the variable table.
+- `begin` now introduces a new scope.
+
 ### jsonpiler 0.1.7
 
 - main function now returns `ExitCode` instead of `!`

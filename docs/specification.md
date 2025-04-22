@@ -31,4 +31,8 @@ Objects are evaluated as follows:
 
 ## Exits
 
-The Exit Code returned by jsonpiler::functions::run is the actual exit code wrapped to a value between 0 and 255 using modulo 256.
+The Exit Code returned by `jsonpiler::functions::run` is the actual exit code wrapped to a value between 0 and 255 using modulo 256.
+
+## Encoding
+
+This program supports UTF-8.

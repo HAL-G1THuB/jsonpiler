@@ -1,9 +1,8 @@
 //! Implementation of the `JValue`
 use {
-  super::{AsmFunc, JValue, Json, functions::escape_string},
-  core::fmt,
+  super::{AsmFunc, JValue, Json},
+  core::fmt::{self, Write as _},
 };
-
 impl fmt::Display for JValue {
   /// Formats the `Json` object as a compact string without indentation.
   #[expect(clippy::min_ident_chars, reason = "default name is 'f'")]
@@ -45,7 +44,26 @@ impl fmt::Display for JValue {
     }
   }
 }
-
+/// Escapes special characters in a string for proper JSON formatting.
+pub(crate) fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {
+  let mut escaped = String::new();
+  escaped.push('"');
+  for ch in unescaped.chars() {
+    match ch {
+      '"' => write!(escaped, r#"\""#)?,
+      '\\' => write!(escaped, r"\\")?,
+      '\n' => write!(escaped, r"\n")?,
+      '\t' => write!(escaped, r"\t")?,
+      '\r' => write!(escaped, r"\r")?,
+      '\u{08}' => write!(escaped, r"\b")?,
+      '\u{0C}' => write!(escaped, r"\f")?,
+      u_ch if u_ch < '\u{20}' => write!(escaped, r"\u{:04x}", u32::from(ch))?,
+      _ => escaped.push(ch),
+    }
+  }
+  escaped.push('"');
+  Ok(escaped)
+}
 /// Iterates over a list of `Json` objects and writes them without indentation.
 fn iter_write(list: &[Json], out: &mut fmt::Formatter) -> fmt::Result {
   for (i, item) in list.iter().enumerate() {

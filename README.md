@@ -12,13 +12,13 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 
 ## What's New
 
+- **Created a new function `global`.**
+- **Changed the structure of the variable table.**
+- **`begin` now introduces a new scope.**
 - main function now returns `ExitCode` instead of `!`
 - Added functionality to store temporary values in registers,
  saving and restoring previous values as needed.
 - Added functionality to include internal functions in the binary only when needed.
-- `"="` function now returns null.
-- `"$"` for more assignable values.
-- Fixed problem with docs.rs documents failing to build.
 
 [CHANGELOG (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 
@@ -39,7 +39,7 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 
 ```bash
 cargo install jsonpiler
-jsonpiler (input_json_file in UTF-8)
+jsonpiler (input_json_file (UTF-8)) [arguments of .exe ...]
 ```
 
 Replace `(input_json_file)` with the actual JSON file you want to compile.

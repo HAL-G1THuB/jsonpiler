@@ -1,5 +1,5 @@
 //! (main.rs)
-use jsonpiler::functions::run;
+use jsonpiler::run;
 use std::process::ExitCode;
 fn main() -> ExitCode {
   run()
