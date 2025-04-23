@@ -1,8 +1,8 @@
 //! Implementation of the compiler inside the `Jsonpiler`.
 use {
   super::{
-    AsmFunc, BuiltinFunc, ErrOR, ErrorInfo, FuncInfo, JFunc, JObject, JResult, JValue, Json,
-    Jsonpiler, Section,
+    AsmFunc, BuiltinFunc, ErrOR, ErrorInfo, FResult, FuncInfo, JFunc, JObject, JResult, JValue,
+    Json, Jsonpiler, Section,
   },
   core::fmt::Write as _,
   std::{
@@ -38,17 +38,29 @@ impl Jsonpiler {
     self.f_table = HashMap::new();
     self.vars = vec![HashMap::new()];
     self.all_register();
-    let mut start = FuncInfo::default();
-    let result = self.eval(&json, &mut start)?;
+    let mut func = FuncInfo::default();
+    let result = self.eval(&json, &mut func)?;
+    let mut writer = io::BufWriter::new(File::create(filename)?);
+    writer.write_all(format!(".file \"{json_file}\"\n.intel_syntax noprefix\n").as_bytes())?;
+    writer.write_all(include_bytes!("asm/sect/data.s"))?;
+    writer.write_all(self.sect.data.as_bytes())?;
+    writer.write_all(include_bytes!("asm/sect/bss.s"))?;
+    writer.write_all(self.sect.bss.as_bytes())?;
+    writer.write_all(
+      format!(include_str!("asm/sect/start.s"), alloc_size = func.calc_alloc(8)?).as_bytes(),
+    )?;
+    writer.write_all(func.body.as_bytes())?;
     if let JValue::LInt(int) = result.value {
-      writeln!(start.body, "  mov rcx, {int}")?;
+      writer.write_all(format!("  mov rcx, {int}\n").as_bytes())
     } else if let JValue::VInt(var) = &result.value {
-      writeln!(start.body, "mov rcx, qword ptr {var}[rip]")?;
+      writer.write_all(format!("  mov rcx, qword ptr {var}[rip]\n").as_bytes())
     } else {
-      start.body.push_str("xor ecx, ecx\n");
-    }
-    start.body.push_str("  call [qword ptr __imp_ExitProcess[rip]]\n  .seh_endproc\n");
-    self.write_file(&start.body, filename, json_file)?;
+      writer.write_all(b"  xor ecx, ecx\n")
+    }?;
+    writer.write_all(b"  call [qword ptr __imp_ExitProcess[rip]]\n.seh_endproc\n")?;
+    writer.write_all(include_bytes!("asm/sect/text.s"))?;
+    writer.write_all(self.sect.text.as_bytes())?;
+    writer.flush()?;
     Ok(())
   }
   /// Evaluates a JSON object.
@@ -62,29 +74,32 @@ impl Jsonpiler {
       }
       return Ok(Json { value: JValue::LObject(evaluated), info: json.info.clone() });
     };
-    let first_elem =
-      list.first().ok_or(self.fmt_err("An function call cannot be an empty list.", &json.info))?;
+    let Some(first_elem) = list.first() else {
+      self.require(
+        "A function call",
+        "list with lambda object or name of built-in function as the first element",
+        json,
+      )?;
+      return Ok(Json::default());
+    };
     let first = &self.eval(first_elem, func)?;
     if let JValue::LString(cmd) = &first.value {
       if self.f_table.contains_key(cmd.as_str()) {
-        if self.f_table.get_mut(cmd.as_str()).ok_or(ERR)?.scoped {
+        let builtin = self.f_table.get_mut(cmd.as_str()).ok_or(ERR)?;
+        let scoped = builtin.scoped;
+        let ptr = builtin.func;
+        if scoped {
           self.vars.push(HashMap::new());
         }
-        let args = if self.f_table.get_mut(cmd.as_str()).ok_or(ERR)?.do_not_eval {
-          list.get(1..).unwrap_or(&[])
-        } else {
-          &self.eval_args(list.get(1..).unwrap_or(&[]), func)?
-        };
-        let result = Ok(Json {
-          value: (self.f_table.get_mut(cmd.as_str()).ok_or(ERR)?.func)(self, first, args, func)?,
-          info: first.info.clone(),
-        });
-        if self.f_table.get_mut(cmd.as_str()).ok_or(ERR)?.scoped {
+        let rest = list.get(1..).unwrap_or(&[]);
+        let args = if builtin.do_not_eval { rest } else { &self.eval_args(rest, func)? };
+        let result = Ok(Json { value: ptr(self, first, args, func)?, info: first.info.clone() });
+        if scoped {
           self.vars.pop();
         }
         result
       } else {
-        Err(self.fmt_err(&format!("Function '{cmd}' is undefined."), &first.info).into())
+        Err(self.fmt_err(&format!("Function `{cmd}` is undefined."), &first.info).into())
       }
     } else if let JValue::Function(AsmFunc { name: n, ret: re, .. }) = &first.value {
       writeln!(func.body, "  call {n}")?;
@@ -97,7 +112,12 @@ impl Jsonpiler {
         Ok(Json::default())
       }
     } else {
-      Err(self.fmt_err("Expected a function or lambda as the first element.", &json.info).into())
+      self.require(
+        "1st element of a function call",
+        "lambda object or name of built-in function",
+        json,
+      )?;
+      Ok(Json::default())
     }
   }
   /// Evaluate arguments.
@@ -121,6 +141,14 @@ impl Jsonpiler {
   pub(crate) fn register(&mut self, name: &str, flg: (bool, bool), fu: JFunc) {
     self.f_table.insert(name.into(), BuiltinFunc { do_not_eval: flg.0, scoped: flg.1, func: fu });
   }
+  /// Generate an error.
+  pub(crate) fn require(&self, name: &str, expected: &str, json: &Json) -> FResult {
+    Err(
+      self
+        .fmt_err(&format!("{name} requires {expected}, but got {}.", &json.value), &json.info)
+        .into(),
+    )
+  }
   /// Convert `JValue::` (`StringVar` or `String`) to `StringVar`, otherwise return `Err`
   pub(crate) fn string2var(&mut self, json: &Json, ctx: &str) -> ErrOR<String> {
     if let JValue::LString(st) = &json.value {
@@ -130,22 +158,38 @@ impl Jsonpiler {
     } else if let JValue::VString(var) = &json.value {
       Ok(var.clone())
     } else {
-      Err(self.fmt_err(&format!("'{ctx}' must be a string."), &json.info).into())
+      Err(self.fmt_err(&format!("`{ctx}` must be a string."), &json.info).into())
     }
   }
-  /// Writes the compiled assembly code to a file.
-  fn write_file(&self, start: &str, filename: &str, json_file: &str) -> io::Result<()> {
-    let mut writer = io::BufWriter::new(File::create(filename)?);
-    writer.write_all(format!(".file \"{json_file}\"\n.intel_syntax noprefix\n").as_bytes())?;
-    writer.write_all(include_bytes!("asm/sect/data.s"))?;
-    writer.write_all(self.sect.data.as_bytes())?;
-    writer.write_all(include_bytes!("asm/sect/bss.s"))?;
-    writer.write_all(self.sect.bss.as_bytes())?;
-    writer.write_all(include_bytes!("asm/sect/start.s"))?;
-    writer.write_all(start.as_bytes())?;
-    writer.write_all(include_bytes!("asm/sect/text.s"))?;
-    writer.write_all(self.sect.text.as_bytes())?;
-    writer.flush()?;
-    Ok(())
+  /// Generate an error.
+  pub(crate) fn validate(
+    &self, name: &str, at_least: bool, expected: usize, got: usize, info: &ErrorInfo,
+  ) -> ErrOR<()> {
+    let plural = if expected == 1 { "" } else { "s" };
+    if at_least {
+      if got >= expected {
+        Ok(())
+      } else {
+        Err(
+          self
+            .fmt_err(
+              &format!("`{name}` requires at least {expected} argument{plural}, but got {got}.",),
+              info,
+            )
+            .into(),
+        )
+      }
+    } else if expected == got {
+      Ok(())
+    } else {
+      Err(
+        self
+          .fmt_err(
+            &format!("`{name}` requires exactly {expected} argument{plural}, but got {got}.",),
+            info,
+          )
+          .into(),
+      )
+    }
   }
 }

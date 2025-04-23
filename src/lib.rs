@@ -12,7 +12,7 @@ mod object;
 mod parser;
 mod value;
 use {
-  core::error::Error,
+  core::{cmp, error::Error},
   std::{
     collections::{HashMap, HashSet},
     env, fs,
@@ -55,10 +55,42 @@ type FResult = ErrOR<JValue>;
 /// Information of Function.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct FuncInfo {
+  /// Size of arguments.
+  args_slots: usize,
   /// Body of function.
-  pub body: String,
+  body: String,
+  /// Size of local variable.
+  local_size: usize,
   /// Registers used.
-  pub using_reg: HashSet<String>,
+  reg_used: HashSet<String>,
+}
+#[expect(dead_code, reason = "todo")]
+impl FuncInfo {
+  /// Add local variable size (in bytes)
+  pub fn add_local(&mut self, size: usize) -> Result<(), &'static str> {
+    self.local_size = self.local_size.checked_add(size).ok_or("LocalSizeOverflowError")?;
+    Ok(())
+  }
+  /// Calculate to allocate size.
+  pub fn calc_alloc(&self, align: usize) -> ErrOR<usize> {
+    let locals = self
+      .local_size
+      .checked_add(self.args_slots.checked_mul(8).ok_or("LocalSizeOverflowError")?)
+      .ok_or("LocalSizeOverflowError")?
+      .checked_add(15)
+      .ok_or("LocalSizeOverflowError")?
+      & !15;
+    let shadow_space = 32;
+    locals
+      .checked_add(shadow_space)
+      .ok_or("LocalSizeOverflowError")?
+      .checked_add(align)
+      .ok_or("LocalSizeOverflowError".into())
+  }
+  /// Update `args_slots` (only if size is larger)
+  pub fn update_max(&mut self, size: usize) {
+    self.args_slots = cmp::max(self.args_slots, size);
+  }
 }
 /// Type of built-in function.
 type JFunc = fn(&mut Jsonpiler, &Json, &[Json], &mut FuncInfo) -> FResult;
@@ -124,6 +156,10 @@ pub struct Jsonpiler {
   f_table: HashMap<String, BuiltinFunc>,
   /// Flag to avoid including the same file twice.
   include_flag: HashSet<String>,
+  /// index of `indices`
+  index: usize,
+  /// Character indices.
+  indices: Vec<(usize, char)>,
   /// Information to be used during parsing.
   info: ErrorInfo,
   /// Section of the assembly.
@@ -145,40 +181,41 @@ impl Jsonpiler {
       return format!("{err}{MSG1}{}{MSG2}Error: Empty input", info.line);
     }
     let len = self.source.len();
+    let line = info.line;
     let idx = info.pos.min(len.saturating_sub(1));
     let start = if idx == 0 {
       0
     } else {
       let Some(left) = self.source.get(..idx) else {
-        return format!("{err}{MSG1}{}{MSG2}Error: Failed to get substring", info.line);
+        return format!("{err}{MSG1}{line}{MSG2}Error: Failed to get substring");
       };
       match left.rfind('\n') {
         None => 0,
         Some(start_pos) => {
           let Some(res) = start_pos.checked_add(1) else {
-            return format!("{err}{MSG1}{}{MSG2}Error: Overflow", info.line);
+            return format!("{err}{MSG1}{line}{MSG2}Error: Overflow");
           };
           res
         }
       }
     };
     let Some(right) = self.source.get(idx..) else {
-      return format!("{err}{MSG1}{}{MSG2}Error: Failed to get substring", info.line);
+      return format!("{err}{MSG1}{line}{MSG2}Error: Failed to get substring");
     };
     let end = match right.find('\n') {
       None => len,
       Some(end_pos) => {
         let Some(res) = idx.checked_add(end_pos) else {
-          return format!("{err}{MSG1}{}{MSG2}Error: Overflow", info.line);
+          return format!("{err}{MSG1}{line}{MSG2}Error: Overflow");
         };
         res
       }
     };
     let ws = " ".repeat(idx.saturating_sub(start));
     let Some(result) = self.source.get(start..end) else {
-      return format!("{err}{MSG1}{}{MSG2}Error: Failed to get substring", info.line);
+      return format!("{err}{MSG1}{line}{MSG2}Error: Failed to get substring");
     };
-    format!("{err}{MSG1}{}{MSG2}{result}\n{ws}^", info.line)
+    format!("{err}{MSG1}{line}{MSG2}{result}\n{ws}^")
   }
 }
 /// Section of the assembly.
@@ -192,7 +229,6 @@ pub(crate) struct Section {
   text: String,
 }
 /// Compiles and executes a JSON-based program using the Jsonpiler.
-///
 /// This function performs the following steps:
 /// 1. Parses the first CLI argument as the input JSON file path.
 /// 2. Reads the file content into a string.
@@ -202,23 +238,19 @@ pub(crate) struct Section {
 /// 6. Links it into an `.exe`.
 /// 7. Executes the resulting binary.
 /// 8. Returns its exit code.
-///
 /// # Panics
 /// This function will panic if:
 /// - The platform is not Windows.
 /// - CLI arguments are invalid.
 /// - File reading, parsing, compilation, assembling, linking, or execution fails.
 /// - The working directory or executable filename is invalid.
-///
 /// # Requirements
 /// - `as` and `ld` must be available in the system PATH.
 /// - On failure, exits with code 1 using `error_exit`.
-///
 /// # Example
 /// ```sh
 /// ./jsonpiler test.json
 /// ```
-///
 /// # Platform
 /// Windows only.
 #[inline]
@@ -239,7 +271,7 @@ pub fn run() -> ExitCode {
   let source = match fs::read_to_string(input_file) {
     Ok(content) => content,
     Err(err) => {
-      eprintln!("Failed to read '{input_file}': {err}");
+      eprintln!("Failed to read `{input_file}`: {err}");
       return ExitCode::FAILURE;
     }
   };
@@ -265,7 +297,7 @@ pub fn run() -> ExitCode {
   };
   #[cfg(not(debug_assertions))]
   if let Err(err) = fs::remove_file(&asm) {
-    eprintln!("Failed to delete '{asm}': {err}");
+    eprintln!("Failed to delete `{asm}`: {err}");
     return ExitCode::FAILURE;
   }
   match Command::new("ld")
@@ -293,7 +325,7 @@ pub fn run() -> ExitCode {
     }
   };
   if let Err(err) = fs::remove_file(&obj) {
-    eprintln!("Failed to delete '{obj}': {err}");
+    eprintln!("Failed to delete `{obj}`: {err}");
     return ExitCode::FAILURE;
   }
   let cwd = match env::current_dir() {
@@ -302,8 +334,9 @@ pub fn run() -> ExitCode {
       eprintln!("Failed to get current directory: {err}");
       return ExitCode::FAILURE;
     }
-  };
-  let exe_status = match Command::new(cwd.join(&exe)).args(args.get(2..).unwrap_or(&[])).status() {
+  }
+  .join(&exe);
+  let exe_status = match Command::new(cwd).args(args.get(2..).unwrap_or(&[])).status() {
     Ok(status) => status,
     Err(err) => {
       eprintln!("Failed to execute compiled program: {err}");

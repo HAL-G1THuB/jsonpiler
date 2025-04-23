@@ -12,14 +12,12 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 
 ## What's New
 
-- **Created a new function `global`.**
-- **Changed the structure of the variable table.**
-- **`begin` now introduces a new scope.**
-- main function now returns `ExitCode` instead of `!`
-- Added functionality to store temporary values in registers,
- saving and restoring previous values as needed.
-- Added functionality to include internal functions in the binary only when needed.
-
+- **Added the ability to dynamically change stack allocations (currently unused)**
+- **The format of the error statement was fixed.**
+- **Improved parser overhead.**
+- Created a new function `global`.
+- Changed the structure of the variable table.
+- `begin` now introduces a new scope.
 [CHANGELOG (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 
 ## Prerequisites
@@ -63,6 +61,20 @@ A message box appears with the title (from variable `"a"`) and the body `"345"`,
 The program returns the integer ID of the pressed button in the message box  
 (currently only `1` is supported, which corresponds to `IDOK` in C/C++),  
 as the final value of the `begin` block.
+
+## Error message
+
+```json
+["message", "title", ["$", "not_exist"]]
+```
+
+```text
+Compilation error: Undefined variables: `not_exist`
+Error occurred on line: 1
+Error position:
+["message", "title", ["$", "not_exist"]]
+                           ^
+```
 
 ## Function Documentation
 

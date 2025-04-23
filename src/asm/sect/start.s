@@ -6,8 +6,8 @@
 _start:
   mov rbp, rsp
   .seh_setframe rbp, 0
-  sub rsp, 40
-  .seh_stackalloc 40
+  sub rsp, {alloc_size}
+  .seh_stackalloc {alloc_size}
   .seh_endprologue
   .seh_handler .L__SEH_HANDLER, @except
   mov ecx, 65001

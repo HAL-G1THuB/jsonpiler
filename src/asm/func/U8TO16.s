@@ -1,10 +1,10 @@
 .seh_proc .L__U8TO16
 .L__U8TO16:
-	push	rdi
+  push rdi
   .seh_pushreg rdi
-	push	rsi
+  push rsi
   .seh_pushreg rsi
-	push	rbx
+  push rbx
   .seh_pushreg rbx
   push rbp
   .seh_pushreg rbp
@@ -39,9 +39,10 @@
   test eax, eax
   jz .L__WIN_HANDLER
   mov rax, rbx
-  leave
-	pop	rbx
-	pop	rsi
-	pop	rdi
+  mov rsp, rbp
+  pop rbp
+  pop rbx
+  pop rsi
+  pop rdi
   ret
 .seh_endproc

@@ -2,6 +2,12 @@
 
 ## jsonpiler 0.1
 
+### jsonpiler 0.1.9
+
+- Added the ability to dynamically change stack allocations (currently unused)
+- The format of the error statement was fixed.
+- Improved parser overhead.
+
 ### jsonpiler 0.1.8
 
 - Created a new function `global`.
@@ -38,3 +44,7 @@
 
 - Added a Mermaid diagram to `README.md`.
 - Fixed a bug affecting the evaluation order of expressions.
+
+### jsonpiler 0.1.0 ~ 0.1.1
+
+- Transition from previous crate.
