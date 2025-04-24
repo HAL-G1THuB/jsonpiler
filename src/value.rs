@@ -9,20 +9,20 @@ impl fmt::Display for JValue {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
       JValue::Null => f.write_str("Null"),
-      JValue::LBool(bo) => write!(f, "{bo}"),
-      JValue::VBool(bv, bit) => write!(f, "({bv}-{bit}: VBool)"),
-      JValue::LInt(int) => write!(f, "{int}"),
-      JValue::VInt(iv) => write!(f, "({iv}: VInt)"),
-      JValue::LFloat(fl) => write!(f, "{fl}"),
-      JValue::VFloat(fv) => write!(f, "({fv}: VFloat)"),
-      JValue::LString(st) => f.write_str(&escape_string(st)?),
-      JValue::VString(sv) => write!(f, "({sv}: VString)"),
       JValue::LArray(ar) => {
         f.write_str("[")?;
         iter_write(ar, f)?;
         f.write_str("]")
       }
-      JValue::VArray(av) => write!(f, "({av}: VArray)"),
+      JValue::VArray(va) => write!(f, "VArray(\"{va}\")"),
+      JValue::LBool(bo) => write!(f, "{bo}"),
+      JValue::VBool(vb, bit) => write!(f, "VBool(\"{vb}\"-{bit})"),
+      JValue::LInt(int) => write!(f, "{int}"),
+      JValue::VInt(vi) => write!(f, "VInt(\"{vi}\")"),
+      JValue::LFloat(fl) => write!(f, "{fl}"),
+      JValue::VFloat(vf) => write!(f, "VFloat(\"{vf}\")"),
+      JValue::LString(st) => f.write_str(&escape_string(st)?),
+      JValue::VString(vs) => write!(f, "VString(\"{vs}\")"),
       JValue::Function(fu) => {
         write!(f, "{}(", fu.name)?;
         iter_write(&fu.params, f)?;
@@ -40,7 +40,7 @@ impl fmt::Display for JValue {
         }
         f.write_str("}")
       }
-      JValue::VObject(ov) => write!(f, "({ov}: VObject)"),
+      JValue::VObject(vo) => write!(f, "VObject({vo})"),
     }
   }
 }

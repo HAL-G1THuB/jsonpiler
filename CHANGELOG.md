@@ -2,6 +2,10 @@
 
 ## jsonpiler 0.1
 
+### jsonpiler 0.1.10
+
+- Significantly improved parser slowness caused by changes in the previous version
+
 ### jsonpiler 0.1.9
 
 - Added the ability to dynamically change stack allocations (currently unused)

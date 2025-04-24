@@ -12,12 +12,13 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 
 ## What's New
 
+- **Significantly improved parser slowness caused by changes in the previous version**
 - **Added the ability to dynamically change stack allocations (currently unused)**
 - **The format of the error statement was fixed.**
-- **Improved parser overhead.**
 - Created a new function `global`.
 - Changed the structure of the variable table.
 - `begin` now introduces a new scope.
+
 [CHANGELOG (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 
 ## Prerequisites

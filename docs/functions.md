@@ -28,7 +28,7 @@ Evaluates each expression in order and returns the result of the last one.
 ## `+`
 
 ```json
-["+", {"augend": "Int"}, {"addend": "Int"}, "..."] -> "VInt"
+["+", {"operand": "Int"}, "..."] -> "VInt"
 ```
 
 Returns the sum of all operands.
@@ -42,7 +42,7 @@ Returns the sum of all operands.
 ## `-`
 
 ```json
-["-", {"minuend": "Int"}, {"subtrahend": "Int"}, "..."] -> "VInt"
+["-", {"operand": "Int"}, "..."] -> "VInt"
 ```
 
 Subtracts all following operands from the first one and returns the result.

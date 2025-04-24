@@ -1,14 +1,11 @@
 //! Built-in functions.
-use {
-  super::{AsmFunc, ErrOR, FResult, FuncInfo, JValue, Json, Jsonpiler},
-  core::fmt::Write as _,
-};
+use super::{AsmFunc, ErrOR, FResult, FuncInfo, JValue, Json, Jsonpiler};
 /// Macro to include assembly files only once.
 macro_rules! include_once {
   ($self:ident, $name:literal) => {
     if !$self.include_flag.contains($name) {
       $self.include_flag.insert($name.into());
-      write!($self.sect.text, include_str!(concat!("asm/", $name, ".s")))?;
+      $self.sect.text.push(include_str!(concat!("asm/", $name, ".s")).into());
     }
   };
 }
@@ -41,11 +38,11 @@ impl Jsonpiler {
   fn binary_op(
     &mut self, first: &Json, args: &[Json], func: &mut FuncInfo, mn: &str, op: &str,
   ) -> FResult {
-    let mut f_binary_mn = |json: &Json, mne: &str| -> ErrOR<()> {
+    let mut binary_mn = |json: &Json, mne: &str| -> ErrOR<()> {
       if let JValue::LInt(int) = json.value {
-        writeln!(func.body, "  {mne} rax, {int}")?;
+        func.body.push(format!("  {mne} rax, {int}"));
       } else if let JValue::VInt(var) = &json.value {
-        writeln!(func.body, "  {mne} rax, qword ptr {var}[rip]")?;
+        func.body.push(format!("  {mne} rax, qword ptr {var}[rip]"));
       } else {
         self.require(op, "integer", json)?;
       }
@@ -53,63 +50,60 @@ impl Jsonpiler {
     };
     self.validate(op, true, 1, args.len(), &first.info)?;
     let operand_r = args.first().ok_or("Unreachable (binary_op)")?;
-    f_binary_mn(operand_r, "mov")?;
+    binary_mn(operand_r, "mov")?;
     for operand_l in args.get(1..).unwrap_or(&[]) {
-      f_binary_mn(operand_l, mn)?;
+      binary_mn(operand_l, mn)?;
     }
     let ret = self.get_name("INT")?;
-    writeln!(self.sect.bss, "  .lcomm {ret}, 8")?;
-    writeln!(func.body, "  mov qword ptr {ret}[rip], rax")?;
+    self.sect.bss.push(format!("  .lcomm {ret}, 8"));
+    func.body.push(format!("  mov qword ptr {ret}[rip], rax"));
     Ok(JValue::VInt(ret))
   }
   /// Evaluates a lambda function definition.
   #[expect(clippy::single_call_fn, reason = "")]
   fn lambda(&mut self, first: &Json, args: &[Json], _: &mut FuncInfo) -> FResult {
     const ERR: &str = "Unreachable (lambda)";
-    self.validate("lambda", true, 3, args.len(), &first.info)?;
+    self.validate("lambda", true, 2, args.len(), &first.info)?;
     let mut func = FuncInfo::default();
     let json1 = args.first().ok_or(ERR)?;
     let JValue::LArray(params) = &json1.value else {
       return self.require("1st argument of `lambda`", "an argument list", json1);
     };
-    self.assert(params.is_empty(), "PARAMS IS NOT IMPLEMENTED.", &json1.info)?;
+    if !params.is_empty() {
+      return Err(self.fmt_err("PARAMETERS IS NOT IMPLEMENTED.", &json1.info).into());
+    }
     let name = self.get_name("FNC")?;
     let mut ret = JValue::Null;
     for arg in args.get(1..).ok_or(self.fmt_err("Empty lambda body.", &first.info))? {
       ret = self.eval(arg, &mut func)?.value;
     }
-    writeln!(self.sect.text, ".seh_proc {name}\n{name}:")?;
-    let alloc_size = func.calc_alloc(if func.reg_used.len() & 1 == 1 { 8 } else { 0 })?;
+    self.sect.text.push(format!(".seh_proc {name}\n{name}:"));
     let mut registers: Vec<&String> = func.reg_used.iter().collect();
     registers.sort();
     for &reg in &registers {
-      writeln!(self.sect.text, "  push {reg}\n  .seh_pushreg {reg}")?;
+      self.sect.text.push(format!("  push {reg}\n  .seh_pushreg {reg}"));
     }
-    writeln!(
-      self.sect.text,
-      "  push rbp
-  .seh_pushreg rbp
-  mov rbp, rsp
-  .seh_setframe rbp, 0
-  sub rsp, {alloc_size}
-  .seh_stackalloc {alloc_size}
-  .seh_endprologue
-  .seh_handler .L__SEH_HANDLER, @except",
-    )?;
-    self.sect.text.push_str(&func.body);
+    self.sect.text.push("  push rbp\n  .seh_pushreg rbp".into());
+    self.sect.text.push(format!(
+      include_str!("asm/common/prologue.s"),
+      size = func.calc_alloc(if func.reg_used.len() & 1 == 1 { 8 } else { 0 })?
+    ));
+    for body in func.body {
+      self.sect.text.push(body);
+    }
     if let JValue::LInt(int) = ret {
-      writeln!(self.sect.text, "  mov rax, {int}")?;
+      self.sect.text.push(format!("  mov rax, {int}"));
     } else if let JValue::VInt(var) = &ret {
-      writeln!(self.sect.text, "  mov rax, qword ptr {var}[rip]")?;
+      self.sect.text.push(format!("  mov rax, qword ptr {var}[rip]"));
     } else {
-      self.sect.text.push_str("  xor eax, eax\n");
+      self.sect.text.push("  xor eax, eax".into());
     }
-    self.sect.text.push_str("  mov rsp, rbp\n  pop rbp\n");
+    self.sect.text.push("  mov rsp, rbp\n  pop rbp".into());
     registers.reverse();
     for reg in &registers {
-      writeln!(self.sect.text, "  pop {reg}")?;
+      self.sect.text.push(format!("  pop {reg}"));
     }
-    self.sect.text.push_str("  ret\n.seh_endproc\n");
+    self.sect.text.push("  ret\n.seh_endproc".into());
     Ok(JValue::Function(AsmFunc { name, params: params.clone(), ret: Box::new(ret) }))
   }
   /// Displays a message box.
@@ -122,9 +116,14 @@ impl Jsonpiler {
     let title = self.string2var(args.first().ok_or(ERR)?, "title")?;
     let msg = self.string2var(args.get(1).ok_or(ERR)?, "text")?;
     let ret = self.get_name("INT")?;
-    writeln!(self.sect.bss, "  .lcomm {ret}, 8")?;
+    self.sect.bss.push(format!("  .lcomm {ret}, 8"));
     include_once!(self, "func/U8TO16");
-    write!(func.body, include_str!("asm/caller/message.s"), msg = msg, title = title, ret = ret)?;
+    func.body.push(format!(
+      include_str!("asm/caller/message.s"),
+      msg = msg,
+      title = title,
+      ret = ret
+    ));
     Ok(JValue::VInt(ret))
   }
   /// Performs subtraction.
@@ -149,13 +148,13 @@ impl Jsonpiler {
     let value = match &json2.value {
       JValue::LString(st) => {
         let name = self.get_name("STR")?;
-        writeln!(self.sect.data, "  {name}: .string \"{st}\"")?;
+        self.sect.data.push(format!("  {name}: .string \"{st}\""));
         JValue::VString(name.clone())
       }
       JValue::Null => JValue::Null,
       JValue::LInt(int) => {
         let name = self.get_name("INT")?;
-        writeln!(self.sect.data, "  {name}: .quad 0x{int:x}")?;
+        self.sect.data.push(format!("  {name}: .quad 0x{int:x}"));
         JValue::VInt(name.clone())
       }
       JValue::VString(_)

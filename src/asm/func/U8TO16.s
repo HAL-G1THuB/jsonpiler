@@ -10,8 +10,8 @@
   .seh_pushreg rbp
   mov rbp, rsp
   .seh_setframe rbp, 0
-  sub rsp, 48
-  .seh_stackalloc 48
+  sub rsp, 56
+  .seh_stackalloc 56
   .seh_endprologue
   .seh_handler .L__SEH_HANDLER, @except
   mov rdi, rcx
