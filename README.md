@@ -1,10 +1,10 @@
 # Jsonpiler - JSON Syntax Programming Language
 
-**Jsonpiler** is a compiler for the JSON Syntax Programming Language.
+**Jsonpiler** is a compiler for the JSON syntax programming language and its compiler.
 
-This program converts a JSON-based program into GNU Assembly, compiles it, and executes the result.  
+This program converts a JSON-based program to GNU assembly, compiles it, and executes the result.  
 
-- [GitHub Repository](https://github.com/HAL-G1THuB/jsonpiler.git)  
+- [GitHub repository](https://github.com/HAL-G1THuB/jsonpiler.git)  
 - [Crates.io](https://crates.io/crates/jsonpiler)  
 - [Docs.rs](https://docs.rs/jsonpiler/latest/jsonpiler)  
 - [Fallback documentation (if docs.rs fails)](https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html)  
@@ -12,12 +12,12 @@ This program converts a JSON-based program into GNU Assembly, compiles it, and e
 
 ## What's New
 
-- **Significantly improved parser slowness caused by changes in the previous version**
-- **Added the ability to dynamically change stack allocations (currently unused)**
-- **The format of the error statement was fixed.**
-- Created a new function `global`.
-- Changed the structure of the variable table.
-- `begin` now introduces a new scope.
+- **Added functionality to cache and reuse string literals**.
+- **Generalized variable generation in assembly**.
+- **Significantly renamed structures for clarity**.
+- Significantly improved parser slowness caused by changes in the previous version
+- Added the ability to dynamically change stack allocations (currently unused)
+- The format of the error statement was fixed.
 
 [CHANGELOG (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 
@@ -53,15 +53,13 @@ Replace `(input_json_file)` with the actual JSON file you want to compile.
 
 The jsonpiler code consists of a single JSON object.
 
-Expressions inside `begin` are evaluated sequentially.
+Expressions within `begin` are evaluated sequentially.
 
 The variable `"a"` is assigned the string `"title"` using `"="`.
 
-A message box appears with the title (from variable `"a"`) and the body `"345"`, as specified by `"message"`.
+A message box appears with the title (from the variable `"a"`) and the body `"345"` as specified by `"message"`.
 
-The program returns the integer ID of the pressed button in the message box  
-(currently only `1` is supported, which corresponds to `IDOK` in C/C++),  
-as the final value of the `begin` block.
+The program returns the integer ID of the button pressed in the message box (currently only `1` is supported, which corresponds to `IDOK` in C/C++), as the final value of the `begin` block.
 
 ## Error message
 

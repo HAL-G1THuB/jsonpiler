@@ -1,35 +1,56 @@
 //! Implementation of the `JValue`
 use {
-  super::{JValue, Json},
+  super::{Json, JsonWithPos},
   core::fmt::{self, Write as _},
 };
-impl fmt::Display for JValue {
+impl Json {
+  /// Generate type name.
+  pub fn type_name(&self) -> &'static str {
+    match self {
+      Json::LInt(_) => "LInt",
+      Json::VInt(_) => "VInt",
+      Json::LFloat(_) => "LFloat",
+      Json::VFloat(_) => "VFloat",
+      Json::LBool(_) => "LBool",
+      Json::VBool(..) => "VBool",
+      Json::LString(_) => "LString",
+      Json::VString(_) => "VString",
+      Json::LArray(_) => "LArray",
+      Json::VArray(_) => "VArray",
+      Json::LObject(_) => "LObject",
+      Json::VObject(_) => "VObject",
+      Json::Function(_) => "Function",
+      Json::Null => "Null",
+    }
+  }
+}
+impl fmt::Display for Json {
   /// Formats the `Json` object as a compact string without indentation.
   #[expect(clippy::min_ident_chars, reason = "default name is 'f'")]
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
-      JValue::Null => f.write_str("Null"),
-      JValue::LArray(ar) => {
+      Json::Null => f.write_str("Null"),
+      Json::LArray(ar) => {
         f.write_str("[")?;
         iter_write(ar, f)?;
         f.write_str("]")
       }
-      JValue::VArray(va) => write!(f, "VArray(\"{va}\")"),
-      JValue::LBool(bo) => write!(f, "{bo}"),
-      JValue::VBool(vb, bit) => write!(f, "VBool(\"{vb}\"-{bit})"),
-      JValue::LInt(int) => write!(f, "{int}"),
-      JValue::VInt(vi) => write!(f, "VInt(\"{vi}\")"),
-      JValue::LFloat(fl) => write!(f, "{fl}"),
-      JValue::VFloat(vf) => write!(f, "VFloat(\"{vf}\")"),
-      JValue::LString(st) => f.write_str(&escape_string(st)?),
-      JValue::VString(vs) => write!(f, "VString(\"{vs}\")"),
-      JValue::Function(fu) => {
+      Json::VArray(va) => write!(f, "VArray(\"{va}\")"),
+      Json::LBool(bo) => write!(f, "{bo}"),
+      Json::VBool(vb, bit) => write!(f, "VBool(\"{vb}\"-{bit})"),
+      Json::LInt(int) => write!(f, "{int}"),
+      Json::VInt(vi) => write!(f, "VInt(\"{vi}\")"),
+      Json::LFloat(fl) => write!(f, "{fl}"),
+      Json::VFloat(vf) => write!(f, "VFloat(\"{vf}\")"),
+      Json::LString(st) => f.write_str(&escape_string(st)?),
+      Json::VString(vs) => write!(f, "VString(\"{vs}\")"),
+      Json::Function(fu) => {
         write!(f, "{}(", fu.name)?;
         iter_write(&fu.params, f)?;
         write!(f, ") -> ")?;
         (*fu.ret).clone().fmt(f)
       }
-      JValue::LObject(obj) => {
+      Json::LObject(obj) => {
         f.write_str("{")?;
         for (i, kv) in obj.iter().enumerate() {
           if i > 0 {
@@ -40,7 +61,7 @@ impl fmt::Display for JValue {
         }
         f.write_str("}")
       }
-      JValue::VObject(vo) => write!(f, "VObject({vo})"),
+      Json::VObject(vo) => write!(f, "VObject({vo})"),
     }
   }
 }
@@ -65,7 +86,7 @@ pub(crate) fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {
   Ok(escaped)
 }
 /// Iterates over a list of `Json` objects and writes them without indentation.
-fn iter_write(list: &[Json], out: &mut fmt::Formatter) -> fmt::Result {
+fn iter_write(list: &[JsonWithPos], out: &mut fmt::Formatter) -> fmt::Result {
   for (i, item) in list.iter().enumerate() {
     if i > 0 {
       out.write_str(", ")?;

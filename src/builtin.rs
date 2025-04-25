@@ -1,5 +1,5 @@
 //! Built-in functions.
-use super::{AsmFunc, ErrOR, FResult, FuncInfo, JValue, Json, Jsonpiler};
+use super::{Args, AsmFunc, ErrOR, FResult, FuncInfo, Json, JsonWithPos, Jsonpiler, err};
 /// Macro to include assembly files only once.
 macro_rules! include_once {
   ($self:ident, $name:literal) => {
@@ -30,142 +30,132 @@ impl Jsonpiler {
 impl Jsonpiler {
   /// Evaluates a `begin` block.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn begin(&mut self, first: &Json, args: &[Json], _: &mut FuncInfo) -> FResult {
-    self.validate("begin", true, 1, args.len(), &first.info)?;
+  fn begin(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> FResult {
+    self.validate_args("begin", true, 1, args.len(), &first.pos)?;
     Ok(args.last().ok_or("Unreachable (begin)")?.value.clone())
   }
   /// Utility functions for binary operations.
   fn binary_op(
-    &mut self, first: &Json, args: &[Json], func: &mut FuncInfo, mn: &str, op: &str,
+    &mut self, first: &JsonWithPos, args: &Args, info: &mut FuncInfo, mn: &str, func_name: &str,
   ) -> FResult {
-    let mut binary_mn = |json: &Json, mne: &str| -> ErrOR<()> {
-      if let JValue::LInt(int) = json.value {
-        func.body.push(format!("  {mne} rax, {int}"));
-      } else if let JValue::VInt(var) = &json.value {
-        func.body.push(format!("  {mne} rax, qword ptr {var}[rip]"));
+    let mut binary_mn = |json: &JsonWithPos, mne: &str, ord: usize| -> ErrOR<()> {
+      if let Json::LInt(int) = json.value {
+        info.body.push(format!("  {mne} rax, {int}\n"));
+      } else if let Json::VInt(var) = &json.value {
+        info.body.push(format!("  {mne} rax, {var}\n"));
       } else {
-        self.require(op, "integer", json)?;
+        self.typ_err(ord, func_name, "integer", json)?;
       }
       Ok(())
     };
-    self.validate(op, true, 1, args.len(), &first.info)?;
+    self.validate_args(func_name, true, 1, args.len(), &first.pos)?;
     let operand_r = args.first().ok_or("Unreachable (binary_op)")?;
-    binary_mn(operand_r, "mov")?;
-    for operand_l in args.get(1..).unwrap_or(&[]) {
-      binary_mn(operand_l, mn)?;
+    binary_mn(operand_r, "mov", 1)?;
+    for (ord, operand_l) in args.get(1..).unwrap_or(&[]).iter().enumerate() {
+      binary_mn(operand_l, mn, ord)?;
     }
-    let ret = self.get_name("INT")?;
-    self.sect.bss.push(format!("  .lcomm {ret}, 8"));
-    func.body.push(format!("  mov qword ptr {ret}[rip], rax"));
-    Ok(JValue::VInt(ret))
+    let ret = self.get_name("BSS", "8")?;
+    info.body.push(format!("  mov {ret}, rax\n"));
+    Ok(Json::VInt(ret))
   }
   /// Evaluates a lambda function definition.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn lambda(&mut self, first: &Json, args: &[Json], _: &mut FuncInfo) -> FResult {
+  fn lambda(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> FResult {
     const ERR: &str = "Unreachable (lambda)";
-    self.validate("lambda", true, 2, args.len(), &first.info)?;
-    let mut func = FuncInfo::default();
+    self.validate_args("lambda", true, 2, args.len(), &first.pos)?;
+    let mut info = FuncInfo::default();
     let json1 = args.first().ok_or(ERR)?;
-    let JValue::LArray(params) = &json1.value else {
-      return self.require("1st argument of `lambda`", "an argument list", json1);
+    let Json::LArray(params) = json1.value.clone() else {
+      return self.typ_err(1, "lambda", "an argument list", json1);
     };
     if !params.is_empty() {
-      return Err(self.fmt_err("PARAMETERS IS NOT IMPLEMENTED.", &json1.info).into());
+      return err!(self, &json1.pos, "PARAMETERS IS NOT IMPLEMENTED.");
     }
-    let name = self.get_name("FNC")?;
-    let mut ret = JValue::Null;
-    for arg in args.get(1..).ok_or(self.fmt_err("Empty lambda body.", &first.info))? {
-      ret = self.eval(arg, &mut func)?.value;
+    let name = self.get_name("FNC", "")?;
+    let mut ret = Json::Null;
+    for arg in args.get(1..).ok_or(self.fmt_err("Empty lambda body.", &first.pos))? {
+      ret = self.eval(arg, &mut info)?.value;
     }
-    self.sect.text.push(format!(".seh_proc {name}\n{name}:"));
-    let mut registers: Vec<&String> = func.reg_used.iter().collect();
+    self.sect.text.push(format!(".seh_proc {name}\n{name}:\n"));
+    let mut registers: Vec<&String> = info.reg_used.iter().collect();
     registers.sort();
     for &reg in &registers {
-      self.sect.text.push(format!("  push {reg}\n  .seh_pushreg {reg}"));
+      self.sect.text.push(format!("  push {reg}\n  .seh_pushreg {reg}\n"));
     }
-    self.sect.text.push("  push rbp\n  .seh_pushreg rbp".into());
+    self.sect.text.push("  push rbp\n  .seh_pushreg rbp\n".into());
     self.sect.text.push(format!(
       include_str!("asm/common/prologue.s"),
-      size = func.calc_alloc(if func.reg_used.len() & 1 == 1 { 8 } else { 0 })?
+      size = info.calc_alloc((info.reg_used.len() % 2).saturating_mul(8))?
     ));
-    for body in func.body {
+    for body in info.body {
       self.sect.text.push(body);
     }
-    if let JValue::LInt(int) = ret {
-      self.sect.text.push(format!("  mov rax, {int}"));
-    } else if let JValue::VInt(var) = &ret {
-      self.sect.text.push(format!("  mov rax, qword ptr {var}[rip]"));
+    if let Json::LInt(int) = ret {
+      self.sect.text.push(format!("  mov rax, {int}\n"));
+    } else if let Json::VInt(var) = &ret {
+      self.sect.text.push(format!("  mov rax, {var}\n"));
     } else {
-      self.sect.text.push("  xor eax, eax".into());
+      self.sect.text.push("  xor eax, eax\n".into());
     }
-    self.sect.text.push("  mov rsp, rbp\n  pop rbp".into());
+    self.sect.text.push("  mov rsp, rbp\n  pop rbp\n".into());
     registers.reverse();
     for reg in &registers {
-      self.sect.text.push(format!("  pop {reg}"));
+      self.sect.text.push(format!("  pop {reg}\n"));
     }
-    self.sect.text.push("  ret\n.seh_endproc".into());
-    Ok(JValue::Function(AsmFunc { name, params: params.clone(), ret: Box::new(ret) }))
+    self.sect.text.push("  ret\n.seh_endproc\n".into());
+    Ok(Json::Function(AsmFunc { name, params, ret: Box::new(ret) }))
   }
   /// Displays a message box.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn message(&mut self, first: &Json, args: &[Json], func: &mut FuncInfo) -> FResult {
+  fn message(&mut self, first: &JsonWithPos, args: &Args, info: &mut FuncInfo) -> FResult {
     const ERR: &str = "Unreachable (message)";
-    self.validate("message", false, 2, args.len(), &first.info)?;
-    func.reg_used.insert("rdi".into());
-    func.reg_used.insert("rsi".into());
-    let title = self.string2var(args.first().ok_or(ERR)?, "title")?;
-    let msg = self.string2var(args.get(1).ok_or(ERR)?, "text")?;
-    let ret = self.get_name("INT")?;
-    self.sect.bss.push(format!("  .lcomm {ret}, 8"));
+    self.validate_args("message", false, 2, args.len(), &first.pos)?;
+    info.reg_used.insert("rdi".into());
+    info.reg_used.insert("rsi".into());
+    let title = self.string2var(args.first().ok_or(ERR)?, 1, "message")?;
+    let msg = self.string2var(args.get(1).ok_or(ERR)?, 2, "message")?;
+    let ret = self.get_name("BSS", "8")?;
     include_once!(self, "func/U8TO16");
-    func.body.push(format!(
+    info.body.push(format!(
       include_str!("asm/caller/message.s"),
-      msg = msg,
       title = title,
+      msg = msg,
       ret = ret
     ));
-    Ok(JValue::VInt(ret))
+    Ok(Json::VInt(ret))
   }
   /// Performs subtraction.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn minus(&mut self, first: &Json, args: &[Json], func: &mut FuncInfo) -> FResult {
-    self.binary_op(first, args, func, "sub", "-")
+  fn minus(&mut self, first: &JsonWithPos, args: &Args, info: &mut FuncInfo) -> FResult {
+    self.binary_op(first, args, info, "sub", "-")
   }
   /// Performs addition.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn plus(&mut self, first: &Json, args: &[Json], func: &mut FuncInfo) -> FResult {
-    self.binary_op(first, args, func, "add", "+")
+  fn plus(&mut self, first: &JsonWithPos, args: &Args, info: &mut FuncInfo) -> FResult {
+    self.binary_op(first, args, info, "add", "+")
   }
   /// Sets a variable.
-  fn set(&mut self, first: &Json, args: &[Json], is_global: bool, func_name: &str) -> FResult {
+  fn set(&mut self, first: &JsonWithPos, args: &Args, is_global: bool, f_name: &str) -> FResult {
     const ERR: &str = "Unreachable (set)";
-    self.validate(func_name, false, 2, args.len(), &first.info)?;
+    self.validate_args(f_name, false, 2, args.len(), &first.pos)?;
     let json1 = args.first().ok_or(ERR)?;
-    let JValue::LString(variable) = &json1.value else {
-      return self.require(&format!("1st argument of `{func_name}`"), "a string literal", json1);
+    let Json::LString(variable) = &json1.value else {
+      return self.typ_err(1, f_name, "LString", json1);
     };
     let json2 = args.get(1).ok_or(ERR)?;
     let value = match &json2.value {
-      JValue::LString(st) => {
-        let name = self.get_name("STR")?;
-        self.sect.data.push(format!("  {name}: .string \"{st}\""));
-        JValue::VString(name.clone())
-      }
-      JValue::Null => JValue::Null,
-      JValue::LInt(int) => {
-        let name = self.get_name("INT")?;
-        self.sect.data.push(format!("  {name}: .quad 0x{int:x}"));
-        JValue::VInt(name.clone())
-      }
-      JValue::VString(_)
-      | JValue::VInt(_)
-      | JValue::Function { .. }
-      | JValue::VArray(_)
-      | JValue::VBool(..)
-      | JValue::VFloat(_)
-      | JValue::VObject(_) => json2.value.clone(),
-      JValue::LArray(_) | JValue::LBool(_) | JValue::LFloat(_) | JValue::LObject(_) => {
-        return self.require("2nd argument of `$`", "a type that supports assignment", json2);
+      Json::LString(st) => Json::VString(self.get_name("STR", st)?),
+      Json::Null => Json::Null,
+      Json::LInt(int) => Json::VInt(self.get_name("INT", &int.to_string())?),
+      Json::VString(_)
+      | Json::VInt(_)
+      | Json::Function { .. }
+      | Json::VArray(_)
+      | Json::VBool(..)
+      | Json::VFloat(_)
+      | Json::VObject(_) => json2.value.clone(),
+      Json::LArray(_) | Json::LBool(_) | Json::LFloat(_) | Json::LObject(_) => {
+        return self.typ_err(2, "$", "that supports assignment", json2);
       }
     };
     if is_global {
@@ -174,31 +164,26 @@ impl Jsonpiler {
       self.vars.last_mut().ok_or("InternalError: Invalid scope.")?
     }
     .insert(variable.clone(), value);
-    Ok(JValue::Null)
+    Ok(Json::Null)
   }
   /// Sets a global variable.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn set_global(&mut self, first: &Json, args: &[Json], _: &mut FuncInfo) -> FResult {
+  fn set_global(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> FResult {
     self.set(first, args, true, "global")
   }
   /// Sets a local variable.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn set_local(&mut self, first: &Json, args: &[Json], _: &mut FuncInfo) -> FResult {
+  fn set_local(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> FResult {
     self.set(first, args, false, "=")
   }
   /// Gets the value of a local variable.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn variable(&mut self, first: &Json, args: &[Json], _: &mut FuncInfo) -> FResult {
-    self.validate("$", false, 1, args.len(), &first.info)?;
+  fn variable(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> FResult {
+    self.validate_args("$", false, 1, args.len(), &first.pos)?;
     let json1 = args.first().ok_or("Unreachable (variable)")?;
-    let JValue::LString(var_name) = &json1.value else {
-      return self.require("1st argument of `$`", "a string literal", json1);
+    let Json::LString(var_name) = &json1.value else {
+      return self.typ_err(1, "$", "LString", json1);
     };
-    for scope in self.vars.iter().rev() {
-      if let Some(val) = scope.get(var_name) {
-        return Ok(val.clone());
-      }
-    }
-    Err(self.fmt_err(&format!("Undefined variables: `{var_name}`"), &json1.info).into())
+    self.get_var(var_name, &json1.pos)
   }
 }

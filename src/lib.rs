@@ -8,55 +8,57 @@
 //! ```
 mod builtin;
 mod compiler;
+mod func_info;
+mod json;
 mod object;
 mod parser;
-mod value;
-use {
-  core::{cmp, error::Error},
-  std::{
-    collections::{HashMap, HashSet},
-    env, fs,
-    path::Path,
-    process::{Command, ExitCode},
-  },
+use core::error::Error;
+use std::{
+  collections::{HashMap, HashSet},
+  env, fs,
+  path::Path,
+  process::{Command, ExitCode},
 };
+/// Generates an error.
+#[macro_export]
+macro_rules! err {
+  ($self:ident, $pos:expr, $($arg:tt)*) => {
+    Err($self.fmt_err(&format!($($arg)*), &$pos).into())
+  };
+  ($self:ident, $($arg:tt)*) => {
+    Err($self.fmt_err(&format!($($arg)*), &$self.pos).into())
+  };
+}
 /// Return `ExitCode`.
 macro_rules! exit {($($arg: tt)*) =>{{eprintln!($($arg)*);return ExitCode::FAILURE;}}}
-
+/// Arguments.
+type Args = [JsonWithPos];
 #[derive(Debug, Clone)]
 /// Assembly function representation.
-pub(crate) struct AsmFunc {
+struct AsmFunc {
   /// Name of function.
-  pub name: String,
+  name: String,
   /// Parameters of function.
-  pub params: Vec<Json>,
+  params: Vec<JsonWithPos>,
   /// Return type of function.
-  pub ret: Box<JValue>,
+  ret: Box<Json>,
 }
 /// Built-in function.
 #[derive(Debug, Clone)]
-pub(crate) struct BuiltinFunc {
-  /// Should arguments already be evaluated.
-  pub do_not_eval: bool,
+struct Builtin {
   /// Pointer of function.
-  pub func: JFunc,
+  func: JFunc,
   /// If it is true, function introduces a new scope.
-  pub scoped: bool,
+  scoped: bool,
+  /// Should arguments already be evaluated.
+  skip_eval: bool,
 }
 type ErrOR<T> = Result<T, Box<dyn Error>>;
-/// line and pos in source code.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct ErrorInfo {
-  /// Line number of the part being parsed.
-  line: usize,
-  /// Location of the part being parsed.
-  pos: usize,
-}
 /// Contain `JValue` or `Box<dyn Error>`.
-type FResult = ErrOR<JValue>;
+type FResult = ErrOR<Json>;
 /// Information of Function.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct FuncInfo {
+struct FuncInfo {
   /// Size of arguments.
   args_slots: usize,
   /// Body of function.
@@ -66,53 +68,25 @@ pub(crate) struct FuncInfo {
   /// Registers used.
   reg_used: HashSet<String>,
 }
-#[expect(dead_code, reason = "todo")]
-impl FuncInfo {
-  /// Add local variable size (in bytes)
-  pub fn add_local(&mut self, size: usize) -> Result<(), &'static str> {
-    self.local_size = self.local_size.checked_add(size).ok_or("LocalSize Overflow")?;
-    Ok(())
-  }
-  /// Calculate to allocate size.
-  pub fn calc_alloc(&self, align: usize) -> ErrOR<usize> {
-    let locals = self
-      .local_size
-      .checked_add(self.args_slots.checked_mul(8).ok_or("LocalSize Overflow")?)
-      .ok_or("LocalSize Overflow")?
-      .checked_add(15)
-      .ok_or("LocalSize Overflow")?
-      & !15;
-    let shadow_space = 32;
-    locals
-      .checked_add(shadow_space)
-      .ok_or("LocalSize Overflow")?
-      .checked_add(align)
-      .ok_or("LocalSize Overflow".into())
-  }
-  /// Update `args_slots` (only if size is larger)
-  pub fn update_max(&mut self, size: usize) {
-    self.args_slots = cmp::max(self.args_slots, size);
-  }
-}
 /// Type of built-in function.
-type JFunc = fn(&mut Jsonpiler, &Json, &[Json], &mut FuncInfo) -> FResult;
+type JFunc = fn(&mut Jsonpiler, &JsonWithPos, &Args, &mut FuncInfo) -> FResult;
 /// Represents a JSON object with key-value pairs.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct JObject {
+struct JObject {
   /// Stores the key-value pairs in insertion order.
-  entries: Vec<(String, Json)>,
+  entries: Vec<(String, JsonWithPos)>,
   /// Maps keys to their index in the entries vector for quick lookup.
-  idx: HashMap<String, usize>,
+  index: HashMap<String, usize>,
 }
 /// Contain `Json` or `Box<dyn Error>`.
-type JResult = ErrOR<Json>;
+type JResult = ErrOR<JsonWithPos>;
 /// Type and value information.
 #[derive(Debug, Clone, Default)]
-pub(crate) enum JValue {
+enum Json {
   /// Function.
   Function(AsmFunc),
   /// Array.
-  LArray(Vec<Json>),
+  LArray(Vec<JsonWithPos>),
   /// Bool.
   LBool(bool),
   /// Float.
@@ -145,42 +119,44 @@ pub(crate) enum JValue {
 }
 /// Json object.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Json {
+struct JsonWithPos {
   /// Line number of objects in the source code.
-  info: ErrorInfo,
+  pos: Position,
   /// Type and value information.
-  value: JValue,
+  value: Json,
 }
 /// Parser and compiler.
 #[derive(Debug, Clone, Default)]
 pub struct Jsonpiler {
   /// Built-in function table.
-  builtin: HashMap<String, BuiltinFunc>,
+  builtin: HashMap<String, Builtin>,
   /// Flag to avoid including the same file twice.
   include_flag: HashSet<String>,
   /// Information to be used during parsing.
-  info: ErrorInfo,
+  pos: Position,
   /// Section of the assembly.
   sect: Section,
   /// Source code.
   source: String,
+  /// Cache of the string.
+  str_cache: HashMap<String, usize>,
   /// Seed to generate names.
   symbol_seeds: HashMap<String, usize>,
   /// Variable table.
-  vars: Vec<HashMap<String, JValue>>,
+  vars: Vec<HashMap<String, Json>>,
 }
 impl Jsonpiler {
   /// Format error.
   #[must_use]
-  pub(crate) fn fmt_err(&self, err: &str, info: &ErrorInfo) -> String {
+  pub(crate) fn fmt_err(&self, err: &str, pos: &Position) -> String {
     let gen_err = |msg: &str| -> String {
-      format!("{err}\nError occurred on line: {}\nError position:\n{msg}", info.line)
+      format!("{err}\nError occurred on line: {}\nError position:\n{msg}", pos.line)
     };
     if self.source.is_empty() {
       return gen_err("\n^");
     }
     let len = self.source.len();
-    let idx = info.pos.min(len.saturating_sub(1));
+    let idx = pos.offset.min(len.saturating_sub(1));
     let start = if idx == 0 {
       0
     } else {
@@ -189,8 +165,8 @@ impl Jsonpiler {
       };
       match left.rfind('\n') {
         None => 0,
-        Some(start_pos) => {
-          let Some(res) = start_pos.checked_add(1) else {
+        Some(start_offset) => {
+          let Some(res) = start_offset.checked_add(1) else {
             return gen_err("Error: Overflow");
           };
           res
@@ -202,8 +178,8 @@ impl Jsonpiler {
     };
     let end = match right.find('\n') {
       None => len,
-      Some(end_pos) => {
-        let Some(res) = idx.checked_add(end_pos) else {
+      Some(end_offset) => {
+        let Some(res) = idx.checked_add(end_offset) else {
           return gen_err("Error: Overflow");
         };
         res
@@ -215,6 +191,14 @@ impl Jsonpiler {
     };
     gen_err(&format!("{result}\n{ws}^"))
   }
+}
+/// line and pos in source code.
+#[derive(Debug, Clone, Default)]
+struct Position {
+  /// Line number of the part being parsed.
+  line: usize,
+  /// Byte offset of the part being parsed.
+  offset: usize,
 }
 /// Section of the assembly.
 #[derive(Debug, Clone, Default)]
@@ -267,39 +251,32 @@ pub fn run() -> ExitCode {
   };
   let mut jsonpiler = Jsonpiler::default();
   let file = Path::new(input_file);
-  let asm = file.with_extension("s").to_string_lossy().to_string();
-  let obj = file.with_extension("obj").to_string_lossy().to_string();
-  let exe = file.with_extension("exe").to_string_lossy().to_string();
+  let with_ext = |ext: &str| -> String { file.with_extension(ext).to_string_lossy().to_string() };
+  let asm = with_ext("s");
+  let obj = with_ext("obj");
+  let exe = with_ext("exe");
   if let Err(err) = jsonpiler.build(source, input_file, &asm) {
     exit!("Compilation error: {err}");
   }
-  match Command::new("as").args([&asm, "-o", &obj]).status() {
-    Ok(status) if status.success() => status,
-    Ok(_) => exit!("Assembler returned a non-zero exit status."),
-    Err(err) => exit!("Failed to invoke assembler: {err}"),
-  };
+  macro_rules! invoke {
+    ($cmd:literal, $list:expr,$name:literal) => {
+      match Command::new($cmd).args($list).status() {
+        Ok(status) if status.success() => (),
+        Ok(_) => exit!("{} returned a non-zero exit status.", $name),
+        Err(err) => exit!("Failed to invoke {}: {err}", $name),
+      };
+    };
+  }
+  invoke!("as", &[&asm, "-o", &obj], "assembler");
   #[cfg(not(debug_assertions))]
   if let Err(err) = fs::remove_file(&asm) {
     exit!("Failed to delete `{asm}`: {err}")
   }
-  match Command::new("ld")
-    .args([
-      &obj,
-      "-o",
-      &exe,
-      "-LC:/Windows/System32",
-      "-luser32",
-      "-lkernel32",
-      "-lucrtbase",
-      "--gc-sections",
-      "-e_start",
-    ])
-    .status()
-  {
-    Ok(status) if status.success() => status,
-    Ok(_) => exit!("Linker returned a non-zero exit status."),
-    Err(err) => exit!("Failed to invoke linker: {err}"),
-  };
+  invoke!(
+    "ld",
+    [&obj, "-o", &exe, "-LC:/Windows/System32", "-luser32", "-lkernel32", "-lucrtbase", "-e_start"],
+    "linker"
+  );
   if let Err(err) = fs::remove_file(&obj) {
     exit!("Failed to delete `{obj}`: {err}")
   }
@@ -308,16 +285,16 @@ pub fn run() -> ExitCode {
     Err(err) => exit!("Failed to get current directory: {err}"),
   }
   .join(&exe);
-  let exe_status = match Command::new(cwd).args(args.get(2..).unwrap_or(&[])).status() {
+  let compiled_program_status = match Command::new(cwd).args(args.get(2..).unwrap_or(&[])).status()
+  {
     Ok(status) => status,
     Err(err) => exit!("Failed to execute compiled program: {err}"),
   };
-  let Some(exit_code) = exe_status.code() else {
-    exit!("Could not retrieve the child process's exit code.")
+  let Some(exit_code) = compiled_program_status.code() else {
+    exit!("Could not get the exit code of the compiled program.")
   };
-  if let Ok(code) = u8::try_from(exit_code.rem_euclid(256)) {
-    ExitCode::from(code)
-  } else {
-    exit!("Internal error: Unexpected failure in exit code conversion.")
-  }
+  let Ok(code) = u8::try_from(exit_code.rem_euclid(256)) else {
+    exit!("Internal error: Unexpected error in exit code conversion.")
+  };
+  ExitCode::from(code)
 }

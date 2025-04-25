@@ -116,3 +116,13 @@ Currently, the following types are **not assignable**:
 Returns the value bound to the given variable name.
 
 ---
+
+## `if`
+
+```json
+["$", {"variable": "LString"}] -> "VAny"
+```
+
+Returns the value bound to the given variable name.
+
+---

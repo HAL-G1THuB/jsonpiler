@@ -1,37 +1,29 @@
 //! Implementation of the compiler inside the `Jsonpiler`.
-use {
-  super::{
-    AsmFunc, BuiltinFunc, ErrOR, ErrorInfo, FResult, FuncInfo, JFunc, JObject, JResult, JValue,
-    Json, Jsonpiler, Section,
-  },
-  std::{
-    collections::{HashMap, HashSet},
-    fs::File,
-    io::{self, Write as _},
-  },
+use super::{
+  Args, Builtin, ErrOR, FResult, FuncInfo, JFunc, JObject, JResult, Json, JsonWithPos, Jsonpiler,
+  Position, Section, err,
 };
-/// Generate error.
-macro_rules! err {
-  ($self:ident, $info: expr, $($arg: tt)*) => {
-    Err($self.fmt_err(&format!($($arg)*), &$info).into())
-  };
-}
+use std::{
+  collections::{HashMap, HashSet},
+  fs::File,
+  io::{self, Write as _},
+};
 impl Jsonpiler {
   /// Builds the assembly code from the parsed JSON.
-  /// This function is the main entry point for the compilation process.
+  /// This function is the main entry point for the compilation.
   /// It takes the parsed JSON, sets up the initial function table,
   /// evaluates the JSON, and writes the resulting assembly code to a file.
   /// # Arguments
-  /// * `source` - The JSON String.
+  /// * `source` - The JSON string.
   /// * `json_file` - The name of the original JSON file.
-  /// * `filename` - The name of the file to write the assembly code to.
+  /// * `out_file` - The name of the file to write the assembly code to.
   /// # Returns
-  /// * `Ok(Json)` - The result of the evaluation.
-  /// * `Err(Box<dyn Error>)` - If an error occurred during the compilation process.
+  /// * `Ok(())`
+  /// * `Err(Box<dyn Error>)` - If an error occurred during the compilation.
   /// # Errors
-  /// * `Box<dyn Error>` - If an error occurred during the compilation process.
+  /// * `Box<dyn Error>` - If an error occurred during the compilation.
   #[inline]
-  pub fn build(&mut self, source: String, json_file: &str, filename: &str) -> ErrOR<()> {
+  pub fn build(&mut self, source: String, json_file: &str, out_file: &str) -> ErrOR<()> {
     let json = self.parse(source)?;
     self.include_flag = HashSet::new();
     self.sect = Section::default();
@@ -39,34 +31,30 @@ impl Jsonpiler {
     self.builtin = HashMap::new();
     self.vars = vec![HashMap::new()];
     self.all_register();
-    let mut func = FuncInfo::default();
-    let result = self.eval(&json, &mut func)?;
-    let mut writer = io::BufWriter::new(File::create(filename)?);
+    let mut info = FuncInfo::default();
+    let result = self.eval(&json, &mut info)?;
+    let mut writer = io::BufWriter::new(File::create(out_file)?);
     writer.write_all(format!(".file \"{json_file}\"\n.intel_syntax noprefix\n").as_bytes())?;
     writer.write_all(include_bytes!("asm/sect/data.s"))?;
     for data in &mut self.sect.data {
       writer.write_all(data.as_bytes())?;
-      writer.write_all(b"\n")?;
     }
     writer.write_all(include_bytes!("asm/sect/bss.s"))?;
     for bss in &mut self.sect.bss {
       writer.write_all(bss.as_bytes())?;
-      writer.write_all(b"\n")?;
     }
     writer.write_all(include_bytes!("asm/sect/start.s"))?;
     writer.write_all(
-      format!(include_str!("asm/common/prologue.s"), size = func.calc_alloc(8)?).as_bytes(),
+      format!(include_str!("asm/common/prologue.s"), size = info.calc_alloc(8)?).as_bytes(),
     )?;
-    writer.write_all(b"\n")?;
     writer.write_all(include_bytes!("asm/sect/startup.s"))?;
-    for body in &mut func.body {
+    for body in &mut info.body {
       writer.write_all(body.as_bytes())?;
-      writer.write_all(b"\n")?;
     }
-    if let JValue::LInt(int) = result.value {
+    if let Json::LInt(int) = result.value {
       writer.write_all(format!("  mov rcx, {int}\n").as_bytes())
-    } else if let JValue::VInt(var) = &result.value {
-      writer.write_all(format!("  mov rcx, qword ptr {var}[rip]\n").as_bytes())
+    } else if let Json::VInt(var) = &result.value {
+      writer.write_all(format!("  mov rcx, {var}\n").as_bytes())
     } else {
       writer.write_all(b"  xor ecx, ecx\n")
     }?;
@@ -74,112 +62,164 @@ impl Jsonpiler {
     writer.write_all(include_bytes!("asm/sect/handler.s"))?;
     for text in &mut self.sect.text {
       writer.write_all(text.as_bytes())?;
-      writer.write_all(b"\n")?;
     }
     writer.flush()?;
     Ok(())
   }
   /// Evaluates a JSON object.
-  pub(crate) fn eval(&mut self, json: &Json, func: &mut FuncInfo) -> JResult {
+  pub(crate) fn eval(&mut self, json: &JsonWithPos, info: &mut FuncInfo) -> JResult {
     const ERR: &str = "Unreachable (eval)";
-    let JValue::LArray(list) = &json.value else {
-      let JValue::LObject(object) = &json.value else { return Ok(json.clone()) };
+    let Json::LArray(list) = &json.value else {
+      let Json::LObject(object) = &json.value else { return Ok(json.clone()) };
       let mut evaluated = JObject::default();
       for kv in object.iter() {
-        evaluated.insert(kv.0.clone(), self.eval(&kv.1, func)?);
+        evaluated.insert(kv.0.clone(), self.eval(&kv.1, info)?);
       }
-      return Ok(Json { value: JValue::LObject(evaluated), info: json.info.clone() });
+      return Ok(JsonWithPos { value: Json::LObject(evaluated), pos: json.pos.clone() });
     };
-    let Some(first_elem) = list.first() else {
-      self.require("A function call", "list with name of function as the first element", json)?;
-      return Ok(Json::default());
-    };
-    let first = &self.eval(first_elem, func)?;
-    if let JValue::LString(cmd) = &first.value {
-      if self.builtin.contains_key(cmd.as_str()) {
+    self.validate_args("function call", true, 1, list.len(), &json.pos)?;
+    let first_elem = list.first().ok_or(ERR)?;
+    let first = &self.eval(first_elem, info)?;
+    if let Json::LString(cmd) = &first.value {
+      if let Ok(Json::Function(af)) = self.get_var(cmd, &first.pos) {
+        info.body.push(format!("  call {}\n", af.name));
+        if let Json::VInt(_) | Json::LInt(_) = *af.ret {
+          let name = self.get_name("BSS", "8")?;
+          info.body.push(format!("  mov {name}, rax\n"));
+          Ok(JsonWithPos { value: Json::VInt(name), pos: first.pos.clone() })
+        } else {
+          Ok(JsonWithPos::default())
+        }
+      } else if self.builtin.contains_key(cmd.as_str()) {
         let builtin = self.builtin.get_mut(cmd.as_str()).ok_or(ERR)?;
         let scoped = builtin.scoped;
-        let ptr = builtin.func;
+        let func = builtin.func;
         if scoped {
           self.vars.push(HashMap::new());
         }
         let rest = list.get(1..).unwrap_or(&[]);
-        let args = if builtin.do_not_eval { rest } else { &self.eval_args(rest, func)? };
-        let result = Ok(Json { value: ptr(self, first, args, func)?, info: first.info.clone() });
+        let args = if builtin.skip_eval { rest } else { &self.eval_args(rest, info)? };
+        let result = func(self, first, args, info)?;
         if scoped {
           self.vars.pop();
         }
-        result
+        Ok(JsonWithPos { value: result, pos: first.pos.clone() })
       } else {
-        Err(self.fmt_err(&format!("Function `{cmd}` is undefined."), &first.info).into())
+        Err(self.fmt_err(&format!("The `{cmd}` function is undefined."), &first.pos).into())
       }
-    } else if let JValue::Function(AsmFunc { name: n, ret: re, .. }) = &first.value {
-      func.body.push(format!("  call {n}"));
-      if let JValue::VInt(_) | JValue::LInt(_) = **re {
-        let na = self.get_name("INT")?;
-        self.sect.bss.push(format!("  .lcomm {na}, 8"));
-        func.body.push(format!("  mov qword ptr {na}[rip], rax"));
-        Ok(Json { value: JValue::VInt(na), info: first.info.clone() })
+    } else if let Json::Function(af) = &first.value {
+      info.body.push(format!("  call {}", af.name));
+      if let Json::VInt(_) | Json::LInt(_) = *af.ret {
+        let name = self.get_name("BSS", "8")?;
+        info.body.push(format!("  mov {name}, rax\n"));
+        Ok(JsonWithPos { value: Json::VInt(name), pos: first.pos.clone() })
       } else {
-        Ok(Json::default())
+        Ok(JsonWithPos::default())
       }
     } else {
-      self.require("1st element of a function call", "function or built-in function", json)?;
-      Ok(Json::default())
+      self.typ_err(1, "function call", "LString` or `Function", first_elem)?;
+      Ok(JsonWithPos::default())
     }
   }
   /// Evaluate arguments.
-  fn eval_args(&mut self, args: &[Json], function: &mut FuncInfo) -> ErrOR<Vec<Json>> {
+  fn eval_args(&mut self, args: &Args, info: &mut FuncInfo) -> ErrOR<Vec<JsonWithPos>> {
     let mut result = vec![];
     for arg in args {
-      result.push(self.eval(arg, function)?);
+      result.push(self.eval(arg, info)?);
     }
     Ok(result)
   }
   /// Generates a unique name for internal use.
-  pub(crate) fn get_name(&mut self, name: &str) -> Result<String, &'static str> {
+  pub(crate) fn get_name(&mut self, name: &str, value: &str) -> Result<String, String> {
     let seed = self
       .symbol_seeds
       .get(name)
       .map_or(Ok(0), |current| current.checked_add(1).ok_or("Seed Overflow"))?;
     self.symbol_seeds.insert(name.to_owned(), seed);
-    Ok(format!(".L{name}{seed:x}"))
+    let l_name = format!(".L{name}{seed:x}");
+    let name_fmt = format!("qword ptr {l_name}[rip]");
+    match name {
+      "BSS" => self.sect.bss.push(format!("  .lcomm {l_name}, {value}\n")),
+      "STR" => {
+        if let Some(str_seed) = self.str_cache.get(value) {
+          return Ok(format!("qword ptr .LSTR{str_seed:x}[rip]"));
+        }
+        self.str_cache.insert(value.to_owned(), self.symbol_seeds.len());
+        self.sect.data.push(format!("  {l_name}: .string \"{value}\"\n"));
+      }
+      "INT" => self.sect.data.push(format!("  {l_name}: .quad {value}\n")),
+      "FNC" => return Ok(l_name),
+      _ => return Err(format!("Internal Error: Unrecognized name: {name}")),
+    }
+    Ok(name_fmt)
+  }
+  /// Gets variable.
+  pub(crate) fn get_var(&self, var_name: &str, pos: &Position) -> ErrOR<Json> {
+    for scope in self.vars.iter().rev() {
+      if let Some(val) = scope.get(var_name) {
+        return Ok(val.clone());
+      }
+    }
+    err!(self, pos, "Undefined variables: `{var_name}`")
   }
   /// Registers a function in the function table.
-  pub(crate) fn register(&mut self, name: &str, flg: (bool, bool), fu: JFunc) {
-    self.builtin.insert(name.into(), BuiltinFunc { do_not_eval: flg.0, scoped: flg.1, func: fu });
+  pub(crate) fn register(&mut self, name: &str, flag: (bool, bool), j_func: JFunc) {
+    self.builtin.insert(name.into(), Builtin { skip_eval: flag.0, scoped: flag.1, func: j_func });
   }
-  /// Generate an error.
-  pub(crate) fn require(&self, name: &str, expected: &str, json: &Json) -> FResult {
-    err!(self, &json.info, "{name} requires {expected}, but got {}.", &json.value)
-  }
-  /// Convert `JValue::` (`StringVar` or `String`) to `StringVar`, otherwise return `Err`
-  pub(crate) fn string2var(&mut self, json: &Json, ctx: &str) -> ErrOR<String> {
-    if let JValue::LString(st) = &json.value {
-      let name = self.get_name("STR")?;
-      self.sect.data.push(format!("  {name}: .string \"{st}\""));
+  /// Converts `JValue` (`StringVar` or `String`) to `StringVar`, otherwise return `Err`
+  pub(crate) fn string2var(
+    &mut self, json: &JsonWithPos, ordinal: usize, func_name: &str,
+  ) -> ErrOR<String> {
+    if let Json::LString(l_str) = &json.value {
+      let name = self.get_name("STR", l_str)?;
       Ok(name)
-    } else if let JValue::VString(var) = &json.value {
-      Ok(var.clone())
+    } else if let Json::VString(v_str) = &json.value {
+      Ok(v_str.clone())
     } else {
-      err!(self, &json.info, "`{ctx}` must be a string.")
+      self.typ_err(ordinal, func_name, "String", json)?;
+      Ok(String::new())
     }
   }
+  /// Generates a type error.
+  pub(crate) fn typ_err(
+    &self, ordinal: usize, name: &str, expected: &str, json: &JsonWithPos,
+  ) -> FResult {
+    let suffix = match ordinal % 100 {
+      11..=13 => "th",
+      _ => match ordinal % 10 {
+        1 => "st",
+        2 => "nd",
+        3 => "rd",
+        _ => "th",
+      },
+    };
+    let typ = json.value.type_name();
+    err!(
+      self,
+      &json.pos,
+      "The {ordinal}{suffix} argument to `{name}` must be of a type `{expected}`, \
+      but a value of type `{typ}` was provided."
+    )
+  }
   /// Generate an error.
-  pub(crate) fn validate(
-    &self, name: &str, at_least: bool, expected: usize, got: usize, info: &ErrorInfo,
+  pub(crate) fn validate_args(
+    &self, name: &str, at_least: bool, expected: usize, supplied: usize, pos: &Position,
   ) -> ErrOR<()> {
-    let plural = if expected == 1 { "" } else { "s" };
+    let fmt_require = |text: &str| -> ErrOR<()> {
+      let (plural, be) = if expected == 1 { ("", "is") } else { ("s", "are") };
+      err!(
+        self,
+        pos,
+        "`{name}` requires {text} {expected} argument{plural}, \
+        but {supplied} argument{plural} {be} supplied.",
+      )
+    };
     if at_least {
-      if got >= expected {
-        Ok(())
-      } else {
-        err!(self, info, "`{name}` requires at least {expected} argument{plural}, but got {got}.")
-      }
-    } else if expected == got {
+      if supplied >= expected { Ok(()) } else { fmt_require("at least") }
+    } else if expected == supplied {
       Ok(())
     } else {
-      err!(self, info, "`{name}` requires exactly {expected} argument{plural}, but got {got}.")
+      fmt_require("exactly")
     }
   }
 }
