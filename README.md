@@ -12,14 +12,10 @@ This program converts a JSON-based program to GNU assembly, compiles it, and exe
 
 ## What's New
 
-- **Added functionality to cache and reuse string literals**.
-- **Generalized variable generation in assembly**.
-- **Significantly renamed structures for clarity**.
-- Significantly improved parser slowness caused by changes in the previous version
-- Added the ability to dynamically change stack allocations (currently unused)
-- The format of the error statement was fixed.
+- **`begin` no longer introduces a scope; instead, the new `scope` function handles scoping.**
+- **Added new functions: `scope`, `*`, `list`, `eval`, and `'`.**
 
-[CHANGELOG (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
+[Project History and Plans](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 
 ## Prerequisites
 

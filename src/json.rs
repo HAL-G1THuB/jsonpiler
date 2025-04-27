@@ -1,9 +1,28 @@
-//! Implementation of the `JValue`
+//! Implementation of the `Json`
 use {
   super::{Json, JsonWithPos},
   core::fmt::{self, Write as _},
 };
 impl Json {
+  /// Generate type name.
+  pub fn is_literal(&self) -> bool {
+    match self {
+      Json::LInt(_)
+      | Json::LFloat(_)
+      | Json::LBool(_)
+      | Json::LString(_)
+      | Json::Null
+      | Json::LObject(_)
+      | Json::LArray(_) => true,
+      Json::VObject(_)
+      | Json::VFloat(_)
+      | Json::VInt(_)
+      | Json::VString(_)
+      | Json::VBool(..)
+      | Json::VArray(_)
+      | Json::Function(_) => false,
+    }
+  }
   /// Generate type name.
   pub fn type_name(&self) -> &'static str {
     match self {
@@ -37,7 +56,7 @@ impl fmt::Display for Json {
       }
       Json::VArray(va) => write!(f, "VArray(\"{va}\")"),
       Json::LBool(bo) => write!(f, "{bo}"),
-      Json::VBool(vb, bit) => write!(f, "VBool(\"{vb}\"-{bit})"),
+      Json::VBool(vb) => write!(f, "VBool(\"{}\"-{})", vb.name, vb.bit),
       Json::LInt(int) => write!(f, "{int}"),
       Json::VInt(vi) => write!(f, "VInt(\"{vi}\")"),
       Json::LFloat(fl) => write!(f, "{fl}"),

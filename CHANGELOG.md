@@ -1,60 +1,75 @@
-# CHANGELOG
+# Project History and Plans
 
-## jsonpiler 0.1
+## Planned
 
-## 0.1.11
+- Implement `if` function
+- Implement bitwise operations
+- Support assignment of `bool` type
 
-- Added functionality to cache and reuse string literals.
-- Generalized variable generation in assembly.
-- Significantly renamed structures for clarity.
+## Released
 
-### 0.1.10
+### jsonpiler 0.2
 
-- Significantly improved parser slowness caused by changes in the previous version
+#### 0.2.0
 
-### 0.1.9
+- Updated stack management to no longer use the `rbp` register.
+- `begin` no longer introduces a scope; instead, the new `scope` function handles scoping.
+- Added new functions: `scope`, `*`, `list`, and `'`.
 
-- Added the ability to dynamically change stack allocations (currently unused)
-- The format of the error statement was fixed.
-- Improved parser overhead.
+### jsonpiler 0.1
 
-### 0.1.8
+#### 0.1.11
 
-- Created a new function `global`.
+- Added caching and reuse of string literals.
+- Generalized variable generation in assembly code.
+- Significantly renamed internal structures for improved clarity.
+
+#### 0.1.10
+
+- Greatly improved parser performance by addressing regressions from the previous version.
+
+#### 0.1.9
+
+- Added functionality to dynamically change stack allocation (currently unused).
+- Fixed the error message formatting.
+- Reduced parser overhead.
+
+#### 0.1.8
+
+- Added the new function `global`.
 - Changed the structure of the variable table.
 - `begin` now introduces a new scope.
 
-### 0.1.7
+#### 0.1.7
 
-- main function now returns `ExitCode` instead of `!`
-- Added functionality to store temporary values in registers,
- saving and restoring previous values as needed.
-- Added functionality to include internal functions in the binary only when needed.
+- The main function now returns `ExitCode` instead of `!`.
+- Implemented temporary register storage with automatic save and restore.
+- Internal functions are now included in the binary only when needed.
 
-### 0.1.6
+#### 0.1.6
 
-- "=" function now returns null.
-- Fixed problem with docs.rs documents failing to build.
-- "$" for more assignable values.
+- The `=` function now returns `null`.
+- Fixed a documentation build error on docs.rs.
+- Enhanced `$` operator to allow assignment to more types of values.
 
-### 0.1.5
+#### 0.1.5
 
-- Added `CHANGELOG.md` to track updates.
+- Added `CHANGELOG.md` to track project updates.
 
-### 0.1.4
+#### 0.1.4
 
 - Fixed a typo in the previous crate.
 
-### 0.1.3
+#### 0.1.3
 
-- Object entries now preserve their insertion order.
-- Evaluation of object values now follows insertion order as well.
+- Object entries now preserve insertion order.
+- Object value evaluation now follows insertion order.
 
-### 0.1.2
+#### 0.1.2
 
 - Added a Mermaid diagram to `README.md`.
 - Fixed a bug affecting the evaluation order of expressions.
 
-### 0.1.0 ~ 0.1.1
+#### 0.1.0 ~ 0.1.1
 
-- Transition from previous crate.
+- Transitioned from the previous crate.

@@ -6,12 +6,8 @@
   .seh_pushreg rsi
   push rbx
   .seh_pushreg rbx
-  push rbp
-  .seh_pushreg rbp
-  mov rbp, rsp
-  .seh_setframe rbp, 0
-  sub rsp, 56
-  .seh_stackalloc 56
+  sub rsp, 0x38
+  .seh_stackalloc 0x38
   .seh_endprologue
   .seh_handler .L__SEH_HANDLER, @except
   mov rdi, rcx
@@ -39,8 +35,7 @@
   test eax, eax
   jz .L__WIN_HANDLER
   mov rax, rbx
-  mov rsp, rbp
-  pop rbp
+  add rsp, 0x38
   pop rbx
   pop rsi
   pop rdi

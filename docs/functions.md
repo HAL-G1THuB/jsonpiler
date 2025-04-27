@@ -10,14 +10,18 @@
 
 ---
 
-## `begin`
+## `begin`/`scope`
 
 ```json
 ["begin", {"expr": "Any"}, "...", {"return_value": "Any"}] -> "Any"
 ```
 
-Evaluates each expression in order and returns the result of the last one.  
-`begin` introduces a new scope.
+```json
+["scope", {"expr": "Any"}, "...", {"return_value": "Any"}] -> "Any"
+```
+
+It evaluates each expression in order and returns the result of the last one.
+Additionally, `scope` introduces a new scope.
 
 ```json
 ["begin", ["+", 1, 3], 0] => 0
@@ -28,10 +32,11 @@ Evaluates each expression in order and returns the result of the last one.
 ## `+`
 
 ```json
-["+", {"operand": "Int"}, "..."] -> "VInt"
+["+", {"operand": "Int..."}, "..."] -> "VInt"
 ```
 
 Returns the sum of all operands.
+If given zero arguments, it returns the identity element (0).
 
 ```json
 ["+", 1, 5, ["+", 4, 6]] => 16
@@ -42,13 +47,29 @@ Returns the sum of all operands.
 ## `-`
 
 ```json
-["-", {"operand": "Int"}, "..."] -> "VInt"
+["-", {"operand": "Int..."}, "..."] -> "VInt"
 ```
 
 Subtracts all following operands from the first one and returns the result.
+If given zero arguments, it returns the identity element (0).
 
 ```json
 ["-", 30, 5, ["+", 4, 6]] => 15
+```
+
+---
+
+## `*`
+
+```json
+["*", {"operand": "Int..."}, "..."] -> "VInt"
+```
+
+Returns the result of multiplying operands.
+If given zero arguments, it returns the identity element (1).
+
+```json
+["*", 30, 5, ["+", 4, 6]] => 1500
 ```
 
 ---
@@ -83,7 +104,7 @@ Returns the ID of the button pressed — currently always `1` (equivalent to `ID
 
 ---
 
-## `=`, `global`
+## `=`/`global`
 
 ```json
 ["=", {"variable": "LString"}, {"value": "Any"}] -> "Null"
@@ -117,12 +138,34 @@ Returns the value bound to the given variable name.
 
 ---
 
-## `if`
+## `quote`
 
 ```json
-["$", {"variable": "LString"}] -> "VAny"
+["quote", {"expr": "Any"}] -> {"unevaluated_expr": "Any"}
 ```
 
-Returns the value bound to the given variable name.
+return without evaluation.
+
+## `eval`
+
+```json
+["eval", {"expr": "Any"}] -> {"evaluated_expr": "Any"}
+```
+
+return Evaluate expression
+
+---
+
+## list
+
+```json
+["list", {"expr": "Any"}, "..."] -> "LArray"
+```
+
+The list function returns its evaluated arguments as an LArray.
+
+```json
+["list", ["+", 3, 5]] => [8]
+```
 
 ---

@@ -12,6 +12,7 @@ mod func_info;
 mod json;
 mod object;
 mod parser;
+mod utility;
 use core::error::Error;
 use std::{
   collections::{HashMap, HashSet},
@@ -34,7 +35,15 @@ macro_rules! exit {($($arg: tt)*) =>{{eprintln!($($arg)*);return ExitCode::FAILU
 /// Arguments.
 type Args = [JsonWithPos];
 #[derive(Debug, Clone)]
+/// Assembly boolean representation.
+struct AsmBool {
+  /// bit offset.
+  bit: usize,
+  /// Name of function.
+  name: String,
+}
 /// Assembly function representation.
+#[derive(Debug, Clone)]
 struct AsmFunc {
   /// Name of function.
   name: String,
@@ -54,8 +63,7 @@ struct Builtin {
   skip_eval: bool,
 }
 type ErrOR<T> = Result<T, Box<dyn Error>>;
-/// Contain `JValue` or `Box<dyn Error>`.
-type FResult = ErrOR<Json>;
+/// Contain `Json` or `Box<dyn Error>`.
 /// Information of Function.
 #[derive(Debug, Clone, Default)]
 struct FuncInfo {
@@ -69,7 +77,7 @@ struct FuncInfo {
   reg_used: HashSet<String>,
 }
 /// Type of built-in function.
-type JFunc = fn(&mut Jsonpiler, &JsonWithPos, &Args, &mut FuncInfo) -> FResult;
+type JFunc = fn(&mut Jsonpiler, &JsonWithPos, &Args, &mut FuncInfo) -> ErrOR<Json>;
 /// Represents a JSON object with key-value pairs.
 #[derive(Debug, Clone, Default)]
 struct JObject {
@@ -105,7 +113,7 @@ enum Json {
   VArray(String),
   /// Bool variable.
   #[expect(dead_code, reason = "todo")]
-  VBool(String, usize),
+  VBool(AsmBool),
   /// Float variable.
   #[expect(dead_code, reason = "todo")]
   VFloat(String),
@@ -144,53 +152,6 @@ pub struct Jsonpiler {
   symbol_seeds: HashMap<String, usize>,
   /// Variable table.
   vars: Vec<HashMap<String, Json>>,
-}
-impl Jsonpiler {
-  /// Format error.
-  #[must_use]
-  pub(crate) fn fmt_err(&self, err: &str, pos: &Position) -> String {
-    let gen_err = |msg: &str| -> String {
-      format!("{err}\nError occurred on line: {}\nError position:\n{msg}", pos.line)
-    };
-    if self.source.is_empty() {
-      return gen_err("\n^");
-    }
-    let len = self.source.len();
-    let idx = pos.offset.min(len.saturating_sub(1));
-    let start = if idx == 0 {
-      0
-    } else {
-      let Some(left) = self.source.get(..idx) else {
-        return gen_err("Error: Failed to get substring");
-      };
-      match left.rfind('\n') {
-        None => 0,
-        Some(start_offset) => {
-          let Some(res) = start_offset.checked_add(1) else {
-            return gen_err("Error: Overflow");
-          };
-          res
-        }
-      }
-    };
-    let Some(right) = self.source.get(idx..) else {
-      return gen_err("Error: Failed to get substring");
-    };
-    let end = match right.find('\n') {
-      None => len,
-      Some(end_offset) => {
-        let Some(res) = idx.checked_add(end_offset) else {
-          return gen_err("Error: Overflow");
-        };
-        res
-      }
-    };
-    let ws = " ".repeat(idx.saturating_sub(start));
-    let Some(result) = self.source.get(start..end) else {
-      return gen_err("Error: Failed to get substring");
-    };
-    gen_err(&format!("{result}\n{ws}^"))
-  }
 }
 /// line and pos in source code.
 #[derive(Debug, Clone, Default)]

@@ -1,5 +1,5 @@
 //! Built-in functions.
-use super::{Args, AsmFunc, ErrOR, FResult, FuncInfo, Json, JsonWithPos, Jsonpiler, err};
+use super::{Args, AsmFunc, ErrOR, FuncInfo, Json, JsonWithPos, Jsonpiler, err};
 /// Macro to include assembly files only once.
 macro_rules! include_once {
   ($self:ident, $name:literal) => {
@@ -13,54 +13,39 @@ impl Jsonpiler {
   /// Registers all functions.
   pub(crate) fn all_register(&mut self) {
     let common = (false, false);
-    #[expect(clippy::no_effect_underscore_binding, reason = "todo")]
-    let _special = (true, false);
+    let special = (true, false);
     let scope = (false, true);
     let sp_scope = (true, true);
     self.register("lambda", sp_scope, Jsonpiler::lambda);
-    self.register("begin", scope, Jsonpiler::begin);
+    self.register("begin", common, Jsonpiler::begin);
+    self.register("scope", scope, Jsonpiler::begin);
     self.register("global", common, Jsonpiler::set_global);
     self.register("=", common, Jsonpiler::set_local);
     self.register("message", common, Jsonpiler::message);
-    self.register("+", common, Jsonpiler::plus);
-    self.register("-", common, Jsonpiler::minus);
+    self.register("'", special, Jsonpiler::quote);
+    self.register("eval", common, Jsonpiler::f_eval);
+    self.register("list", common, Jsonpiler::list);
+    self.register("+", common, Jsonpiler::op_plus);
+    self.register("-", common, Jsonpiler::op_minus);
+    self.register("*", common, Jsonpiler::op_mul);
     self.register("$", common, Jsonpiler::variable);
   }
 }
 impl Jsonpiler {
   /// Evaluates a `begin` block.
-  #[expect(clippy::single_call_fn, reason = "")]
-  fn begin(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> FResult {
-    self.validate_args("begin", true, 1, args.len(), &first.pos)?;
+  fn begin(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> ErrOR<Json> {
+    self.validate_args("begin` and `scope", true, 1, args.len(), &first.pos)?;
     Ok(args.last().ok_or("Unreachable (begin)")?.value.clone())
   }
-  /// Utility functions for binary operations.
-  fn binary_op(
-    &mut self, first: &JsonWithPos, args: &Args, info: &mut FuncInfo, mn: &str, func_name: &str,
-  ) -> FResult {
-    let mut binary_mn = |json: &JsonWithPos, mne: &str, ord: usize| -> ErrOR<()> {
-      if let Json::LInt(int) = json.value {
-        info.body.push(format!("  {mne} rax, {int}\n"));
-      } else if let Json::VInt(var) = &json.value {
-        info.body.push(format!("  {mne} rax, {var}\n"));
-      } else {
-        self.typ_err(ord, func_name, "integer", json)?;
-      }
-      Ok(())
-    };
-    self.validate_args(func_name, true, 1, args.len(), &first.pos)?;
-    let operand_r = args.first().ok_or("Unreachable (binary_op)")?;
-    binary_mn(operand_r, "mov", 1)?;
-    for (ord, operand_l) in args.get(1..).unwrap_or(&[]).iter().enumerate() {
-      binary_mn(operand_l, mn, ord)?;
-    }
-    let ret = self.get_name("BSS", "8")?;
-    info.body.push(format!("  mov {ret}, rax\n"));
-    Ok(Json::VInt(ret))
+  /// Return the first argument.
+  #[expect(clippy::single_call_fn, reason = "")]
+  fn f_eval(&mut self, first: &JsonWithPos, args: &Args, info: &mut FuncInfo) -> ErrOR<Json> {
+    self.validate_args("eval", false, 1, args.len(), &first.pos)?;
+    Ok(self.eval(args.first().ok_or("Unreachable (eval)")?, info)?.value.clone())
   }
   /// Evaluates a lambda function definition.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn lambda(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> FResult {
+  fn lambda(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> ErrOR<Json> {
     const ERR: &str = "Unreachable (lambda)";
     self.validate_args("lambda", true, 2, args.len(), &first.pos)?;
     let mut info = FuncInfo::default();
@@ -83,10 +68,8 @@ impl Jsonpiler {
       self.sect.text.push(format!("  push {reg}\n  .seh_pushreg {reg}\n"));
     }
     self.sect.text.push("  push rbp\n  .seh_pushreg rbp\n".into());
-    self.sect.text.push(format!(
-      include_str!("asm/common/prologue.s"),
-      size = info.calc_alloc((info.reg_used.len() % 2).saturating_mul(8))?
-    ));
+    let size = info.calc_alloc(if info.reg_used.len() % 2 == 1 { 8 } else { 0 })?;
+    self.sect.text.push(format!(include_str!("asm/common/prologue.s"), size = size));
     for body in info.body {
       self.sect.text.push(body);
     }
@@ -105,9 +88,16 @@ impl Jsonpiler {
     self.sect.text.push("  ret\n.seh_endproc\n".into());
     Ok(Json::Function(AsmFunc { name, params, ret: Box::new(ret) }))
   }
+  /// Return the arguments.
+  #[expect(clippy::single_call_fn, reason = "")]
+  #[expect(clippy::unnecessary_wraps, reason = "")]
+  #[expect(clippy::unused_self, reason = "")]
+  fn list(&mut self, _: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> ErrOR<Json> {
+    Ok(Json::LArray(args.to_vec().clone()))
+  }
   /// Displays a message box.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn message(&mut self, first: &JsonWithPos, args: &Args, info: &mut FuncInfo) -> FResult {
+  fn message(&mut self, first: &JsonWithPos, args: &Args, info: &mut FuncInfo) -> ErrOR<Json> {
     const ERR: &str = "Unreachable (message)";
     self.validate_args("message", false, 2, args.len(), &first.pos)?;
     info.reg_used.insert("rdi".into());
@@ -124,18 +114,58 @@ impl Jsonpiler {
     ));
     Ok(Json::VInt(ret))
   }
+  /// Utility functions for binary operations.
+  fn op(
+    &mut self, args: &Args, info: &mut FuncInfo, mn: &str, func_name: &str, ident_elem: i64,
+  ) -> ErrOR<Json> {
+    let binary_mn =
+      |json: &JsonWithPos, mne: &str, ord: usize, body: &mut Vec<String>| -> ErrOR<()> {
+        if let Json::LInt(int) = json.value {
+          body.push(format!("  {mne} rax, {int}\n"));
+        } else if let Json::VInt(var) = &json.value {
+          body.push(format!("  {mne} rax, {var}\n"));
+        } else {
+          self.typ_err(ord, func_name, "integer", json)?;
+        }
+        Ok(())
+      };
+    if let Some(operand_r) = args.first() {
+      binary_mn(operand_r, "mov", 1, &mut info.body)?;
+    } else {
+      info.body.push(format!("  mov rax, {ident_elem}\n"));
+    }
+    for (ord, operand_l) in args.get(1..).unwrap_or(&[]).iter().enumerate() {
+      binary_mn(operand_l, mn, ord, &mut info.body)?;
+    }
+    let ret = self.get_name("BSS", "8")?;
+    info.body.push(format!("  mov {ret}, rax\n"));
+    Ok(Json::VInt(ret))
+  }
   /// Performs subtraction.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn minus(&mut self, first: &JsonWithPos, args: &Args, info: &mut FuncInfo) -> FResult {
-    self.binary_op(first, args, info, "sub", "-")
+  fn op_minus(&mut self, _: &JsonWithPos, args: &Args, info: &mut FuncInfo) -> ErrOR<Json> {
+    self.op(args, info, "sub", "-", 0)
   }
   /// Performs addition.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn plus(&mut self, first: &JsonWithPos, args: &Args, info: &mut FuncInfo) -> FResult {
-    self.binary_op(first, args, info, "add", "+")
+  fn op_mul(&mut self, _: &JsonWithPos, args: &Args, info: &mut FuncInfo) -> ErrOR<Json> {
+    self.op(args, info, "imul", "*", 1)
+  }
+  /// Performs addition.
+  #[expect(clippy::single_call_fn, reason = "")]
+  fn op_plus(&mut self, _: &JsonWithPos, args: &Args, info: &mut FuncInfo) -> ErrOR<Json> {
+    self.op(args, info, "add", "+", 0)
+  }
+  /// Return the first argument.
+  #[expect(clippy::single_call_fn, reason = "")]
+  fn quote(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> ErrOR<Json> {
+    self.validate_args("'", false, 1, args.len(), &first.pos)?;
+    Ok(args.first().ok_or("Unreachable (quote)")?.value.clone())
   }
   /// Sets a variable.
-  fn set(&mut self, first: &JsonWithPos, args: &Args, is_global: bool, f_name: &str) -> FResult {
+  fn set(
+    &mut self, first: &JsonWithPos, args: &Args, is_global: bool, f_name: &str,
+  ) -> ErrOR<Json> {
     const ERR: &str = "Unreachable (set)";
     self.validate_args(f_name, false, 2, args.len(), &first.pos)?;
     let json1 = args.first().ok_or(ERR)?;
@@ -144,19 +174,11 @@ impl Jsonpiler {
     };
     let json2 = args.get(1).ok_or(ERR)?;
     let value = match &json2.value {
+      var if !var.is_literal() => json2.value.clone(),
       Json::LString(st) => Json::VString(self.get_name("STR", st)?),
       Json::Null => Json::Null,
       Json::LInt(int) => Json::VInt(self.get_name("INT", &int.to_string())?),
-      Json::VString(_)
-      | Json::VInt(_)
-      | Json::Function { .. }
-      | Json::VArray(_)
-      | Json::VBool(..)
-      | Json::VFloat(_)
-      | Json::VObject(_) => json2.value.clone(),
-      Json::LArray(_) | Json::LBool(_) | Json::LFloat(_) | Json::LObject(_) => {
-        return self.typ_err(2, "$", "that supports assignment", json2);
-      }
+      _ => return self.typ_err(2, "$", "that supports assignment", json2),
     };
     if is_global {
       self.vars.first_mut().ok_or("InternalError: Invalid scope.")?
@@ -168,17 +190,17 @@ impl Jsonpiler {
   }
   /// Sets a global variable.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn set_global(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> FResult {
+  fn set_global(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> ErrOR<Json> {
     self.set(first, args, true, "global")
   }
   /// Sets a local variable.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn set_local(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> FResult {
+  fn set_local(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> ErrOR<Json> {
     self.set(first, args, false, "=")
   }
   /// Gets the value of a local variable.
   #[expect(clippy::single_call_fn, reason = "")]
-  fn variable(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> FResult {
+  fn variable(&mut self, first: &JsonWithPos, args: &Args, _: &mut FuncInfo) -> ErrOR<Json> {
     self.validate_args("$", false, 1, args.len(), &first.pos)?;
     let json1 = args.first().ok_or("Unreachable (variable)")?;
     let Json::LString(var_name) = &json1.value else {

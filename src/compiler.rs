@@ -1,7 +1,7 @@
 //! Implementation of the compiler inside the `Jsonpiler`.
 use super::{
-  Args, Builtin, ErrOR, FResult, FuncInfo, JFunc, JObject, JResult, Json, JsonWithPos, Jsonpiler,
-  Position, Section, err,
+  Args, Builtin, ErrOR, FuncInfo, JFunc, JObject, JResult, Json, JsonWithPos, Jsonpiler, Position,
+  Section, err,
 };
 use std::{
   collections::{HashMap, HashSet},
@@ -34,32 +34,30 @@ impl Jsonpiler {
     let mut info = FuncInfo::default();
     let result = self.eval(&json, &mut info)?;
     let mut writer = io::BufWriter::new(File::create(out_file)?);
-    writer.write_all(format!(".file \"{json_file}\"\n.intel_syntax noprefix\n").as_bytes())?;
-    writer.write_all(include_bytes!("asm/sect/data.s"))?;
+    writeln!(writer, ".file \"{json_file}\"\n.intel_syntax noprefix")?;
+    writer.write_all(include_bytes!("asm/once/data.s"))?;
     for data in &mut self.sect.data {
       writer.write_all(data.as_bytes())?;
     }
-    writer.write_all(include_bytes!("asm/sect/bss.s"))?;
+    writer.write_all(include_bytes!("asm/once/bss.s"))?;
     for bss in &mut self.sect.bss {
       writer.write_all(bss.as_bytes())?;
     }
-    writer.write_all(include_bytes!("asm/sect/start.s"))?;
-    writer.write_all(
-      format!(include_str!("asm/common/prologue.s"), size = info.calc_alloc(8)?).as_bytes(),
-    )?;
-    writer.write_all(include_bytes!("asm/sect/startup.s"))?;
+    writer.write_all(include_bytes!("asm/once/start.s"))?;
+    write!(writer, include_str!("asm/common/prologue.s"), size = info.calc_alloc(8)?)?;
+    writer.write_all(include_bytes!("asm/once/startup.s"))?;
     for body in &mut info.body {
       writer.write_all(body.as_bytes())?;
     }
     if let Json::LInt(int) = result.value {
-      writer.write_all(format!("  mov rcx, {int}\n").as_bytes())
+      writeln!(writer, "  mov rcx, {int}")
     } else if let Json::VInt(var) = &result.value {
-      writer.write_all(format!("  mov rcx, {var}\n").as_bytes())
+      writeln!(writer, "  mov rcx, {var}")
     } else {
-      writer.write_all(b"  xor ecx, ecx\n")
+      writeln!(writer, "  xor ecx, ecx")
     }?;
     writer.write_all(b"  call [qword ptr __imp_ExitProcess[rip]]\n.seh_endproc\n")?;
-    writer.write_all(include_bytes!("asm/sect/handler.s"))?;
+    writer.write_all(include_bytes!("asm/once/handler.s"))?;
     for text in &mut self.sect.text {
       writer.write_all(text.as_bytes())?;
     }
@@ -166,7 +164,7 @@ impl Jsonpiler {
   pub(crate) fn register(&mut self, name: &str, flag: (bool, bool), j_func: JFunc) {
     self.builtin.insert(name.into(), Builtin { skip_eval: flag.0, scoped: flag.1, func: j_func });
   }
-  /// Converts `JValue` (`StringVar` or `String`) to `StringVar`, otherwise return `Err`
+  /// Converts `Json` (`StringVar` or `String`) to `StringVar`, otherwise return `Err`
   pub(crate) fn string2var(
     &mut self, json: &JsonWithPos, ordinal: usize, func_name: &str,
   ) -> ErrOR<String> {
@@ -178,48 +176,6 @@ impl Jsonpiler {
     } else {
       self.typ_err(ordinal, func_name, "String", json)?;
       Ok(String::new())
-    }
-  }
-  /// Generates a type error.
-  pub(crate) fn typ_err(
-    &self, ordinal: usize, name: &str, expected: &str, json: &JsonWithPos,
-  ) -> FResult {
-    let suffix = match ordinal % 100 {
-      11..=13 => "th",
-      _ => match ordinal % 10 {
-        1 => "st",
-        2 => "nd",
-        3 => "rd",
-        _ => "th",
-      },
-    };
-    let typ = json.value.type_name();
-    err!(
-      self,
-      &json.pos,
-      "The {ordinal}{suffix} argument to `{name}` must be of a type `{expected}`, \
-      but a value of type `{typ}` was provided."
-    )
-  }
-  /// Generate an error.
-  pub(crate) fn validate_args(
-    &self, name: &str, at_least: bool, expected: usize, supplied: usize, pos: &Position,
-  ) -> ErrOR<()> {
-    let fmt_require = |text: &str| -> ErrOR<()> {
-      let (plural, be) = if expected == 1 { ("", "is") } else { ("s", "are") };
-      err!(
-        self,
-        pos,
-        "`{name}` requires {text} {expected} argument{plural}, \
-        but {supplied} argument{plural} {be} supplied.",
-      )
-    };
-    if at_least {
-      if supplied >= expected { Ok(()) } else { fmt_require("at least") }
-    } else if expected == supplied {
-      Ok(())
-    } else {
-      fmt_require("exactly")
     }
   }
 }

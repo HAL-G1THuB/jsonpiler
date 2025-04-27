@@ -1,7 +1,6 @@
 .L__WIN_HANDLER:
   call [qword ptr __imp_GetLastError[rip]]
   mov edi, eax
-  sub rsp, 64
   mov ecx, 0x1300
   xor edx, edx
   mov r8d, edi
@@ -24,7 +23,6 @@
   mov ecx, edi
   call [qword ptr __imp_ExitProcess[rip]]
 .L__SEH_HANDLER:
-  sub rsp, 40
   xor ecx, ecx
   lea rdx, .L__SEH_HANDLER_MSG[rip]
   xor r8d, r8d
