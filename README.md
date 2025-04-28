@@ -12,8 +12,9 @@ This program converts a JSON-based program to GNU assembly, compiles it, and exe
 
 ## What's New
 
-- **`begin` no longer introduces a scope; instead, the new `scope` function handles scoping.**
-- **Added new functions: `scope`, `*`, `list`, `eval`, and `'`.**
+- **Local variables are now stored on the stack.**
+- **Fixed a problem that caused the assembler to fail if +, -, or * takes more than 32-bit literals as operands.**
+- **Added the ability to allocate stacks at the start of a scope and release them at the end.**
 
 [Project History and Plans](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 

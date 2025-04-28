@@ -23,17 +23,20 @@ use std::{
 /// Generates an error.
 #[macro_export]
 macro_rules! err {
-  ($self:ident, $pos:expr, $($arg:tt)*) => {
-    Err($self.fmt_err(&format!($($arg)*), &$pos).into())
-  };
-  ($self:ident, $($arg:tt)*) => {
-    Err($self.fmt_err(&format!($($arg)*), &$self.pos).into())
-  };
+  ($self:ident, $pos:expr, $($arg:tt)*) => {Err($self.fmt_err(&format!($($arg)*), &$pos).into())};
+  ($self:ident, $($arg:tt)*) => {Err($self.fmt_err(&format!($($arg)*), &$self.pos).into())};
 }
 /// Return `ExitCode`.
 macro_rules! exit {($($arg: tt)*) =>{{eprintln!($($arg)*);return ExitCode::FAILURE;}}}
+/// Stack align.
+#[derive(Copy, Clone, PartialEq)]
+enum Align {
+  U64 = 8,
+  U8 = 1,
+}
 /// Arguments.
-type Args = [JsonWithPos];
+type Args = Vec<JsonWithPos>;
+
 #[derive(Debug, Clone)]
 /// Assembly boolean representation.
 struct AsmBool {
@@ -71,13 +74,15 @@ struct FuncInfo {
   args_slots: usize,
   /// Body of function.
   body: Vec<String>,
-  /// Size of local variable.
-  local_size: usize,
+  /// Stack layout.
+  layout: Vec<bool>,
   /// Registers used.
   reg_used: HashSet<String>,
+  /// Scope align.
+  scope_align: usize,
 }
 /// Type of built-in function.
-type JFunc = fn(&mut Jsonpiler, &JsonWithPos, &Args, &mut FuncInfo) -> ErrOR<Json>;
+type JFunc = fn(&mut Jsonpiler, &JsonWithPos, Args, &mut FuncInfo) -> ErrOR<Json>;
 /// Represents a JSON object with key-value pairs.
 #[derive(Debug, Clone, Default)]
 struct JObject {
@@ -235,7 +240,7 @@ pub fn run() -> ExitCode {
   }
   invoke!(
     "ld",
-    [&obj, "-o", &exe, "-LC:/Windows/System32", "-luser32", "-lkernel32", "-lucrtbase", "-e_start"],
+    [&obj, "-o", &exe, "-LC:/Windows/System32", "-luser32", "-lkernel32", "-lucrtbase", "-emain"],
     "linker"
   );
   if let Err(err) = fs::remove_file(&obj) {
@@ -246,12 +251,11 @@ pub fn run() -> ExitCode {
     Err(err) => exit!("Failed to get current directory: {err}"),
   }
   .join(&exe);
-  let compiled_program_status = match Command::new(cwd).args(args.get(2..).unwrap_or(&[])).status()
-  {
+  let exe_status = match Command::new(cwd).args(args.get(2..).unwrap_or(&[])).status() {
     Ok(status) => status,
     Err(err) => exit!("Failed to execute compiled program: {err}"),
   };
-  let Some(exit_code) = compiled_program_status.code() else {
+  let Some(exit_code) = exe_status.code() else {
     exit!("Could not get the exit code of the compiled program.")
   };
   let Ok(code) = u8::try_from(exit_code.rem_euclid(256)) else {

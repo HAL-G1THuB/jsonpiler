@@ -1,10 +1,8 @@
 //! Implementation of the `Json`
-use {
-  super::{Json, JsonWithPos},
-  core::fmt::{self, Write as _},
-};
+use super::{Json, JsonWithPos};
+use core::fmt::{self, Write as _};
 impl Json {
-  /// Generate type name.
+  /// リテラルかの判定.
   pub fn is_literal(&self) -> bool {
     match self {
       Json::LInt(_)

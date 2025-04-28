@@ -152,7 +152,7 @@ return without evaluation.
 ["eval", {"expr": "Any"}] -> {"evaluated_expr": "Any"}
 ```
 
-return Evaluate expression
+Returns a further evaluated expression.
 
 ---
 

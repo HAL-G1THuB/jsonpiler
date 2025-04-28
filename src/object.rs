@@ -1,8 +1,6 @@
 //! Implementation of the `JObject`.
-use {
-  crate::{JObject, JsonWithPos},
-  core::mem,
-};
+use crate::{JObject, JsonWithPos};
+use core::mem::replace;
 impl JObject {
   /// Clears all entries and index mappings from the object.
   #[expect(dead_code, reason = "todo")]
@@ -28,7 +26,7 @@ impl JObject {
   /// Otherwise, inserts a new entry and returns `None`.
   pub fn insert(&mut self, key: String, value: JsonWithPos) -> Option<JsonWithPos> {
     if let Some(&idx) = self.index.get(&key) {
-      Some(mem::replace(&mut self.entries.get_mut(idx)?.1, value))
+      Some(replace(&mut self.entries.get_mut(idx)?.1, value))
     } else {
       self.index.insert(key.clone(), self.entries.len());
       self.entries.push((key, value));
@@ -46,7 +44,6 @@ impl JObject {
     self.entries.iter()
   }
   /// Returns a mutable iterator over all key-value pairs in insertion order.
-  #[expect(dead_code, reason = "todo")]
   pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut (String, JsonWithPos)> {
     self.entries.iter_mut()
   }

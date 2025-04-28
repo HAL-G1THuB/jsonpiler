@@ -10,6 +10,12 @@
 
 ### jsonpiler 0.2
 
+#### 0.2.1
+
+- Local variables are now stored on the stack.
+- Fixed a problem that caused the assembler to fail if +, -, or * takes more than 32-bit literals as operands.
+- Added the ability to allocate stacks at the start of a scope and release them at the end.
+
 #### 0.2.0
 
 - Updated stack management to no longer use the `rbp` register.
