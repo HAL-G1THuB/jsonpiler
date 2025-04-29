@@ -2,11 +2,11 @@
 
 ## Notation
 
-- `-> T` — Returns a value of type `T`  
-- `=> V` — Evaluates to the value `V`  
-- `L...` — A literal of type `...`  
-- `V...` — A non-literal value of type `...`  
-- `"..."` — Zero or more arguments matching the previous pattern  
+- `-> T` - Returns a value of type `T`  
+- `=> V` - Evaluates to the value `V`  
+- `L...` - A literal of type `...`  
+- `V...` - A non-literal value of type `...`  
+- `"..."` - Zero or more arguments matching the previous pattern  
 
 ---
 
@@ -52,6 +52,7 @@ If given zero arguments, it returns the identity element (0).
 
 Subtracts all following operands from the first one and returns the result.
 If given zero arguments, it returns the identity element (0).
+If given one argument, invert the sign.
 
 ```json
 ["-", 30, 5, ["+", 4, 6]] => 15
@@ -82,8 +83,7 @@ If given zero arguments, it returns the identity element (1).
 
 Creates a function.  
 The first argument specifies the parameter list;  
-the remaining arguments are evaluated as expressions within the function body.  
-Returns the resulting function object.  
+the remaining arguments form the function body and are evaluated when the function is called.
 `lambda` introduces a new scope.
 
 ```json
@@ -100,7 +100,7 @@ Returns the resulting function object.
 
 Displays a message box.  
 The first argument is the title; the second is the body text.  
-Returns the ID of the button pressed — currently always `1` (equivalent to `IDOK` in C/C++).
+Returns the ID of the button pressed - currently always `1` (equivalent to `IDOK` in C/C++).
 
 ---
 
@@ -115,7 +115,7 @@ Returns the ID of the button pressed — currently always `1` (equivalent to `ID
 ```
 
 Assigns the given value to the specified variable name.  
-Returns the assigned value.
+Returns `null` after assignment.
 Assigned to local scope for `=` and to global scope for `global`.
 Currently, the following types are **not assignable**:
 
@@ -144,7 +144,7 @@ Returns the value bound to the given variable name.
 ["quote", {"expr": "Any"}] -> {"unevaluated_expr": "Any"}
 ```
 
-return without evaluation.
+Returns the expression without evaluating it.
 
 ## `eval`
 
@@ -152,7 +152,7 @@ return without evaluation.
 ["eval", {"expr": "Any"}] -> {"evaluated_expr": "Any"}
 ```
 
-Returns a further evaluated expression.
+Evaluates the given expression and returns the result.
 
 ---
 

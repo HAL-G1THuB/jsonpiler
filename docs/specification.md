@@ -1,6 +1,6 @@
 # Specification
 
-Language specification of the jsonpiler.
+Specification of the Jsonpiler language.
 
 ## Syntax
 
@@ -11,18 +11,18 @@ See: [JSON specification](https://www.rfc-editor.org/info/rfc8259)
 
 A jsonpiler program is represented as a single JSON value.
 
-Each JSON value is evaluated independently, except for lists (`[]`) and objects (`{}`).
+Each JSON value is evaluated independently, except in the case of arrays ([]) and objects ({}).
 
 Lists are evaluated as follows:
 
-- The first element of the list is treated as the function name.
-- This element must be either a string or a lambda expression.
+- The first element of the list is treated as the built-in function name or user-defined function name.
+- This element must be a string (representing a function name) or a lambda expression.
 
 ```json
 ["lambda", [], ["+", 3, 1]]
 ```
 
-- The remaining elements are passed as arguments to that function.
+- The remaining elements are passed as arguments to the function.
 
 Objects are evaluated as follows:
 
@@ -31,7 +31,8 @@ Objects are evaluated as follows:
 
 ## Exits
 
-The Exit Code returned by `jsonpiler::functions::run` is the actual exit code wrapped to a value between 0 and 255 using modulo 256.
+The exit code returned by `jsonpiler::functions::run` is wrapped using modulo 256,
+resulting in a value between 0 and 255.
 
 ## Encoding
 

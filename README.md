@@ -12,9 +12,11 @@ This program converts a JSON-based program to GNU assembly, compiles it, and exe
 
 ## What's New
 
-- **Local variables are now stored on the stack.**
-- **Fixed a problem that caused the assembler to fail if +, -, or * takes more than 32-bit literals as operands.**
-- **Added the ability to allocate stacks at the start of a scope and release them at the end.**
+- **Added `examples` directory.**
+- **Built-in functions now have priority over user-defined functions.**
+- **To give priority to user-defined functions, write them as `["$", "function"]`.**
+- **Added the ability to efficiently store free space on the stack and fill that space as needed.**
+- **Unary `-` now correctly negates a single argument.**
 
 [Project History and Plans](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 
@@ -41,6 +43,8 @@ jsonpiler (input_json_file (UTF-8)) [arguments of .exe ...]
 Replace `(input_json_file)` with the actual JSON file you want to compile.
 
 ## Example
+
+[Examples](https://github.com/HAL-G1THuB/jsonpiler/tree/main/examples)
 
 ```json
 ["begin", ["=", "a", "title"], ["message", ["$", "a"], "345"]]

@@ -15,7 +15,7 @@ mod parser;
 mod utility;
 use core::error::Error;
 use std::{
-  collections::{HashMap, HashSet},
+  collections::{BTreeMap, HashMap, HashSet},
   env, fs,
   path::Path,
   process::{Command, ExitCode},
@@ -30,13 +30,15 @@ macro_rules! err {
 macro_rules! exit {($($arg: tt)*) =>{{eprintln!($($arg)*);return ExitCode::FAILURE;}}}
 /// Stack align.
 #[derive(Copy, Clone, PartialEq)]
-enum Align {
+#[non_exhaustive]
+pub enum Align {
+  U16 = 2,
+  U32 = 4,
   U64 = 8,
   U8 = 1,
 }
 /// Arguments.
 type Args = Vec<JsonWithPos>;
-
 #[derive(Debug, Clone)]
 /// Assembly boolean representation.
 struct AsmBool {
@@ -54,6 +56,18 @@ struct AsmFunc {
   params: Vec<JsonWithPos>,
   /// Return type of function.
   ret: Box<Json>,
+}
+/// Binding.
+#[derive(Debug, Clone)]
+enum Bind<T> {
+  /// Literal.
+  Lit(T),
+  /// Local variable.
+  Local(usize),
+  /// Tmp local variable.
+  Tmp(usize),
+  /// Variable.
+  Var(String),
 }
 /// Built-in function.
 #[derive(Debug, Clone)]
@@ -74,12 +88,14 @@ struct FuncInfo {
   args_slots: usize,
   /// Body of function.
   body: Vec<String>,
-  /// Stack layout.
-  layout: Vec<bool>,
+  /// Free memory list.
+  free_map: BTreeMap<usize, usize>,
   /// Registers used.
   reg_used: HashSet<String>,
   /// Scope align.
   scope_align: usize,
+  /// Stack size.
+  stack_size: usize,
 }
 /// Type of built-in function.
 type JFunc = fn(&mut Jsonpiler, &JsonWithPos, Args, &mut FuncInfo) -> ErrOR<Json>;
@@ -96,39 +112,26 @@ type JResult = ErrOR<JsonWithPos>;
 /// Type and value information.
 #[derive(Debug, Clone, Default)]
 enum Json {
+  /// Array.
+  Array(Bind<Vec<JsonWithPos>>),
+  /// Float.
+  Float(Bind<f64>),
   /// Function.
   Function(AsmFunc),
-  /// Array.
-  LArray(Vec<JsonWithPos>),
+  /// Integer.
+  Int(Bind<i64>),
   /// Bool.
   LBool(bool),
-  /// Float.
-  LFloat(f64),
-  /// Integer.
-  LInt(i64),
-  /// Object.
-  LObject(JObject),
-  /// String.
-  LString(String),
   /// Null.
   #[default]
   Null,
-  /// Array variable.
-  #[expect(dead_code, reason = "todo")]
-  VArray(String),
+  /// Object.
+  Object(Bind<JObject>),
+  /// String.
+  String(Bind<String>),
   /// Bool variable.
   #[expect(dead_code, reason = "todo")]
   VBool(AsmBool),
-  /// Float variable.
-  #[expect(dead_code, reason = "todo")]
-  VFloat(String),
-  /// Integer variable.
-  VInt(String),
-  /// Object variable.
-  #[expect(dead_code, reason = "todo")]
-  VObject(String),
-  /// String variable.
-  VString(String),
 }
 /// Json object.
 #[derive(Debug, Clone, Default)]

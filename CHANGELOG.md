@@ -10,15 +10,26 @@
 
 ### jsonpiler 0.2
 
+#### 0.2.3
+
+- Added temporary value tracking to enable efficient stack freeing, minimizing stack waste except for variable bindings.
+
+#### 0.2.2
+
+- Added `examples` directory.
+- Built-in functions now have priority over user-defined functions.
+- To give priority to user-defined functions, write them as `["$", "function"]`.
+- Added the ability to efficiently store free space on the stack and fill that space as needed.
+- Unary `-` now correctly negates a single argument.
+
 #### 0.2.1
 
 - Local variables are now stored on the stack.
-- Fixed a problem that caused the assembler to fail if +, -, or * takes more than 32-bit literals as operands.
+- Fixed a problem that caused the assembler to fail if `+`, `-`, or `*` takes more than 32-bit literals as operands.
 - Added the ability to allocate stacks at the start of a scope and release them at the end.
 
 #### 0.2.0
 
-- Updated stack management to no longer use the `rbp` register.
 - `begin` no longer introduces a scope; instead, the new `scope` function handles scoping.
 - Added new functions: `scope`, `*`, `list`, and `'`.
 

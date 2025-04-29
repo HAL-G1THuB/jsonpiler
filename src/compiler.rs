@@ -1,7 +1,8 @@
 //! Implementation of the compiler inside the `Jsonpiler`.
 use super::{
-  Align, Args, AsmFunc, Builtin, ErrOR, FuncInfo, JFunc, JObject, JResult, Json, JsonWithPos,
+  Align, Args, AsmFunc, Bind, Builtin, ErrOR, FuncInfo, JFunc, JObject, JResult, Json, JsonWithPos,
   Jsonpiler, Position, Section, err,
+  utility::{fmt_local, scope_begin, scope_end},
 };
 use core::mem;
 use std::{
@@ -50,10 +51,14 @@ impl Jsonpiler {
     for body in &mut info.body {
       writer.write_all(body.as_bytes())?;
     }
-    if let Json::LInt(int) = result.value {
-      writeln!(writer, "  mov rcx, {int}")
-    } else if let Json::VInt(var) = &result.value {
-      writeln!(writer, "  mov rcx, {var}")
+    if let Json::Int(int) = result.value {
+      match int {
+        Bind::Lit(l_int) => writeln!(writer, "  mov rcx, {l_int}"),
+        Bind::Var(var) => writeln!(writer, "  mov rcx, {var}"),
+        Bind::Local(local) | Bind::Tmp(local) => {
+          writeln!(writer, "  mov rcx, {}", fmt_local("qword", local))
+        }
+      }
     } else {
       writeln!(writer, "  xor ecx, ecx")
     }?;
@@ -68,54 +73,41 @@ impl Jsonpiler {
   /// Evaluates a JSON object.
   pub(crate) fn eval(&mut self, mut json: JsonWithPos, info: &mut FuncInfo) -> JResult {
     const ERR: &str = "Unreachable (eval)";
-    let Json::LArray(list) = &mut json.value else {
-      let Json::LObject(object) = &mut json.value else { return Ok(json) };
+    let Json::Array(Bind::Lit(list)) = &mut json.value else {
+      let Json::Object(Bind::Lit(object)) = &mut json.value else { return Ok(json) };
       let mut evaluated = JObject::default();
       for kv in object.iter_mut() {
         evaluated.insert(mem::take(&mut kv.0), self.eval(mem::take(&mut kv.1), info)?);
       }
-      return Ok(JsonWithPos { value: Json::LObject(evaluated), pos: json.pos });
+      return Ok(JsonWithPos { value: Json::Object(Bind::Lit(evaluated)), pos: json.pos });
     };
     self.validate_args("function call", true, 1, list.len(), &json.pos)?;
     let first_elem = mem::take(list.first_mut().ok_or(ERR)?);
     let first = self.eval(first_elem.clone(), info)?;
-    if let Json::LString(cmd) = &first.value {
-      if let Ok(Json::Function(af)) = self.get_var(cmd, &first.pos) {
-        call_func(first_elem.pos, &af, info)
-      } else if self.builtin.contains_key(cmd.as_str()) {
-        let builtin = self.builtin.get_mut(cmd.as_str()).ok_or(ERR)?;
+    if let Json::String(Bind::Lit(cmd)) = &first.value {
+      if self.builtin.contains_key(cmd) {
+        let builtin = self.builtin.get_mut(cmd).ok_or(ERR)?;
         let scoped = builtin.scoped;
         let func = builtin.func;
-        let mut tmp_body = vec![];
-        let mut tmp_layout = vec![];
+        let mut tmp = FuncInfo::default();
         if scoped {
           self.vars.push(HashMap::new());
-          info.scope_align = info
-            .scope_align
-            .checked_add(info.layout.len().checked_add(15).ok_or("Layout Overflow")? & !15)
-            .ok_or("ScopeAlign Overflow")?;
-          tmp_body = mem::take(&mut info.body);
-          tmp_layout = mem::take(&mut info.layout);
+          scope_begin(&mut tmp, info)?;
         }
-        let rest = list.get_mut(1..).unwrap_or(&mut []).to_vec();
-        let args = if builtin.skip_eval { rest } else { self.eval_args(rest, info)? };
+        let mut args = list.get_mut(1..).unwrap_or(&mut []).to_vec();
+        if !builtin.skip_eval {
+          args = self.eval_args(args, info)?;
+        }
         let result = func(self, &first, args, info)?;
         if scoped {
-          let align = info.layout.len().checked_add(15).ok_or("Overflow local size")? & !15;
-          if align != 0 {
-            tmp_body.push(format!("  sub rsp, {align}\n"));
-          }
-          tmp_body.append(&mut info.body);
-          if align != 0 {
-            tmp_body.push(format!("  add rsp, {align}\n"));
-          }
-          info.body = tmp_body;
-          info.layout = tmp_layout;
+          scope_end(&mut tmp, info)?;
           self.vars.pop();
         }
         Ok(JsonWithPos { value: result, pos: first_elem.pos })
+      } else if let Ok(Json::Function(af)) = self.get_var(cmd, &first.pos) {
+        call_func(first_elem.pos, &af, info)
       } else {
-        Err(self.fmt_err(&format!("The `{cmd}` function is undefined."), &first.pos).into())
+        err!(self, first.pos, "The `{cmd}` function is undefined.")
       }
     } else if let Json::Function(af) = &first.value {
       call_func(first_elem.pos, af, info)
@@ -133,7 +125,7 @@ impl Jsonpiler {
     Ok(result)
   }
   /// Generates a unique name for internal use.
-  pub(crate) fn get_global(&mut self, name: &str, value: &str) -> Result<String, String> {
+  pub(crate) fn get_global(&mut self, name: &str, value: &str) -> ErrOR<String> {
     let seed = self
       .symbol_seeds
       .get(name)
@@ -152,7 +144,7 @@ impl Jsonpiler {
       }
       "INT" => self.sect.data.push(format!("  {l_name}: .quad {value}\n")),
       "FNC" => return Ok(l_name),
-      _ => return Err(format!("Internal Error: Unrecognized name: {name}")),
+      _ => return Err(format!("Internal Error: Unrecognized name: {name}").into()),
     }
     Ok(name_fmt)
   }
@@ -173,11 +165,12 @@ impl Jsonpiler {
   pub(crate) fn string2var(
     &mut self, json: JsonWithPos, ordinal: usize, func_name: &str,
   ) -> ErrOR<String> {
-    if let Json::LString(l_str) = &json.value {
-      let name = self.get_global("STR", l_str)?;
-      Ok(name)
-    } else if let Json::VString(v_str) = json.value {
-      Ok(v_str)
+    if let Json::String(st) = json.value {
+      match st {
+        Bind::Lit(l_str) => self.get_global("STR", &l_str),
+        Bind::Var(var) => Ok(var),
+        Bind::Local(local) | Bind::Tmp(local) => Ok(fmt_local("qword", local)),
+      }
     } else {
       self.typ_err(ordinal, func_name, "String", &json)?;
       Ok(String::new())
@@ -187,10 +180,10 @@ impl Jsonpiler {
 /// Call function and return value.
 fn call_func(pos: Position, af: &AsmFunc, info: &mut FuncInfo) -> ErrOR<JsonWithPos> {
   info.body.push(format!("  call {}\n", af.name));
-  if let Json::VInt(_) | Json::LInt(_) = *af.ret {
-    let name = info.get_local(Align::U64)?;
-    info.body.push(format!("  mov {name}, rax\n"));
-    Ok(JsonWithPos { value: Json::VInt(name), pos })
+  if let Json::Int(_) = *af.ret {
+    let offset = info.get_local(Align::U64)?;
+    info.body.push(format!("  mov {}, rax\n", fmt_local("qword", offset)));
+    Ok(JsonWithPos { value: Json::Int(Bind::Tmp(offset)), pos })
   } else {
     Ok(JsonWithPos { value: Json::Null, pos })
   }

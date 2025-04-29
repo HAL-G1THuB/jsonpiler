@@ -1,5 +1,5 @@
 //! Implementation of the parser inside the `Jsonpiler`.
-use super::{ErrOR, JObject, JResult, Json, JsonWithPos, Jsonpiler, Position, err};
+use super::{Bind, ErrOR, JObject, JResult, Json, JsonWithPos, Jsonpiler, Position, err};
 /// Macro to return if the next character matches the expected one.
 macro_rules! return_if {
   ($self: ident, $ch: expr, $start: expr, $val: expr) => {
@@ -73,10 +73,10 @@ impl Jsonpiler {
     let start = self.pos.clone();
     let mut array = vec![];
     self.expect('[')?;
-    return_if!(self, ']', start, Json::LArray(array));
+    return_if!(self, ']', start, Json::Array(Bind::Lit(array)));
     loop {
       array.push(self.parse_value()?);
-      return_if!(self, ']', start, Json::LArray(array));
+      return_if!(self, ']', start, Json::Array(Bind::Lit(array)));
       self.expect(',')?;
     }
   }
@@ -136,12 +136,12 @@ impl Jsonpiler {
     if has_decimal || has_exponent {
       num_str.parse::<f64>().map_or_else(
         |_| err!(self, "Invalid numeric value."),
-        |float_val| Ok(JsonWithPos { pos: start, value: Json::LFloat(float_val) }),
+        |float| Ok(JsonWithPos { pos: start, value: Json::Float(Bind::Lit(float)) }),
       )
     } else {
       num_str.parse::<i64>().map_or_else(
         |_| err!(self, "Invalid numeric value."),
-        |int_val| Ok(JsonWithPos { pos: start, value: Json::LInt(int_val) }),
+        |int| Ok(JsonWithPos { pos: start, value: Json::Int(Bind::Lit(int)) }),
       )
     }
   }
@@ -150,16 +150,16 @@ impl Jsonpiler {
     let start = self.pos.clone();
     let mut object = JObject::default();
     self.expect('{')?;
-    return_if!(self, '}', start, Json::LObject(object));
+    return_if!(self, '}', start, Json::Object(Bind::Lit(object)));
     loop {
       let key = self.parse_value()?;
-      let Json::LString(string) = key.value else {
+      let Json::String(Bind::Lit(string)) = key.value else {
         return err!(self, &key.pos, "Keys must be strings.");
       };
       self.expect(':')?;
       let value = self.parse_value()?;
       object.insert(string, value);
-      return_if!(self, '}', start, Json::LObject(object));
+      return_if!(self, '}', start, Json::Object(Bind::Lit(object)));
       self.expect(',')?;
     }
   }
@@ -172,7 +172,7 @@ impl Jsonpiler {
     loop {
       ch = self.next()?;
       match ch {
-        '"' => return Ok(JsonWithPos { pos: start, value: Json::LString(result) }),
+        '"' => return Ok(JsonWithPos { pos: start, value: Json::String(Bind::Lit(result)) }),
         '\n' => return err!(self, "Invalid line breaks in strings."),
         '\\' => match self.next()? {
           'n' => result.push('\n'),
