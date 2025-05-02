@@ -13,7 +13,10 @@ mod json;
 mod object;
 mod parser;
 mod utility;
-use core::error::Error;
+use core::{
+  error::Error,
+  fmt::{self, Display},
+};
 use std::{
   collections::{BTreeMap, HashMap, HashSet},
   env, fs,
@@ -28,14 +31,15 @@ macro_rules! err {
 }
 /// Return `ExitCode`.
 macro_rules! exit {($($arg: tt)*) =>{{eprintln!($($arg)*);return ExitCode::FAILURE;}}}
-/// Stack align.
-#[derive(Copy, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum Align {
-  U16 = 2,
-  U32 = 4,
-  U64 = 8,
-  U8 = 1,
+/// Macro to include assembly files only once.
+#[macro_export]
+macro_rules! include_once {
+  ($self:ident, $name:literal) => {
+    if !$self.include_flag.contains($name) {
+      $self.include_flag.insert($name.into());
+      $self.text.push(include_str!(concat!("asm/", $name, ".s")).into());
+    }
+  };
 }
 /// Arguments.
 type Args = Vec<JsonWithPos>;
@@ -45,13 +49,13 @@ struct AsmBool {
   /// bit offset.
   bit: usize,
   /// Name of function.
-  name: String,
+  name: Name,
 }
 /// Assembly function representation.
 #[derive(Debug, Clone)]
 struct AsmFunc {
   /// Name of function.
-  name: String,
+  name: usize,
   /// Parameters of function.
   params: Vec<JsonWithPos>,
   /// Return type of function.
@@ -62,12 +66,8 @@ struct AsmFunc {
 enum Bind<T> {
   /// Literal.
   Lit(T),
-  /// Local variable.
-  Local(usize),
-  /// Tmp local variable.
-  Tmp(usize),
-  /// Variable.
-  Var(String),
+  /// Global variable.
+  Var(Name),
 }
 /// Built-in function.
 #[derive(Debug, Clone)]
@@ -79,8 +79,8 @@ struct Builtin {
   /// Should arguments already be evaluated.
   skip_eval: bool,
 }
+/// Contain `T` or `Box<dyn Error>`.
 type ErrOR<T> = Result<T, Box<dyn Error>>;
-/// Contain `Json` or `Box<dyn Error>`.
 /// Information of Function.
 #[derive(Debug, Clone, Default)]
 struct FuncInfo {
@@ -96,6 +96,17 @@ struct FuncInfo {
   scope_align: usize,
   /// Stack size.
   stack_size: usize,
+}
+/// Type of global variable.
+enum GVar {
+  /// BSS variable.
+  Bss,
+  /// Global function.
+  Fnc,
+  /// Global integer.
+  Int,
+  /// Global string.
+  Str,
 }
 /// Type of built-in function.
 type JFunc = fn(&mut Jsonpiler, &JsonWithPos, Args, &mut FuncInfo) -> ErrOR<Json>;
@@ -144,22 +155,43 @@ struct JsonWithPos {
 /// Parser and compiler.
 #[derive(Debug, Clone, Default)]
 pub struct Jsonpiler {
+  /// Buffer to store the contents of the bss section of the assembly.
+  bss: Vec<String>,
   /// Built-in function table.
   builtin: HashMap<String, Builtin>,
+  /// Buffer to store the contents of the data section of the assembly.
+  data: Vec<String>,
+  /// Seed to generate names.
+  global_seed: usize,
   /// Flag to avoid including the same file twice.
   include_flag: HashSet<String>,
   /// Information to be used during parsing.
   pos: Position,
-  /// Section of the assembly.
-  sect: Section,
   /// Source code.
   source: String,
   /// Cache of the string.
   str_cache: HashMap<String, usize>,
-  /// Seed to generate names.
-  symbol_seeds: HashMap<String, usize>,
+  /// Buffer to store the contents of the text section of the assembly.
+  text: Vec<String>,
   /// Variable table.
   vars: Vec<HashMap<String, Json>>,
+}
+/// Variable name.
+#[derive(Debug, Clone)]
+struct Name {
+  /// Variable seed.
+  seed: usize,
+  /// Variable type.
+  var: Var,
+}
+impl Display for Name {
+  #[expect(clippy::min_ident_chars, reason = "default name is 'f'")]
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self.var {
+      Var::Global => write!(f, " ptr .L{:x}[rip]", self.seed),
+      Var::Local | Var::Tmp => write!(f, " ptr -0x{:x}[rbp]", self.seed),
+    }
+  }
 }
 /// line and pos in source code.
 #[derive(Debug, Clone, Default)]
@@ -168,16 +200,22 @@ struct Position {
   line: usize,
   /// Byte offset of the part being parsed.
   offset: usize,
+  /// Size of the part being parsed.
+  size: usize,
 }
-/// Section of the assembly.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct Section {
-  /// Buffer to store the contents of the bss section of the assembly.
-  bss: Vec<String>,
-  /// Buffer to store the contents of the data section of the assembly.
-  data: Vec<String>,
-  /// Buffer to store the contents of the text section of the assembly.
-  text: Vec<String>,
+/// Variable.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Var {
+  /// Global variable.
+  Global,
+  /// Local variable.
+  Local,
+  /// Temporary local variable.
+  Tmp,
+}
+/// Safe addition.
+fn add(op1: usize, op2: usize) -> ErrOR<usize> {
+  op1.checked_add(op2).ok_or("InternalError: Overflow".into())
 }
 /// Compiles and executes a JSON-based program using the Jsonpiler.
 /// This function performs the following steps:
@@ -224,7 +262,7 @@ pub fn run() -> ExitCode {
   let asm = with_ext("s");
   let obj = with_ext("obj");
   let exe = with_ext("exe");
-  if let Err(err) = jsonpiler.build(source, input_file, &asm) {
+  if let Err(err) = jsonpiler.build(source, &asm) {
     exit!("Compilation error: {err}");
   }
   macro_rules! invoke {

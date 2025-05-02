@@ -1,19 +1,12 @@
 //! Built-in functions.
-use super::{
-  Align, Args, AsmFunc, Bind, ErrOR, FuncInfo, Json, JsonWithPos, Jsonpiler, err,
-  utility::fmt_local,
+use crate::{
+  Args, AsmFunc, Bind, ErrOR, FuncInfo, GVar, Json, JsonWithPos, Jsonpiler, Name,
+  Var::{Global, Local, Tmp},
+  add, err, include_once,
+  utility::mn,
 };
 use core::mem::take;
 use std::collections::HashMap;
-/// Macro to include assembly files only once.
-macro_rules! include_once {
-  ($self:ident, $name:literal) => {
-    if !$self.include_flag.contains($name) {
-      $self.include_flag.insert($name.into());
-      $self.sect.text.push(include_str!(concat!("asm/", $name, ".s")).into());
-    }
-  };
-}
 impl Jsonpiler {
   /// Registers all functions.
   pub(crate) fn all_register(&mut self) {
@@ -72,41 +65,43 @@ impl Jsonpiler {
     if !params.is_empty() {
       return err!(self, &json1.pos, "PARAMETERS IS NOT IMPLEMENTED.");
     }
-    let name = self.get_global("FNC", "")?;
+    let name = self.get_global(&GVar::Fnc, "")?.seed;
     let mut ret = Json::Null;
     for arg in args.get_mut(1..).ok_or(self.fmt_err("Empty lambda body.", &first.pos))? {
       ret = self.eval(take(arg), &mut info)?.value;
       ret.tmp().and_then(|tuple| info.free(tuple.0, tuple.1).ok());
     }
-    self.sect.text.push(format!(".seh_proc {name}\n{name}:\n"));
+    self.text.push(format!(".seh_proc .L{name:x}\n.L{name:x}:\n"));
     let mut registers: Vec<&String> = info.reg_used.iter().collect();
     registers.sort();
     for &reg in &registers {
-      self.sect.text.push(format!("  push {reg}\n  .seh_pushreg {reg}\n"));
+      self.text.push(mn("push", &[reg]));
+      self.text.push(mn(".seh_pushreg", &[reg]));
     }
-    self.sect.text.push("  push rbp\n  .seh_pushreg rbp\n".into());
+    self.text.push(mn("push", &["rbp"]));
+    self.text.push(mn(".seh_pushreg", &["rbp"]));
     let size = info.calc_alloc(if info.reg_used.len() % 2 == 1 { 8 } else { 0 })?;
-    self.sect.text.push(format!(include_str!("asm/common/prologue.s"), size = size));
+    self.text.push(format!(include_str!("asm/common/prologue.s"), size = size));
     for body in info.body {
-      self.sect.text.push(body);
+      self.text.push(body);
     }
     if let Json::Int(int) = &ret {
-      match int {
-        Bind::Lit(lint) => self.sect.text.push(format!("  mov rax, {lint}\n")),
-        Bind::Var(var) => self.sect.text.push(format!("  mov rax, {var}\n")),
-        Bind::Local(local) | Bind::Tmp(local) => {
-          self.sect.text.push(format!("  mov rax, {}\n", fmt_local("qword", *local)));
-        }
-      }
+      let int_str = match int {
+        Bind::Lit(l_int) => l_int.to_string(),
+        Bind::Var(bind_name) => format!("qword{bind_name}"),
+      };
+      self.text.push(mn("mov", &["rax", &int_str]));
     } else {
-      self.sect.text.push("  xor eax, eax\n".into());
+      self.text.push(mn("xor", &["eax", "eax"]));
     }
-    self.sect.text.push("  mov rsp, rbp\n  pop rbp\n".into());
+    self.text.push(mn("mov", &["rsp", "rbp"]));
+    self.text.push(mn("pop", &["rbp"]));
     registers.reverse();
     for reg in registers {
-      self.sect.text.push(format!("  pop {reg}\n"));
+      self.text.push(mn("pop", &[reg]));
     }
-    self.sect.text.push("  ret\n.seh_endproc\n".into());
+    self.text.push(mn("ret", &[]));
+    self.text.push(mn(".seh_endproc", &[]));
     self.vars.pop();
     Ok(Json::Function(AsmFunc { name, params, ret: Box::new(ret) }))
   }
@@ -122,80 +117,99 @@ impl Jsonpiler {
     self.validate_args("message", false, 2, args.len(), &first.pos)?;
     info.reg_used.insert("rdi".into());
     info.reg_used.insert("rsi".into());
-    let title = self.string2var(take(args.first_mut().ok_or(ERR)?), 1, "message")?;
-    let msg = self.string2var(take(args.get_mut(1).ok_or(ERR)?), 2, "message")?;
-    let ret = info.get_local(Align::U64)?;
+    let title_json = take(args.first_mut().ok_or(ERR)?);
+    let title = if let Json::String(st) = title_json.value {
+      match st {
+        Bind::Lit(l_str) => self.get_global(&GVar::Str, &l_str)?,
+        Bind::Var(name) => name,
+      }
+    } else {
+      return self.typ_err(1, "message", "String", &title_json);
+    };
+    let msg_json = take(args.get_mut(1).ok_or(ERR)?);
+    let msg = if let Json::String(st) = msg_json.value {
+      match st {
+        Bind::Lit(l_str) => self.get_global(&GVar::Str, &l_str)?,
+        Bind::Var(name) => name,
+      }
+    } else {
+      return self.typ_err(2, "message", "String", &msg_json);
+    };
+    let ret = info.get_local(8)?;
     include_once!(self, "func/U8TO16");
     info.body.push(format!(
       include_str!("asm/caller/message.s"),
       title = title,
       msg = msg,
-      ret = fmt_local("qword", ret)
+      ret = ret
     ));
-    Ok(Json::Int(Bind::Tmp(ret)))
+    Ok(Json::Int(Bind::Var(Name { var: Tmp, seed: ret.seed })))
   }
   /// Utility functions for binary operations.
   #[expect(clippy::needless_pass_by_value, reason = "")]
   fn op(
-    &mut self, args: Args, info: &mut FuncInfo, mn: &str, f_name: &str, id_elem: usize,
+    &mut self, args: Args, info: &mut FuncInfo, mne: &str, f_name: &str, id_elem: usize,
   ) -> ErrOR<Json> {
-    let binary_mn =
-      |json: &JsonWithPos, mne: &str, ord: usize, f_info: &mut FuncInfo| -> ErrOR<()> {
-        if let Json::Int(int) = &json.value {
-          match int {
-            Bind::Lit(l_int) => {
-              if *l_int > i64::from(i32::MAX) || *l_int < i64::from(i32::MIN) {
-                f_info.body.push(format!("  mov rcx, {l_int}\n"));
-                f_info.body.push(format!("  {mne} rax, rcx\n"));
-              } else {
-                f_info.body.push(format!("  {mne} rax, {l_int}\n"));
-              }
-            }
-            Bind::Local(local) | Bind::Tmp(local) => {
-              if matches!(int, Bind::Tmp(_)) {
-                f_info.free(*local, 8)?;
-              }
-              f_info.body.push(format!("  {mne} rax, {}\n", fmt_local("qword", *local)));
-            }
-            Bind::Var(var) => f_info.body.push(format!("  {mne} rax, {var}\n")),
-          }
-        } else {
-          self.typ_err(ord, f_name, "Int", json)?;
-        }
-        Ok(())
-      };
     if let Some(op_r) = args.first() {
       if args.len() == 1 && f_name == "-" {
         if let Json::Int(int) = &op_r.value {
-          match int {
-            Bind::Lit(l_int) => info.body.push(format!("  mov rax, {l_int}\n  neg rax\n")),
-            Bind::Local(local) | Bind::Tmp(local) => {
-              if matches!(int, Bind::Tmp(_)) {
-                info.free(*local, 8)?;
+          let int_str = match int {
+            Bind::Lit(l_int) => l_int.to_string(),
+            Bind::Var(name) => {
+              if matches!(name.var, Tmp) {
+                info.free(name.seed, 8)?;
               }
-              info.body.push(format!("  mov rax, {}\n  neg rax\n", fmt_local("qword", *local)));
+              format!("qword{name}")
             }
-            Bind::Var(var) => info.body.push(format!("  mov rax, {var}\n  neg rax\n")),
-          }
+          };
+          info.body.push(mn("mov", &["rax", &int_str]));
+          info.body.push(mn("neg", &["rax"]));
         } else {
           self.typ_err(1, f_name, "Int", op_r)?;
         }
       } else {
-        binary_mn(op_r, "mov", 1, info)?;
+        self.op_mn(op_r, "mov", 1, info, f_name)?;
         for (ord, op_l) in args.iter().enumerate().skip(1) {
-          binary_mn(op_l, mn, ord, info)?;
+          self.op_mn(op_l, mne, add(ord, 1)?, info, f_name)?;
         }
       }
     } else {
-      info.body.push(format!("  mov rax, {id_elem}\n"));
+      info.body.push(mn("mov", &["rax", &id_elem.to_string()]));
     }
-    let ret = info.get_local(Align::U64)?;
-    info.body.push(format!("  mov {}, rax\n", fmt_local("qword", ret)));
-    Ok(Json::Int(Bind::Tmp(ret)))
+    let ret = info.get_local(8)?;
+    info.body.push(mn("mov", &[&format!("qword{ret}"), "rax"]));
+    Ok(Json::Int(Bind::Var(Name { var: Tmp, seed: ret.seed })))
   }
   /// Performs subtraction.
   fn op_minus(&mut self, _: &JsonWithPos, args: Args, info: &mut FuncInfo) -> ErrOR<Json> {
     self.op(args, info, "sub", "-", 0)
+  }
+  /// Write Binary operation mnemonic.
+  fn op_mn(
+    &self, json: &JsonWithPos, mne: &str, ord: usize, info: &mut FuncInfo, f_name: &str,
+  ) -> ErrOR<()> {
+    if let Json::Int(int) = &json.value {
+      let int_str = match int {
+        Bind::Lit(l_int) => {
+          if *l_int > i64::from(i32::MAX) || *l_int < i64::from(i32::MIN) {
+            info.body.push(mn("mov", &["rcx", &l_int.to_string()]));
+            "rcx".to_owned()
+          } else {
+            l_int.to_string()
+          }
+        }
+        Bind::Var(name) => {
+          if matches!(name.var, Tmp) {
+            info.free(name.seed, 8)?;
+          }
+          format!("qword{name}")
+        }
+      };
+      info.body.push(mn(mne, &["rax", &int_str]));
+    } else {
+      self.typ_err(ord, f_name, "Int", json)?;
+    }
+    Ok(())
   }
   /// Performs addition.
   fn op_mul(&mut self, _: &JsonWithPos, args: Args, info: &mut FuncInfo) -> ErrOR<Json> {
@@ -222,27 +236,47 @@ impl Jsonpiler {
       return self.typ_err(1, f_name, "LString", &json1);
     };
     let json2 = take(args.get_mut(1).ok_or(ERR)?);
-    let value = match json2.value {
-      mut var if !var.is_literal() => var.tmp_to_local(),
-      Json::String(Bind::Lit(st)) => Json::String(Bind::Var(self.get_global("STR", &st)?)),
-      Json::Null => Json::Null,
-      Json::Int(Bind::Lit(int)) => {
-        if is_global {
-          Json::Int(Bind::Var(self.get_global("INT", &int.to_string())?))
-        } else {
-          let offset = info.get_local(Align::U64)?;
-          info.body.push(format!("  mov {}, {int}\n", fmt_local("qword", offset)));
-          Json::Int(Bind::Local(offset))
+    let value = if is_global {
+      match json2.value {
+        var if var.var() == Some(Global) => var,
+        Json::String(Bind::Var(Name { var: Local | Tmp, .. })) => {
+          return err!(self, json2.pos, "Local string cannot be assigned to a global variable.");
         }
+        Json::Int(Bind::Var(local)) => {
+          let name = self.get_global(&GVar::Bss, "8")?;
+          info.body.push(mn("mov", &[&format!("qword{name}"), &format!("qword{local}")]));
+          Json::Int(Bind::Var(name))
+        }
+        Json::String(Bind::Lit(st)) => Json::String(Bind::Var(self.get_global(&GVar::Str, &st)?)),
+        Json::Null => Json::Null,
+        Json::Int(Bind::Lit(int)) => {
+          Json::Int(Bind::Var(self.get_global(&GVar::Int, &int.to_string())?))
+        }
+        _ => return self.typ_err(2, "global", "that supports assignment", &json2),
       }
-      _ => return self.typ_err(2, "$", "that supports assignment", &json2),
+    } else {
+      match json2.value {
+        mut var if var.var().is_some() => var.tmp_to_local(),
+        Json::String(Bind::Lit(st)) => Json::String(Bind::Var(self.get_global(&GVar::Str, &st)?)),
+        Json::Null => Json::Null,
+        Json::Int(Bind::Lit(int)) => {
+          let name = info.get_local(8)?;
+          info.body.push(mn("mov", &[&format!("qword{name}"), &int.to_string()]));
+          Json::Int(Bind::Var(name))
+        }
+        _ => return self.typ_err(2, "=", "that supports assignment", &json2),
+      }
     };
-    if is_global {
+    if if is_global {
       self.vars.first_mut().ok_or("InternalError: Invalid scope.")?
     } else {
       self.vars.last_mut().ok_or("InternalError: Invalid scope.")?
     }
-    .insert(variable, value);
+    .insert(variable, value)
+    .is_some()
+    {
+      return err!(self, "Reassignment may not be possible in some scope.");
+    }
     Ok(Json::Null)
   }
   /// Sets a global variable.
@@ -258,9 +292,10 @@ impl Jsonpiler {
   fn variable(&mut self, first: &JsonWithPos, args: Args, _: &mut FuncInfo) -> ErrOR<Json> {
     self.validate_args("$", false, 1, args.len(), &first.pos)?;
     let json1 = args.first().ok_or("Unreachable (variable)")?;
-    let Json::String(Bind::Lit(var_name)) = &json1.value else {
-      return self.typ_err(1, "$", "LString", json1);
-    };
-    self.get_var(var_name, &json1.pos)
+    if let Json::String(Bind::Lit(var_name)) = &json1.value {
+      self.get_var(var_name, &json1.pos)
+    } else {
+      self.typ_err(1, "$", "LString", json1)
+    }
   }
 }

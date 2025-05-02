@@ -1,4 +1,4 @@
-.seh_proc .L__U8TO16
+  .seh_proc .L__U8TO16
 .L__U8TO16:
   push rdi
   .seh_pushreg rdi

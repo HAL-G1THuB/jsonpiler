@@ -12,7 +12,10 @@
 
 #### 0.2.3
 
+- Refactored and cleaned up source code.
+- Duplicate object keys are no longer allowed.
 - Added temporary value tracking to enable efficient stack freeing, minimizing stack waste except for variable bindings.
+- Improved error formatting to display ^ markers spanning the full error range using `pos.size`.
 
 #### 0.2.2
 

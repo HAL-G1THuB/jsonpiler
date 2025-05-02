@@ -12,11 +12,10 @@ This program converts a JSON-based program to GNU assembly, compiles it, and exe
 
 ## What's New
 
-- **Added `examples` directory.**
-- **Built-in functions now have priority over user-defined functions.**
-- **To give priority to user-defined functions, write them as `["$", "function"]`.**
-- **Added the ability to efficiently store free space on the stack and fill that space as needed.**
-- **Unary `-` now correctly negates a single argument.**
+- **Refactored and cleaned up source code.**
+- **Duplicate object keys are no longer allowed.**
+- **Added temporary value tracking to enable efficient stack freeing, minimizing stack waste except for variable bindings.**
+- **Improved error formatting to display ^ markers spanning the full error range using `pos.size`.**
 
 [Project History and Plans](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 
@@ -73,7 +72,7 @@ Compilation error: Undefined variables: `not_exist`
 Error occurred on line: 1
 Error position:
 ["message", "title", ["$", "not_exist"]]
-                           ^
+                           ^^^^^^^^^^^
 ```
 
 ## Function Documentation

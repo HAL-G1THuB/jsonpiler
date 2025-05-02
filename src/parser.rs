@@ -1,10 +1,11 @@
 //! Implementation of the parser inside the `Jsonpiler`.
-use super::{Bind, ErrOR, JObject, JResult, Json, JsonWithPos, Jsonpiler, Position, err};
+use super::{Bind, ErrOR, JObject, JResult, Json, JsonWithPos, Jsonpiler, Position, add, err};
 /// Macro to return if the next character matches the expected one.
 macro_rules! return_if {
   ($self: ident, $ch: expr, $start: expr, $val: expr) => {
     $self.skip_ws()?;
     if $self.advance_if($ch)? {
+      $start.size = $self.pos.offset.saturating_sub($start.offset);
       return Ok(JsonWithPos { pos: $start, value: $val });
     }
   };
@@ -18,8 +19,7 @@ macro_rules! source_slice {
 impl Jsonpiler {
   /// Advances the position by `num` characters.
   fn advance(&mut self, num: usize) -> ErrOR<()> {
-    self.pos.offset =
-      self.pos.offset.checked_add(num).ok_or(self.fmt_err("Pos Overflow", &self.pos))?;
+    self.pos.offset = add(self.pos.offset, num)?;
     Ok(())
   }
   /// Returns true if the next character matches the expected one.
@@ -60,7 +60,7 @@ impl Jsonpiler {
   /// * `Box<dyn Error>` - An error if the input code is invalid.
   pub(crate) fn parse(&mut self, code: String) -> JResult {
     self.source = code;
-    self.pos = Position { offset: 0, line: 1 };
+    self.pos = Position { offset: 0, line: 1, size: 1 };
     let result = self.parse_value()?;
     if self.pos.offset == self.source.len() {
       Ok(result)
@@ -70,7 +70,7 @@ impl Jsonpiler {
   }
   /// Parses an array from the input code.
   fn parse_array(&mut self) -> JResult {
-    let start = self.pos.clone();
+    let mut start = self.pos.clone();
     let mut array = vec![];
     self.expect('[')?;
     return_if!(self, ']', start, Json::Array(Bind::Lit(array)));
@@ -83,8 +83,9 @@ impl Jsonpiler {
   /// Parses a specific name and returns a `Json` object with the associated value.
   fn parse_name(&mut self, name: &str, val: Json) -> JResult {
     if source_slice!(self).starts_with(name) {
-      let start = self.pos.clone();
+      let mut start = self.pos.clone();
       self.advance(name.len())?;
+      start.size = name.len();
       Ok(JsonWithPos { pos: start, value: val })
     } else {
       err!(self, "Failed to parse '{name}'")
@@ -105,7 +106,7 @@ impl Jsonpiler {
         parser.inc()?;
       }
     }
-    let start = self.pos.clone();
+    let mut start = self.pos.clone();
     let mut num_str = String::new();
     let mut has_decimal = false;
     let mut has_exponent = false;
@@ -133,6 +134,7 @@ impl Jsonpiler {
       }
       push_number(self, &mut num_str, "A digit is required after the exponent notation.")?;
     }
+    start.size = num_str.len();
     if has_decimal || has_exponent {
       num_str.parse::<f64>().map_or_else(
         |_| err!(self, "Invalid numeric value."),
@@ -147,7 +149,7 @@ impl Jsonpiler {
   }
   /// Parses an object from the input code.
   fn parse_object(&mut self) -> JResult {
-    let start = self.pos.clone();
+    let mut start = self.pos.clone();
     let mut object = JObject::default();
     self.expect('{')?;
     return_if!(self, '}', start, Json::Object(Bind::Lit(object)));
@@ -158,21 +160,26 @@ impl Jsonpiler {
       };
       self.expect(':')?;
       let value = self.parse_value()?;
-      object.insert(string, value);
+      if object.insert(string, value).is_some() {
+        return err!(self, &key.pos, "Duplicate keys are not allowed.");
+      }
       return_if!(self, '}', start, Json::Object(Bind::Lit(object)));
       self.expect(',')?;
     }
   }
   /// Parses a string from the input code.
   fn parse_string(&mut self) -> JResult {
-    let start = self.pos.clone();
+    let mut start = self.pos.clone();
     self.expect('"')?;
     let mut result = String::new();
     let mut ch;
     loop {
       ch = self.next()?;
       match ch {
-        '"' => return Ok(JsonWithPos { pos: start, value: Json::String(Bind::Lit(result)) }),
+        '"' => {
+          start.size = add(result.len(), 2)?;
+          return Ok(JsonWithPos { pos: start, value: Json::String(Bind::Lit(result)) });
+        }
         '\n' => return err!(self, "Invalid line breaks in strings."),
         '\\' => match self.next()? {
           'n' => result.push('\n'),
@@ -237,8 +244,7 @@ impl Jsonpiler {
         break;
       }
       if ch == '\n' {
-        self.pos.line =
-          self.pos.line.checked_add(1).ok_or(self.fmt_err("Line Overflow", &self.pos))?;
+        self.pos.line = add(self.pos.line, 1)?;
       }
       self.inc()?;
     }
