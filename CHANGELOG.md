@@ -8,12 +8,26 @@
 
 ## Released
 
+### jsonpiler 0.3
+
+#### 0.3.0
+
+- Json objects now allow duplicate keys.
+- **Objects are now treated as function calls**:  
+  Each key in a JSON object is interpreted as a function name, and its corresponding value is treated as the function argument.
+- It is no longer allowed to assign a user-defined function to a variable name that already exists as a built-in function.
+- **Arrays now leave the result of evaluating all elements.**:  
+- **Supports multiple key-function entries.**:  
+  When an object contains multiple keys, each is evaluated in order; the last function result is returned.
+- Square brackets can now be omitted when a single argument is not an array.
+- The `begin` function was removed because it can now be represented by a column of objects.
+
 ### jsonpiler 0.2
 
 #### 0.2.3
 
 - Refactored and cleaned up source code.
-- Duplicate object keys are no longer allowed.
+- ~~Duplicate object keys are no longer allowed.~~
 - Added temporary value tracking to enable efficient stack freeing, minimizing stack waste except for variable bindings.
 - Improved error formatting to display ^ markers spanning the full error range using `pos.size`.
 
@@ -50,15 +64,15 @@
 
 #### 0.1.9
 
-- Added functionality to dynamically change stack allocation (currently unused).
+- Added functionality to dynamically change stack allocation ~~(currently unused)~~.
 - Fixed the error message formatting.
-- Reduced parser overhead.
+- ~~Reduced parser overhead.~~
 
 #### 0.1.8
 
 - Added the new function `global`.
 - Changed the structure of the variable table.
-- `begin` now introduces a new scope.
+- ~~`begin` now introduces a new scope.~~
 
 #### 0.1.7
 

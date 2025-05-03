@@ -112,14 +112,10 @@ enum GVar {
 type JFunc = fn(&mut Jsonpiler, &JsonWithPos, Args, &mut FuncInfo) -> ErrOR<Json>;
 /// Represents a JSON object with key-value pairs.
 #[derive(Debug, Clone, Default)]
-struct JObject {
-  /// Stores the key-value pairs in insertion order.
+pub(crate) struct JObject {
+  /// Stores key-value pairs in the order they were inserted.
   entries: Vec<(String, JsonWithPos)>,
-  /// Maps keys to their index in the entries vector for quick lookup.
-  index: HashMap<String, usize>,
 }
-/// Contain `Json` or `Box<dyn Error>`.
-type JResult = ErrOR<JsonWithPos>;
 /// Type and value information.
 #[derive(Debug, Clone, Default)]
 enum Json {
@@ -168,7 +164,7 @@ pub struct Jsonpiler {
   /// Information to be used during parsing.
   pos: Position,
   /// Source code.
-  source: String,
+  source: Vec<u8>,
   /// Cache of the string.
   str_cache: HashMap<String, usize>,
   /// Buffer to store the contents of the text section of the assembly.
@@ -262,7 +258,7 @@ pub fn run() -> ExitCode {
   let asm = with_ext("s");
   let obj = with_ext("obj");
   let exe = with_ext("exe");
-  if let Err(err) = jsonpiler.build(source, &asm) {
+  if let Err(err) = jsonpiler.build(&source, &asm) {
     exit!("Compilation error: {err}");
   }
   macro_rules! invoke {

@@ -1,7 +1,7 @@
 //! Built-in functions.
 use crate::{
   Args, AsmFunc, Bind, ErrOR, FuncInfo, GVar, Json, JsonWithPos, Jsonpiler, Name,
-  Var::{Global, Local, Tmp},
+  Var::{Global, Tmp},
   add, err, include_once,
   utility::mn,
 };
@@ -14,8 +14,7 @@ impl Jsonpiler {
     let special = (true, false);
     let sp_scope = (true, true);
     self.register("lambda", special, Jsonpiler::lambda);
-    self.register("begin", special, Jsonpiler::begin);
-    self.register("scope", sp_scope, Jsonpiler::begin);
+    self.register("scope", sp_scope, Jsonpiler::scope);
     self.register("global", common, Jsonpiler::set_global);
     self.register("=", common, Jsonpiler::set_local);
     self.register("message", common, Jsonpiler::message);
@@ -30,27 +29,10 @@ impl Jsonpiler {
 }
 #[expect(clippy::single_call_fn, reason = "")]
 impl Jsonpiler {
-  /// Evaluates a `begin` block.
-  fn begin(&mut self, first: &JsonWithPos, mut args: Args, info: &mut FuncInfo) -> ErrOR<Json> {
-    self.validate_args("begin` and `scope", true, 1, args.len(), &first.pos)?;
-    let len = args.len();
-    if len <= 1 {
-      return self
-        .eval(take(args.last_mut().ok_or("Unreachable (begin)")?), info)
-        .map(|jwp| jwp.value);
-    }
-    for arg in args.get_mut(1..len.saturating_sub(1)).unwrap_or(&mut []) {
-      let val = self.eval(take(arg), info)?.value;
-      if let Some((addr, size)) = val.tmp() {
-        info.free(addr, size)?;
-      }
-    }
-    self.eval(take(args.last_mut().ok_or("Unreachable (begin)")?), info).map(|jwp| jwp.value)
-  }
   /// Return the first argument.
   fn f_eval(&mut self, first: &JsonWithPos, mut args: Args, info: &mut FuncInfo) -> ErrOR<Json> {
     self.validate_args("eval", false, 1, args.len(), &first.pos)?;
-    Ok(self.eval(take(args.first_mut().ok_or("Unreachable (eval)")?), info)?.value)
+    self.eval(take(args.first_mut().ok_or("Unreachable (eval)")?).value, info)
   }
   /// Evaluates a lambda function definition.
   fn lambda(&mut self, first: &JsonWithPos, mut args: Args, _: &mut FuncInfo) -> ErrOR<Json> {
@@ -68,10 +50,11 @@ impl Jsonpiler {
     let name = self.get_global(&GVar::Fnc, "")?.seed;
     let mut ret = Json::Null;
     for arg in args.get_mut(1..).ok_or(self.fmt_err("Empty lambda body.", &first.pos))? {
-      ret = self.eval(take(arg), &mut info)?.value;
+      ret = self.eval(take(arg).value, &mut info)?;
       ret.tmp().and_then(|tuple| info.free(tuple.0, tuple.1).ok());
     }
-    self.text.push(format!(".seh_proc .L{name:x}\n.L{name:x}:\n"));
+    self.text.push(mn(".seh_proc", &[&format!(".L{name:x}")]));
+    self.text.push(format!(".L{name:x}:\n"));
     let mut registers: Vec<&String> = info.reg_used.iter().collect();
     registers.sort();
     for &reg in &registers {
@@ -80,7 +63,7 @@ impl Jsonpiler {
     }
     self.text.push(mn("push", &["rbp"]));
     self.text.push(mn(".seh_pushreg", &["rbp"]));
-    let size = info.calc_alloc(if info.reg_used.len() % 2 == 1 { 8 } else { 0 })?;
+    let size = format!("0x{:x}", info.calc_alloc((info.reg_used.len() % 2).saturating_mul(8))?);
     self.text.push(format!(include_str!("asm/common/prologue.s"), size = size));
     for body in info.body {
       self.text.push(body);
@@ -143,7 +126,7 @@ impl Jsonpiler {
       msg = msg,
       ret = ret
     ));
-    Ok(Json::Int(Bind::Var(Name { var: Tmp, seed: ret.seed })))
+    Ok(Json::Int(Bind::Var(Name { var: Tmp, ..ret })))
   }
   /// Utility functions for binary operations.
   #[expect(clippy::needless_pass_by_value, reason = "")]
@@ -178,7 +161,7 @@ impl Jsonpiler {
     }
     let ret = info.get_local(8)?;
     info.body.push(mn("mov", &[&format!("qword{ret}"), "rax"]));
-    Ok(Json::Int(Bind::Var(Name { var: Tmp, seed: ret.seed })))
+    Ok(Json::Int(Bind::Var(Name { var: Tmp, ..ret })))
   }
   /// Performs subtraction.
   fn op_minus(&mut self, _: &JsonWithPos, args: Args, info: &mut FuncInfo) -> ErrOR<Json> {
@@ -199,7 +182,7 @@ impl Jsonpiler {
           }
         }
         Bind::Var(name) => {
-          if matches!(name.var, Tmp) {
+          if name.var == Tmp {
             info.free(name.seed, 8)?;
           }
           format!("qword{name}")
@@ -224,6 +207,21 @@ impl Jsonpiler {
     self.validate_args("'", false, 1, args.len(), &first.pos)?;
     Ok(take(args.first_mut().ok_or("Unreachable (quote)")?).value)
   }
+  /// Evaluates a `scope` block.
+  fn scope(&mut self, first: &JsonWithPos, mut args: Args, info: &mut FuncInfo) -> ErrOR<Json> {
+    self.validate_args("scope", true, 1, args.len(), &first.pos)?;
+    let len = args.len();
+    if len <= 1 {
+      return self.eval(take(args.last_mut().ok_or("Unreachable (scope)")?).value, info);
+    }
+    for arg in args.get_mut(1..len.saturating_sub(1)).unwrap_or(&mut []) {
+      let val = self.eval(take(arg).value, info)?;
+      if let Some((addr, size)) = val.tmp() {
+        info.free(addr, size)?;
+      }
+    }
+    self.eval(take(args.last_mut().ok_or("Unreachable (scope)")?).value, info)
+  }
   /// Sets a variable.
   fn set(
     &mut self, first: &JsonWithPos, mut args: Args, info: &mut FuncInfo, is_global: bool,
@@ -236,36 +234,39 @@ impl Jsonpiler {
       return self.typ_err(1, f_name, "LString", &json1);
     };
     let json2 = take(args.get_mut(1).ok_or(ERR)?);
-    let value = if is_global {
-      match json2.value {
-        var if var.var() == Some(Global) => var,
-        Json::String(Bind::Var(Name { var: Local | Tmp, .. })) => {
-          return err!(self, json2.pos, "Local string cannot be assigned to a global variable.");
+    let value = match json2.value {
+      Json::Function(func) => {
+        if self.builtin.contains_key(&variable) {
+          return err!(
+            self,
+            first.pos,
+            "The variable name of this function object already exists as a built-in function"
+          );
         }
-        Json::Int(Bind::Var(local)) => {
-          let name = self.get_global(&GVar::Bss, "8")?;
-          info.body.push(mn("mov", &[&format!("qword{name}"), &format!("qword{local}")]));
-          Json::Int(Bind::Var(name))
-        }
-        Json::String(Bind::Lit(st)) => Json::String(Bind::Var(self.get_global(&GVar::Str, &st)?)),
-        Json::Null => Json::Null,
-        Json::Int(Bind::Lit(int)) => {
-          Json::Int(Bind::Var(self.get_global(&GVar::Int, &int.to_string())?))
-        }
-        _ => return self.typ_err(2, "global", "that supports assignment", &json2),
+        Json::Function(func)
       }
-    } else {
-      match json2.value {
-        mut var if var.var().is_some() => var.tmp_to_local(),
-        Json::String(Bind::Lit(st)) => Json::String(Bind::Var(self.get_global(&GVar::Str, &st)?)),
-        Json::Null => Json::Null,
-        Json::Int(Bind::Lit(int)) => {
+      var if var.var() == Some(Global) && is_global => var,
+      mut var if var.var().is_some() && !is_global => var.tmp_to_local(),
+      Json::String(Bind::Var(_)) if is_global => {
+        return err!(self, json2.pos, "Local string cannot be assigned to a global variable.");
+      }
+      Json::Int(Bind::Var(local)) => {
+        let name = self.get_global(&GVar::Bss, "8")?;
+        info.body.push(mn("mov", &[&format!("qword{name}"), &format!("qword{local}")]));
+        Json::Int(Bind::Var(name))
+      }
+      Json::String(Bind::Lit(st)) => Json::String(Bind::Var(self.get_global(&GVar::Str, &st)?)),
+      Json::Null => Json::Null,
+      Json::Int(Bind::Lit(int)) => {
+        if is_global {
+          Json::Int(Bind::Var(self.get_global(&GVar::Int, &int.to_string())?))
+        } else {
           let name = info.get_local(8)?;
           info.body.push(mn("mov", &[&format!("qword{name}"), &int.to_string()]));
           Json::Int(Bind::Var(name))
         }
-        _ => return self.typ_err(2, "=", "that supports assignment", &json2),
       }
+      _ => return self.typ_err(2, "=` and `global", "that supports assignment", &json2),
     };
     if if is_global {
       self.vars.first_mut().ok_or("InternalError: Invalid scope.")?

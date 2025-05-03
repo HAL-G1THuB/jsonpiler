@@ -1,7 +1,6 @@
 //! Implementation of the compiler inside the `Jsonpiler`.
 use super::{
-  Args, AsmFunc, Bind, Builtin, ErrOR, FuncInfo, GVar, JFunc, JObject, JResult, Json, JsonWithPos,
-  Jsonpiler, Name, Position,
+  Args, Bind, Builtin, ErrOR, FuncInfo, GVar, JFunc, Json, JsonWithPos, Jsonpiler, Name, Position,
   Var::{Global, Tmp},
   add, err,
   utility::{imp_call, mn, scope_begin, scope_end},
@@ -27,7 +26,7 @@ impl Jsonpiler {
   /// # Errors
   /// * `Box<dyn Error>` - If an error occurred during the compilation.
   #[inline]
-  pub fn build(&mut self, source: String, out_file: &str) -> ErrOR<()> {
+  pub fn build(&mut self, source: &str, out_file: &str) -> ErrOR<()> {
     let json = self.parse(source)?;
     self.include_flag = HashSet::new();
     self.text = vec![];
@@ -38,7 +37,7 @@ impl Jsonpiler {
     self.vars = vec![HashMap::new()];
     self.all_register();
     let mut info = FuncInfo::default();
-    let result = self.eval(json, &mut info)?;
+    let result = self.eval(json.value, &mut info)?;
     let mut writer = io::BufWriter::new(File::create(out_file)?);
     writer.write_all(mn(".intel_syntax", &["noprefix"]).as_bytes())?;
     writer.write_all(include_bytes!("asm/once/data.s"))?;
@@ -50,12 +49,16 @@ impl Jsonpiler {
       writer.write_all(bss.as_bytes())?;
     }
     writer.write_all(include_bytes!("asm/once/main.s"))?;
-    write!(writer, include_str!("asm/common/prologue.s"), size = info.calc_alloc(8)?)?;
+    write!(
+      writer,
+      include_str!("asm/common/prologue.s"),
+      size = format!("0x{:x}", info.calc_alloc(8)?)
+    )?;
     writer.write_all(include_bytes!("asm/once/startup.s"))?;
     for body in &mut info.body {
       writer.write_all(body.as_bytes())?;
     }
-    if let Json::Int(int) = result.value {
+    if let Json::Int(int) = result {
       match int {
         Bind::Lit(l_int) => writer.write_all(mn("mov", &["rcx", &l_int.to_string()]).as_bytes()),
         Bind::Var(name) => {
@@ -74,56 +77,73 @@ impl Jsonpiler {
     writer.flush()?;
     Ok(())
   }
-  /// Evaluates a JSON object.
-  pub(crate) fn eval(&mut self, mut json: JsonWithPos, info: &mut FuncInfo) -> JResult {
-    const ERR: &str = "Unreachable (eval)";
-    let Json::Array(Bind::Lit(list)) = &mut json.value else {
-      let Json::Object(Bind::Lit(object)) = &mut json.value else { return Ok(json) };
-      let mut evaluated = JObject::default();
-      for kv in object.iter_mut() {
-        evaluated.insert(mem::take(&mut kv.0), self.eval(mem::take(&mut kv.1), info)?);
+  /// Evaluate JSON representation.
+  pub(crate) fn eval(&mut self, mut json: Json, info: &mut FuncInfo) -> ErrOR<Json> {
+    match &mut json {
+      Json::Array(Bind::Lit(list)) => {
+        Ok(Json::Array(Bind::Lit(self.eval_args(mem::take(list), info)?)))
       }
-      return Ok(JsonWithPos { value: Json::Object(Bind::Lit(evaluated)), pos: json.pos });
-    };
-    self.validate_args("function call", true, 1, list.len(), &json.pos)?;
-    let raw_first = mem::take(list.first_mut().ok_or(ERR)?);
-    let first = self.eval(raw_first.clone(), info)?;
-    if let Json::String(Bind::Lit(cmd)) = &first.value {
-      if self.builtin.contains_key(cmd) {
-        let builtin = self.builtin.get_mut(cmd).ok_or(ERR)?;
-        let scoped = builtin.scoped;
-        let func = builtin.func;
-        let mut tmp = FuncInfo::default();
-        if scoped {
-          self.vars.push(HashMap::new());
-          scope_begin(&mut tmp, info)?;
+      Json::Object(Bind::Lit(object)) => {
+        let mut result = Json::Null;
+        for (key, val) in object.iter_mut() {
+          let func_name = key.clone();
+          let func_pos = val.pos.clone();
+          let func_expr = JsonWithPos {
+            value: Json::String(Bind::Lit(func_name.clone())),
+            pos: func_pos.clone(),
+          };
+          if let Some(builtin) = self.builtin.get_mut(&func_name) {
+            let scoped = builtin.scoped;
+            let func = builtin.func;
+            let mut tmp = FuncInfo::default();
+            if scoped {
+              self.vars.push(HashMap::new());
+              scope_begin(&mut tmp, info)?;
+            }
+            let args = match &mut val.value {
+              Json::Array(Bind::Lit(arr)) => {
+                let raw_args = mem::take(arr);
+                if self.builtin.get(&func_name).is_some_and(|built| built.skip_eval) {
+                  raw_args
+                } else {
+                  self.eval_args(raw_args, info)?
+                }
+              }
+              _ => self.eval_args(vec![mem::take(val)], info)?,
+            };
+            result = func(self, &func_expr, args, info)?;
+            if let Some((addr, size)) = result.tmp() {
+              info.free(addr, size)?;
+            }
+            if scoped {
+              scope_end(&mut tmp, info)?;
+              self.vars.pop();
+            }
+          } else if let Ok(Json::Function(func)) = self.get_var(&func_name, &func_pos) {
+            const MOV: &str = "  mov ";
+            info.body.push(format!("  call .L{:x}\n", func.name));
+            result = if let Json::Int(_) = *func.ret {
+              let name = info.get_local(8)?;
+              info.body.push(format!("{MOV}qword{name}, rax\n"));
+              Json::Int(Bind::Var(Name { var: Tmp, seed: name.seed }))
+            } else {
+              Json::Null
+            }
+          } else {
+            return err!(self, func_pos, "The `{func_name}` function is undefined.");
+          }
         }
-        let mut args = list.get_mut(1..).unwrap_or(&mut []).to_vec();
-        if !builtin.skip_eval {
-          args = self.eval_args(args, info)?;
-        }
-        let result = func(self, &first, args, info)?;
-        if scoped {
-          scope_end(&mut tmp, info)?;
-          self.vars.pop();
-        }
-        Ok(JsonWithPos { value: result, pos: json.pos })
-      } else if let Ok(Json::Function(af)) = self.get_var(cmd, &first.pos) {
-        call_func(json.pos, &af, info)
-      } else {
-        err!(self, first.pos, "The `{cmd}` function is undefined.")
+        Ok(result)
       }
-    } else if let Json::Function(af) = &first.value {
-      call_func(json.pos, af, info)
-    } else {
-      self.typ_err(1, "function call", "LString` or `Function", &raw_first)?;
-      Ok(JsonWithPos::default())
+      _ => Ok(json),
     }
   }
   /// Evaluate arguments.
   fn eval_args(&mut self, mut args: Args, info: &mut FuncInfo) -> ErrOR<Vec<JsonWithPos>> {
     for arg in &mut args {
-      *arg = self.eval(mem::take(arg), info)?;
+      let with_pos = mem::take(arg);
+      arg.pos = with_pos.pos.clone();
+      arg.value = self.eval(with_pos.value, info)?;
     }
     Ok(args)
   }
@@ -157,17 +177,5 @@ impl Jsonpiler {
   /// Registers a function in the function table.
   pub(crate) fn register(&mut self, name: &str, flag: (bool, bool), func: JFunc) {
     self.builtin.insert(name.into(), Builtin { skip_eval: flag.0, scoped: flag.1, func });
-  }
-}
-/// Call function and return value.
-fn call_func(pos: Position, af: &AsmFunc, info: &mut FuncInfo) -> ErrOR<JsonWithPos> {
-  const MOV: &str = "  mov ";
-  info.body.push(format!("  call .L{:x}\n", af.name));
-  if let Json::Int(_) = *af.ret {
-    let name = info.get_local(8)?;
-    info.body.push(format!("{MOV}qword{name}, rax\n"));
-    Ok(JsonWithPos { value: Json::Int(Bind::Var(Name { var: Tmp, seed: name.seed })), pos })
-  } else {
-    Ok(JsonWithPos { value: Json::Null, pos })
   }
 }

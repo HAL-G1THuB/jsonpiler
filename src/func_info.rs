@@ -1,8 +1,6 @@
 //! Implementation for `FuncInfo`.
-use {
-  crate::{ErrOR, FuncInfo, Name, Var::Local, add},
-  core::cmp,
-};
+use crate::{ErrOR, FuncInfo, Name, Var::Local, add};
+use core::cmp;
 impl FuncInfo {
   /// Calculate to allocate size.
   pub fn calc_alloc(&self, align: usize) -> ErrOR<usize> {

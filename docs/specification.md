@@ -9,29 +9,39 @@ See: [JSON specification](https://www.rfc-editor.org/info/rfc8259)
 
 ## Evaluation
 
-A jsonpiler program is represented as a single JSON value.
+A Jsonpiler program is represented as a single JSON value.
 
-Each JSON value is evaluated independently, except in the case of arrays ([]) and objects ({}).
+Each JSON value is evaluated independently, except in the case of arrays (`[]`) and objects (`{}`).
 
-Lists are evaluated as follows:
+### Arrays
 
-- The first element of the list is treated as the built-in function name or user-defined function name.
-- This element must be a string (representing a function name) or a lambda expression.
+- Each element in the array is evaluated sequentially.
+- The result is a new array containing all evaluated elements, preserving their order.
 
 ```json
-["lambda", [], ["+", 3, 1]]
+[1, {"+": [2, 3]}, "text"]
+// => [1, 5, "text"]
 ```
 
-- The remaining elements are passed as arguments to the function.
+### Objects
 
-Objects are evaluated as follows:
+- Each key in the object is interpreted as a function name.
+- Each value is evaluated and passed as the argument to the function.
+- If the key matches a registered built-in function, that is used; otherwise, a user-defined function is looked up.
+- Multiple key-function entries are supported and evaluated in insertion order.
+- The result of the last function call is returned as the final value.
 
-- The object preserves insertion order.
-- The values of the object's properties are evaluated in that order.
+```json
+{
+  "message": ["123", "456"],
+  "+": [1, 2]
+}
+// => evaluates "message" then "+", returns result of "+"
+```
 
 ## Exits
 
-The exit code returned by `jsonpiler::functions::run` is wrapped using modulo 256,
+The exit code returned by `jsonpiler::functions::run` is wrapped using modulo 256,  
 resulting in a value between 0 and 255.
 
 ## Encoding

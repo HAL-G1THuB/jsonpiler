@@ -1,1 +1,1 @@
-["message", "Hello", "This is a message box!"]
+{ "message": ["Hello", "This is a message box!"] }

@@ -12,10 +12,15 @@ This program converts a JSON-based program to GNU assembly, compiles it, and exe
 
 ## What's New
 
-- **Refactored and cleaned up source code.**
-- **Duplicate object keys are no longer allowed.**
-- **Added temporary value tracking to enable efficient stack freeing, minimizing stack waste except for variable bindings.**
-- **Improved error formatting to display ^ markers spanning the full error range using `pos.size`.**
+- Json objects now allow duplicate keys.
+- **Objects are now treated as function calls**:  
+  Each key in a JSON object is interpreted as a function name, and its corresponding value is treated as the function argument.
+- **It is no longer allowed to assign a user-defined function to a variable name that already exists as a built-in function.**
+- **Arrays now leave the result of evaluating all elements.**:  
+- **Supports multiple key-function entries.**:  
+  When an object contains multiple keys, each is evaluated in order; the last function result is returned.
+- **Square brackets can now be omitted when a single argument is not an array.**
+- **The `begin` function was removed because it can now be represented by a column of objects.**
 
 [Project History and Plans](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 
@@ -46,14 +51,14 @@ Replace `(input_json_file)` with the actual JSON file you want to compile.
 [Examples](https://github.com/HAL-G1THuB/jsonpiler/tree/main/examples)
 
 ```json
-["begin", ["=", "a", "title"], ["message", ["$", "a"], "345"]]
+{ "=": ["a", "title"], "message": [{"$": "a"}, "345"] }
 ```
 
 **Execution order:**
 
 The jsonpiler code consists of a single JSON object.
 
-Expressions within `begin` are evaluated sequentially.
+Expressions are evaluated sequentially.
 
 The variable `"a"` is assigned the string `"title"` using `"="`.
 
@@ -64,15 +69,15 @@ The program returns the integer ID of the button pressed in the message box (cur
 ## Error message
 
 ```json
-["message", "title", ["$", "not_exist"]]
+{ "message": ["title", ["$", "not_exist"]] }
 ```
 
 ```text
 Compilation error: Undefined variables: `not_exist`
 Error occurred on line: 1
 Error position:
-["message", "title", ["$", "not_exist"]]
-                           ^^^^^^^^^^^
+{ "message": ["title", ["$", "not_exist"]] }
+                             ^^^^^^^^^^^
 ```
 
 ## Function Documentation

@@ -13,30 +13,21 @@ impl Jsonpiler {
     }
     let len = self.source.len();
     let idx = pos.offset.min(len.saturating_sub(1));
-    let Ok(start) = self
-      .source
-      .get(..idx)
-      .and_then(|left| left.rfind('\n').map(|sta| add(sta, 1)))
-      .unwrap_or(Ok(0))
-    else {
-      return gen_err("InternalError: OverFlow");
+    let start = match (0..=idx).rfind(|&i| self.source.get(i) == Some(&b'\n')) {
+      Some(i) => i.saturating_add(1),
+      None => 0,
     };
-    let Ok(end) = self
-      .source
-      .get(idx..)
-      .and_then(|right| right.find('\n').map(|en| add(idx, en)))
-      .unwrap_or(Ok(len))
-    else {
-      return gen_err("InternalError: OverFlow");
+    let end = match (idx..len).find(|&i| self.source.get(i) == Some(&b'\n')) {
+      Some(i) => i,
+      None => len,
     };
-    let Some(line) = self.source.get(start..end) else {
-      return gen_err("Error: Failed to get substring");
-    };
+    let line = self.source.get(start..end).unwrap_or(&[]);
+    let line_str = String::from_utf8_lossy(line);
     let caret_start = idx.saturating_sub(start);
     let caret_len = pos.size.max(1).min(end.saturating_sub(idx));
     let ws = " ".repeat(caret_start);
     let carets = "^".repeat(caret_len);
-    gen_err(&format!("{line}\n{ws}{carets}"))
+    gen_err(&format!("{line_str}\n{ws}{carets}"))
   }
   /// Generates a type error.
   pub(crate) fn typ_err(
@@ -55,8 +46,8 @@ impl Jsonpiler {
     err!(
       self,
       &json.pos,
-      "The {ordinal}{suffix} argument to `{name}` must be of a type `{expected}`, \
-      but a value of type `{typ}` was provided."
+      "The {ordinal}{suffix} argument to `{name}` must be of \
+      a type `{expected}`, but a value of type `{typ}` was provided."
     )
   }
   /// Generate an error.

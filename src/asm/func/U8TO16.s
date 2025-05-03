@@ -40,4 +40,4 @@
   pop rsi
   pop rdi
   ret
-.seh_endproc
+  .seh_endproc
