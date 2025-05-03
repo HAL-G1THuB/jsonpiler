@@ -77,7 +77,7 @@ Compilation error: Undefined variables: `doesn't_exist`
 Error occurred on line: 1
 Error position:
 { "message": ["title", { "$": "doesn't_exist" }] }
-                              ^^^^^^^^^^^^^
+                              ^^^^^^^^^^^^^^^
 ```
 
 ## Function Documentation
