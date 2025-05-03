@@ -69,15 +69,15 @@ The program returns the integer ID of the button pressed in the message box (cur
 ## Error message
 
 ```json
-{ "message": ["title", ["$", "not_exist"]] }
+{ "message": ["title", { "$": "don't_exist" }] }
 ```
 
 ```text
 Compilation error: Undefined variables: `not_exist`
 Error occurred on line: 1
 Error position:
-{ "message": ["title", ["$", "not_exist"]] }
-                             ^^^^^^^^^^^
+{ "message": ["title", { "$": "don't_exist" }] }
+                              ^^^^^^^^^^^^^
 ```
 
 ## Function Documentation
