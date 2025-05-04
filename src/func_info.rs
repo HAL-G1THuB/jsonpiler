@@ -1,5 +1,9 @@
 //! Implementation for `FuncInfo`.
-use crate::{ErrOR, FuncInfo, Name, Var::Local, add};
+use crate::{
+  ErrOR, FuncInfo, Name,
+  VarKind::{Local, Tmp},
+  add,
+};
 use core::cmp;
 impl FuncInfo {
   /// Calculate to allocate size.
@@ -32,6 +36,10 @@ impl FuncInfo {
   /// get local variable name.
   pub fn get_local(&mut self, byte: usize) -> ErrOR<Name> {
     Ok(Name { var: Local, seed: add(self.push(byte)?, self.scope_align)? })
+  }
+  /// get temporary variable name.
+  pub fn get_tmp(&mut self, byte: usize) -> ErrOR<Name> {
+    Ok(Name { var: Tmp, seed: add(self.push(byte)?, self.scope_align)? })
   }
   /// Push to stack.
   fn push(&mut self, byte: usize) -> ErrOR<usize> {

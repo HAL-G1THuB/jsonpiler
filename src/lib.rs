@@ -34,10 +34,10 @@ macro_rules! exit {($($arg: tt)*) =>{{eprintln!($($arg)*);return ExitCode::FAILU
 /// Macro to include assembly files only once.
 #[macro_export]
 macro_rules! include_once {
-  ($self:ident, $name:literal) => {
+  ($self:ident, $dest:expr, $name:literal) => {
     if !$self.include_flag.contains($name) {
       $self.include_flag.insert($name.into());
-      $self.text.push(include_str!(concat!("asm/", $name, ".s")).into());
+      $dest.push(include_str!(concat!("asm/", $name, ".s")).into());
     }
   };
 }
@@ -98,7 +98,7 @@ struct FuncInfo {
   stack_size: usize,
 }
 /// Type of global variable.
-enum GVar {
+enum GlobalKind {
   /// BSS variable.
   Bss,
   /// Global function.
@@ -178,14 +178,14 @@ struct Name {
   /// Variable seed.
   seed: usize,
   /// Variable type.
-  var: Var,
+  var: VarKind,
 }
 impl Display for Name {
   #[expect(clippy::min_ident_chars, reason = "default name is 'f'")]
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self.var {
-      Var::Global => write!(f, " ptr .L{:x}[rip]", self.seed),
-      Var::Local | Var::Tmp => write!(f, " ptr -0x{:x}[rbp]", self.seed),
+      VarKind::Global => write!(f, " ptr .L{:x}[rip]", self.seed),
+      VarKind::Local | VarKind::Tmp => write!(f, " ptr -0x{:x}[rbp]", self.seed),
     }
   }
 }
@@ -201,7 +201,7 @@ struct Position {
 }
 /// Variable.
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum Var {
+enum VarKind {
   /// Global variable.
   Global,
   /// Local variable.

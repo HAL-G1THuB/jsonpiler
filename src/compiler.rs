@@ -1,7 +1,8 @@
 //! Implementation of the compiler inside the `Jsonpiler`.
 use super::{
-  Args, Bind, Builtin, ErrOR, FuncInfo, GVar, JFunc, Json, JsonWithPos, Jsonpiler, Name, Position,
-  Var::{Global, Tmp},
+  Args, Bind, Builtin, ErrOR, FuncInfo, GlobalKind, JFunc, Json, JsonWithPos, Jsonpiler, Name,
+  Position,
+  VarKind::{Global, Tmp},
   add, err,
   utility::{imp_call, mn, scope_begin, scope_end},
 };
@@ -148,19 +149,19 @@ impl Jsonpiler {
     Ok(args)
   }
   /// Generates a unique name for internal use.
-  pub(crate) fn get_global(&mut self, name: &GVar, value: &str) -> ErrOR<Name> {
+  pub(crate) fn get_global(&mut self, name: &GlobalKind, value: &str) -> ErrOR<Name> {
     let seed = self.global_seed;
     match name {
-      GVar::Bss => self.bss.push(format!("  .lcomm .L{seed:x}, {value}\n")),
-      GVar::Str => {
+      GlobalKind::Bss => self.bss.push(format!("  .lcomm .L{seed:x}, {value}\n")),
+      GlobalKind::Str => {
         if let Some(str_seed) = self.str_cache.get(value) {
           return Ok(Name { var: Global, seed: *str_seed });
         }
         self.str_cache.insert(value.to_owned(), seed);
         self.data.push(format!("  .L{seed:x}: .string \"{value}\"\n"));
       }
-      GVar::Int => self.data.push(format!("  .L{seed:x}: .quad {value}\n")),
-      GVar::Fnc => (),
+      GlobalKind::Int => self.data.push(format!("  .L{seed:x}: .quad {value}\n")),
+      GlobalKind::Fnc => (),
     }
     self.global_seed = add(self.global_seed, 1)?;
     Ok(Name { var: Global, seed })

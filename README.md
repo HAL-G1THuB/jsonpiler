@@ -7,20 +7,20 @@ This program converts a JSON-based program to GNU assembly, compiles it, and exe
 - [GitHub repository](https://github.com/HAL-G1THuB/jsonpiler.git)  
 - [Crates.io](https://crates.io/crates/jsonpiler)  
 - [Docs.rs](https://docs.rs/jsonpiler/latest/jsonpiler)  
-- [Fallback documentation (if docs.rs fails)](https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html)  
+- [Fallback Docs (if docs.rs fails)](https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html)  
+- [AI-generated Docs (DeepWiki)](https://deepwiki.com/HAL-G1THuB/jsonpiler)
 🚨 **This program only runs on Windows (x64)!** 🚨
 
 ## What's New
 
+- **Added new functions: `/`, `abs`, and `%`.**
 - Json objects now allow duplicate keys.
-- **Objects are now treated as function calls**:  
-  Each key in a JSON object is interpreted as a function name, and its corresponding value is treated as the function argument.
-- **It is no longer allowed to assign a user-defined function to a variable name that already exists as a built-in function.**
-- **Arrays now leave the result of evaluating all elements.**:  
-- **Supports multiple key-function entries.**:  
-  When an object contains multiple keys, each is evaluated in order; the last function result is returned.
-- **Square brackets can now be omitted when a single argument is not an array.**
-- **The `begin` function was removed because it can now be represented by a column of objects.**
+- Objects are now treated as function calls:
+- It is no longer allowed to assign a user-defined function to a variable name that already exists as a built-in function.
+- Arrays now leave the result of evaluating all elements.
+- Supports multiple key-function entries.
+- Square brackets can now be omitted when a single argument is not an array.
+- the `begin` function was removed because it can now be represented by a column of objects.
 
 [Project History and Plans](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 

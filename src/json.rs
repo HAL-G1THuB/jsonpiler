@@ -1,7 +1,7 @@
 //! Implementation of the `Json`
 use super::{
   AsmBool, Bind, Json, JsonWithPos, Name,
-  Var::{self, Global, Local, Tmp},
+  VarKind::{self, Global, Local, Tmp},
 };
 use core::{
   fmt::{self, Write as _},
@@ -66,7 +66,7 @@ impl Json {
     }
   }
   /// Determines if it is a global variable.
-  pub fn var(&self) -> Option<Var> {
+  pub fn var(&self) -> Option<VarKind> {
     match self {
       Json::Function(_) => Some(Global),
       Json::VBool(AsmBool { name, .. })

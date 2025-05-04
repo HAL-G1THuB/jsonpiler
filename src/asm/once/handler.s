@@ -24,7 +24,7 @@
   call [qword ptr __imp_ExitProcess[rip]]
 .L__SEH_HANDLER:
   xor ecx, ecx
-  lea rdx, .L__SEH_HANDLER_MSG[rip]
+  lea rdx, qword ptr .L__SEH_HANDLER_MSG[rip]
   xor r8d, r8d
   mov r9d, 0x10
   call [qword ptr __imp_MessageBoxA[rip]]

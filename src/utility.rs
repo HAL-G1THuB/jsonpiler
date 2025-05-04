@@ -1,5 +1,7 @@
 //! Implementation for `Jsonpiler` utility functions
-use crate::{ErrOR, FuncInfo, Json, JsonWithPos, Jsonpiler, Position, add, err};
+use crate::{
+  Bind, ErrOR, FuncInfo, Json, JsonWithPos, Jsonpiler, Position, VarKind::Tmp, add, err,
+};
 use core::mem::take;
 impl Jsonpiler {
   /// Format error with `^` pointing to the error span.
@@ -106,6 +108,19 @@ fn gen_stack_string(value: &str, info: &mut FuncInfo) -> ErrOR<()> {
   }
   Ok(())
 }
+/// Get integer string.
+pub(crate) fn get_int_str(int: &Bind<i64>, info: &mut FuncInfo) -> ErrOR<String> {
+  match int {
+    Bind::Lit(l_int) => Ok(l_int.to_string()),
+    Bind::Var(name) => {
+      if name.var == Tmp {
+        info.free(name.seed, 8)?;
+      }
+      Ok(format!("qword{name}"))
+    }
+  }
+}
+
 /// Call function.
 #[expect(clippy::single_call_fn, reason = "")]
 pub(crate) fn imp_call(func: &str) -> String {

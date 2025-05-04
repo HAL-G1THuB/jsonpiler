@@ -10,6 +10,10 @@
 
 ### jsonpiler 0.3
 
+#### 0.3.1
+
+- Added new functions: `/`, `abs`, and `%`.
+
 #### 0.3.0
 
 - Json objects now allow duplicate keys.

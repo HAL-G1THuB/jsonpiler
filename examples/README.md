@@ -10,8 +10,8 @@
 
 ```json
 {
-  "'": "This program will return the number 16.",
-  "-": [{ "*": [5, { "+": [2, 3] }] }, 9]
+  "'": "This program will return the number 8.",
+  "/": [{ "-": [{ "*": [5, { "+": [2, 3] }] }, 9] }, 2]
 }
 ```
 

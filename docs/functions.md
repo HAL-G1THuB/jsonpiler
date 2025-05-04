@@ -8,8 +8,6 @@
 - `V...` - A non-literal value of type `...`  
 - `"..."` - Zero or more arguments matching the previous pattern  
 
----
-
 ## `scope`
 
 ```json
@@ -23,8 +21,6 @@ It evaluates each expression in order and returns the result of the last one.
 { "scope": [{"+": [1, 3]}, 0] } => 0
 ```
 
----
-
 ## `+`
 
 ```json
@@ -37,8 +33,6 @@ If given zero arguments, it returns the identity element (0).
 ```json
 { "+": [ 1, 5, ["+", 4, 6]] } => 16
 ```
-
----
 
 ## `-`
 
@@ -54,8 +48,6 @@ If given one argument, invert the sign.
 {"-": [30, 5, {"+": [4, 6]}]} => 15
 ```
 
----
-
 ## `*`
 
 ```json
@@ -69,7 +61,31 @@ If given zero arguments, it returns the identity element (1).
 {"*": [30, 5, {"+":[4, 6]}]} => 1500
 ```
 
----
+## `/`
+
+```json
+{"/": [{"operand": "Int"}, {"operand": "Int"}, "..."]} -> "VInt"
+```
+
+Returns the result of dividing the first operand by all following operands.
+If less than 1 arguments are given, an error occurs.
+If the number to divide is zero, an error is generated at runtime or compile time.
+
+```json
+{"/": [30, 5, 6]} => 1
+```
+
+## `%`
+
+```json
+{"%": [{"operand": "Int"}, {"operand": "Int"}]} -> "VInt"
+```
+
+Returns the result of the remainder operation.
+
+```json
+{"%": [30, 7]} => 2
+```
 
 ## `lambda`
 
@@ -86,8 +102,6 @@ the remaining arguments form the function body and are evaluated when the functi
 {"lambda": [[], {"+": [4, 6]}, 1]}
 ```
 
----
-
 ## `message`
 
 ```json
@@ -97,8 +111,6 @@ the remaining arguments form the function body and are evaluated when the functi
 Displays a message box.  
 The first argument is the title; the second is the body text.  
 Returns the ID of the button pressed - currently always `1` (equivalent to `IDOK` in C/C++).
-
----
 
 ## `=`/`global`
 
@@ -122,8 +134,6 @@ Currently, the following types are **not assignable**:
 
 **Reassignment is not yet implemented.**
 
----
-
 ## `$`
 
 ```json
@@ -131,8 +141,6 @@ Currently, the following types are **not assignable**:
 ```
 
 Returns the value bound to the given variable name.
-
----
 
 ## `'`
 
@@ -151,8 +159,6 @@ Can also be used as a comment.
 
 Evaluates the given expression and returns the result.
 
----
-
 ## list
 
 ```json
@@ -165,4 +171,14 @@ The list function returns its evaluated arguments as an LArray.
 {"list": {"+": [3, 5]}} => [8]
 ```
 
----
+## abs
+
+```json
+{"abs": {"expr": "Int"}} -> "VInt"
+```
+
+Returns the absolute value of the given integer.
+
+```json
+{"abs": -5} => 5
+```
