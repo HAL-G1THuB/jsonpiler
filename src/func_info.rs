@@ -1,11 +1,11 @@
 //! Implementation for `FuncInfo`.
 use crate::{
-  ErrOR, FuncInfo, Name,
+  ErrOR, Name, ScopeInfo,
   VarKind::{Local, Tmp},
   add,
 };
 use core::cmp;
-impl FuncInfo {
+impl ScopeInfo {
   /// Calculate to allocate size.
   pub fn calc_alloc(&self, align: usize) -> ErrOR<usize> {
     let args_size = self.args_slots.checked_mul(8).ok_or("Overflow: args_slots * 8")?;
@@ -16,7 +16,7 @@ impl FuncInfo {
   }
   /// Free from stack.
   pub fn free(&mut self, end: usize, mut size: usize) -> ErrOR<()> {
-    let mut start = end.checked_sub(size).ok_or("StackCalc Overflow")?;
+    let mut start = end.checked_sub(size).ok_or("InternalError: `free` failed")?;
     if let Some((&prev_start, &prev_size)) = self.free_map.range(..start).next_back() {
       if add(prev_start, prev_size)? == start {
         self.free_map.remove(&prev_start);

@@ -41,15 +41,13 @@ macro_rules! include_once {
     }
   };
 }
-/// Arguments.
-type Args = Vec<JsonWithPos>;
-#[derive(Debug, Clone)]
 /// Assembly boolean representation.
+#[derive(Debug, Clone)]
 struct AsmBool {
   /// bit offset.
   bit: usize,
   /// Name of function.
-  name: Name,
+  seed: Name,
 }
 /// Assembly function representation.
 #[derive(Debug, Clone)]
@@ -81,35 +79,31 @@ struct Builtin {
 }
 /// Contain `T` or `Box<dyn Error>`.
 type ErrOR<T> = Result<T, Box<dyn Error>>;
-/// Information of Function.
-#[derive(Debug, Clone, Default)]
+/// Information of arguments.
+#[derive(Debug, Clone)]
 struct FuncInfo {
-  /// Size of arguments.
-  args_slots: usize,
-  /// Body of function.
-  body: Vec<String>,
-  /// Free memory list.
-  free_map: BTreeMap<usize, usize>,
-  /// Registers used.
-  reg_used: HashSet<String>,
-  /// Scope align.
-  scope_align: usize,
-  /// Stack size.
-  stack_size: usize,
+  /// Arguments.
+  args: Vec<JsonWithPos>,
+  /// Function Name.
+  name: String,
+  /// Position of function call.
+  pos: Position,
 }
 /// Type of global variable.
 enum GlobalKind {
   /// BSS variable.
   Bss,
+  /// Global float.
+  Float,
   /// Global function.
-  Fnc,
+  Func,
   /// Global integer.
   Int,
   /// Global string.
   Str,
 }
 /// Type of built-in function.
-type JFunc = fn(&mut Jsonpiler, &JsonWithPos, Args, &mut FuncInfo) -> ErrOR<Json>;
+type JFunc = fn(&mut Jsonpiler, FuncInfo, &mut ScopeInfo) -> ErrOR<Json>;
 /// Represents a JSON object with key-value pairs.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct JObject {
@@ -180,6 +174,15 @@ struct Name {
   /// Variable type.
   var: VarKind,
 }
+impl Name {
+  /// Try to free and convert to string.
+  pub(crate) fn try_free_and_2str(&self, info: &mut ScopeInfo) -> ErrOR<String> {
+    if self.var == VarKind::Tmp {
+      info.free(self.seed, 8)?;
+    }
+    Ok(format!("qword{self}"))
+  }
+}
 impl Display for Name {
   #[expect(clippy::min_ident_chars, reason = "default name is 'f'")]
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -198,6 +201,22 @@ struct Position {
   offset: usize,
   /// Size of the part being parsed.
   size: usize,
+}
+/// Information of Scope.
+#[derive(Debug, Clone, Default)]
+struct ScopeInfo {
+  /// Size of arguments.
+  args_slots: usize,
+  /// Body of function.
+  body: Vec<String>,
+  /// Free memory list.
+  free_map: BTreeMap<usize, usize>,
+  /// Registers used.
+  reg_used: HashSet<String>,
+  /// Scope align.
+  scope_align: usize,
+  /// Stack size.
+  stack_size: usize,
 }
 /// Variable.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -258,7 +277,7 @@ pub fn run() -> ExitCode {
   let asm = with_ext("s");
   let obj = with_ext("obj");
   let exe = with_ext("exe");
-  if let Err(err) = jsonpiler.build(&source, &asm) {
+  if let Err(err) = jsonpiler.build(source, &asm) {
     exit!("Compilation error: {err}");
   }
   macro_rules! invoke {

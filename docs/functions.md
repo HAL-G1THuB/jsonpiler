@@ -129,7 +129,6 @@ Currently, the following types are **not assignable**:
 
 - LArray  
 - LBool  
-- LFloat  
 - LObject  
 
 **Reassignment is not yet implemented.**

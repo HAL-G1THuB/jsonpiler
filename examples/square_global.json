@@ -1,0 +1,16 @@
+{
+  "global": ["n", 5],
+  "=": [
+    "square_n",
+    {
+      "'": "This function returns 25.",
+      "lambda": [
+        [],
+        {
+          "*": [{ "$": "n" }, { "$": "n" }]
+        }
+      ]
+    }
+  ],
+  "square_n": []
+}

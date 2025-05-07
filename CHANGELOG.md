@@ -5,10 +5,18 @@
 - Implement `if` function
 - Implement bitwise operations
 - Support assignment of `bool` type
+- Enables data to be stored in the heap area
+- Allow heap release when exiting scope
 
 ## Released
 
 ### jsonpiler 0.3
+
+#### 0.3.2
+
+- `Float` can now be assigned.
+- Function definitions now explicitly share only the global scope.
+- Fixed a bug in the `global` function
 
 #### 0.3.1
 

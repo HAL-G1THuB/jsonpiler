@@ -1,20 +1,14 @@
 //! Implementation of the parser inside the `Jsonpiler`.
-use crate::{Bind, ErrOR, JObject, Json, JsonWithPos, Jsonpiler, Position, add, err};
+use crate::{Bind::Lit, ErrOR, JObject, Json, JsonWithPos, Jsonpiler, Position, add, err};
 use core::str;
 /// Macro to return if the next character matches the expected one.
 macro_rules! return_if {
-  ($self: ident, $ch: expr, $start: expr, $val: expr) => {
-    $self.skip_ws()?;
-    if $self.advance_if($ch)? {
-      $start.size = $self.pos.offset.saturating_sub($start.offset);
-      return Ok(JsonWithPos { pos: $start, value: $val });
+  ($self: ident, $ch: expr, $pos: expr, $value: expr) => {
+    if $self.peek()? == $ch {
+      $self.inc()?;
+      $pos.size = $self.pos.offset.saturating_sub($pos.offset);
+      return Ok(JsonWithPos { pos: $pos, value: $value });
     }
-  };
-}
-/// Gets slice of source code.
-macro_rules! source_slice {
-  ($self: ident) => {
-    $self.source.get($self.pos.offset..).ok_or($self.fmt_err("Unexpected EOF.", &$self.pos))?
   };
 }
 impl Jsonpiler {
@@ -23,19 +17,11 @@ impl Jsonpiler {
     self.pos.offset = add(self.pos.offset, num)?;
     Ok(())
   }
-  /// Returns true if the next character matches the expected one.
-  fn advance_if(&mut self, ch: u8) -> ErrOR<bool> {
-    let flag = self.peek()? == ch;
-    if flag {
-      self.advance(1)?;
-    }
-    Ok(flag)
-  }
   /// Checks if the next character in the input code matches the expected character.
   fn expect(&mut self, expected: u8) -> ErrOR<()> {
     let byte = self.peek()?;
     if byte == expected {
-      self.advance(1)?;
+      self.inc()?;
       Ok(())
     } else {
       err!(self, self.pos, "Expected byte '{}' not found.", char::from(expected))
@@ -48,7 +34,7 @@ impl Jsonpiler {
   /// Advances the current position in the input code and returns the next character.
   fn next(&mut self) -> ErrOR<u8> {
     let byte = self.peek()?;
-    self.advance(1)?;
+    self.inc()?;
     Ok(byte)
   }
   /// Parses the entire input code and returns the resulting `Json` representation.
@@ -59,8 +45,8 @@ impl Jsonpiler {
   /// * `Err(Box<dyn Error>)` - An error if the input code is invalid.
   /// # Errors
   /// * `Box<dyn Error>` - An error if the input code is invalid.
-  pub(crate) fn parse(&mut self, code: &str) -> ErrOR<JsonWithPos> {
-    self.source = code.as_bytes().to_vec();
+  pub(crate) fn parse(&mut self, code: String) -> ErrOR<JsonWithPos> {
+    self.source = code.into_bytes();
     self.pos = Position { offset: 0, line: 1, size: 1 };
     let result = self.parse_value()?;
     if self.pos.offset == self.source.len() {
@@ -74,30 +60,32 @@ impl Jsonpiler {
     let mut start = self.pos.clone();
     let mut array = vec![];
     self.expect(b'[')?;
-    return_if!(self, b']', start, Json::Array(Bind::Lit(array)));
+    self.skip_ws()?;
+    return_if!(self, b']', start, Json::Array(Lit(array)));
     loop {
       array.push(self.parse_value()?);
-      return_if!(self, b']', start, Json::Array(Bind::Lit(array)));
+      return_if!(self, b']', start, Json::Array(Lit(array)));
       self.expect(b',')?;
     }
   }
   /// Parses a specific name and returns a `Json` object with the associated value.
-  fn parse_keyword(&mut self, name: &str, val: Json) -> ErrOR<JsonWithPos> {
-    if source_slice!(self).starts_with(name.as_bytes()) {
-      let mut start = self.pos.clone();
+  fn parse_keyword(&mut self, name: &[u8], value: Json) -> ErrOR<JsonWithPos> {
+    if self
+      .source
+      .get(self.pos.offset..)
+      .ok_or(self.fmt_err("Unexpected EOF.", &self.pos))?
+      .starts_with(name)
+    {
+      let pos = Position { size: name.len(), ..self.pos };
       self.advance(name.len())?;
-      start.size = name.len();
-      Ok(JsonWithPos { pos: start, value: val })
+      Ok(JsonWithPos { pos, value })
     } else {
-      err!(self, "Failed to parse '{name}'")
+      err!(self, self.pos, "Failed to parse '{}'", String::from_utf8_lossy(name))
     }
   }
   /// Parses a number (integer or float) from the input code.
   fn parse_number(&mut self) -> ErrOR<JsonWithPos> {
-    fn push_number(parser: &mut Jsonpiler, num_str: &mut Vec<u8>, err: &str) -> ErrOR<()> {
-      if !parser.peek()?.is_ascii_digit() {
-        return err!(parser, &parser.pos, "{err}");
-      }
+    fn push_number(parser: &mut Jsonpiler, num_str: &mut Vec<u8>) -> ErrOR<()> {
       loop {
         let ch = parser.peek()?;
         if !ch.is_ascii_digit() {
@@ -107,82 +95,84 @@ impl Jsonpiler {
         parser.inc()?;
       }
     }
-    let mut start = self.pos.clone();
+    let mut pos = self.pos.clone();
     let mut num_str = vec![];
-    let mut has_decimal = false;
-    let mut has_exponent = false;
-    if self.advance_if(b'-')? {
+    let mut is_float = false;
+    if self.peek()? == b'-' {
+      self.inc()?;
       num_str.push(b'-');
     }
-    if self.advance_if(b'0')? {
+    if self.peek()? == b'0' {
+      self.inc()?;
       num_str.push(b'0');
       if self.peek()?.is_ascii_digit() {
         return err!(self, "Leading zeros are not allowed in numbers");
       }
     } else {
-      push_number(self, &mut num_str, "Invalid number format.")?;
+      push_number(self, &mut num_str)?;
     }
-    if matches!(self.peek()?, b'.') {
-      has_decimal = true;
-      num_str.push(self.next()?);
-      push_number(self, &mut num_str, "A digit is required after the decimal point.")?;
+    if self.peek()? == b'.' {
+      is_float = true;
+      self.inc()?;
+      num_str.push(b'.');
+      push_number(self, &mut num_str)?;
     }
     if matches!(self.peek()?, b'e' | b'E') {
-      has_exponent = true;
-      num_str.push(self.next()?);
-      if matches!(self.peek()?, b'+' | b'-') {
-        num_str.push(self.next()?);
+      is_float = true;
+      self.inc()?;
+      num_str.push(b'e');
+      let maybe_sign = self.peek()?;
+      if matches!(maybe_sign, b'-' | b'+') {
+        self.inc()?;
+        num_str.push(maybe_sign);
       }
-      push_number(self, &mut num_str, "A digit is required after the exponent notation.")?;
+      push_number(self, &mut num_str)?;
     }
-    start.size = num_str.len();
-    if has_decimal || has_exponent {
+    pos.size = num_str.len();
+    if is_float {
       str::from_utf8(&num_str)?.parse::<f64>().map_or_else(
         |_| err!(self, "Invalid numeric value."),
-        |float| Ok(JsonWithPos { pos: start, value: Json::Float(Bind::Lit(float)) }),
+        |float| Ok(JsonWithPos { pos, value: Json::Float(Lit(float)) }),
       )
     } else {
       str::from_utf8(&num_str)?.parse::<i64>().map_or_else(
         |_| err!(self, "Invalid numeric value."),
-        |int| Ok(JsonWithPos { pos: start, value: Json::Int(Bind::Lit(int)) }),
+        |int| Ok(JsonWithPos { pos, value: Json::Int(Lit(int)) }),
       )
     }
   }
   /// Parses an object from the input code.
   fn parse_object(&mut self) -> ErrOR<JsonWithPos> {
-    let mut start = self.pos.clone();
+    let mut pos = self.pos.clone();
     let mut object = JObject::default();
     self.expect(b'{')?;
-    return_if!(self, b'}', start, Json::Object(Bind::Lit(object)));
+    self.skip_ws()?;
+    return_if!(self, b'}', pos, Json::Object(Lit(object)));
     loop {
-      let key = self.parse_value()?;
-      let Json::String(Bind::Lit(string)) = key.value else {
+      let key = self.parse_string()?;
+      let Json::String(Lit(string)) = key.value else {
         return err!(self, &key.pos, "Keys must be strings.");
       };
+      self.skip_ws()?;
       self.expect(b':')?;
-      let value = self.parse_value()?;
-      object.insert(string, value);
-      return_if!(self, b'}', start, Json::Object(Bind::Lit(object)));
+      object.insert(string, self.parse_value()?);
+      return_if!(self, b'}', pos, Json::Object(Lit(object)));
       self.expect(b',')?;
+      self.skip_ws()?;
     }
   }
   /// Parses a string from the input code.
   fn parse_string(&mut self) -> ErrOR<JsonWithPos> {
-    let start = self.pos.clone();
+    let mut pos = self.pos.clone();
     self.expect(b'"')?;
     let mut result = String::new();
-    while let Some(&byte) = self.source.get(self.pos.offset) {
+    while let Ok(byte) = self.next() {
       match byte {
         b'"' => {
-          self.advance(1)?;
-          let size = self.pos.offset.saturating_sub(start.offset);
-          return Ok(JsonWithPos {
-            pos: Position { size, ..start },
-            value: Json::String(Bind::Lit(result)),
-          });
+          pos.size = self.pos.offset.saturating_sub(pos.offset);
+          return Ok(JsonWithPos { pos, value: Json::String(Lit(result)) });
         }
         b'\\' => {
-          self.advance(1)?;
           let esc = self.next()?;
           match esc {
             b'n' => result.push('\n'),
@@ -202,8 +192,9 @@ impl Jsonpiler {
                 }
                 hex.push(char::from(ch));
               }
-              let cp = u32::from_str_radix(&hex, 16)
-                .map_err(|err| self.fmt_err(&format!("Invalid code point: {err}"), &self.pos))?;
+              let Ok(cp) = u32::from_str_radix(&hex, 16) else {
+                return err!(self, "Invalid code point");
+              };
               if (0xD800..=0xDFFF).contains(&cp) {
                 return err!(self, "Invalid surrogate pair in unicode.");
               }
@@ -215,18 +206,26 @@ impl Jsonpiler {
             _ => return err!(self, "Invalid escape sequence."),
           }
         }
-        ctrl if ctrl < 0x20 => return err!(self, "Invalid control character."),
+        0x00..=0x1F => return err!(self, "Invalid control character."),
+        0x20..=0x7F => result.push(char::from(byte)),
         _ => {
-          let string = str::from_utf8(
-            self.source.get(self.pos.offset..).ok_or(self.fmt_err("Unexpected EOF.", &self.pos))?,
-          );
-          match string {
-            Ok(st) => {
-              let ch = st.chars().next().ok_or(self.fmt_err("Unexpected EOF.", &self.pos))?;
-              result.push(ch);
-              self.advance(ch.len_utf8())?;
+          let dec_len = match byte {
+            0xC2..=0xDF => 1,
+            0xE0..=0xEF => 2,
+            0xF0..=0xF4 => 3,
+            _ => return err!(self, "Invalid UTF-8 start byte in string."),
+          };
+          let Some(slice) =
+            self.source.get(self.pos.offset.saturating_sub(1)..add(self.pos.offset, dec_len)?)
+          else {
+            break;
+          };
+          match str::from_utf8(slice) {
+            Ok(string) => {
+              result.push_str(string);
+              self.advance(dec_len)?;
             }
-            Err(_) => return err!(self, "Invalid UTF-8 in string."),
+            Err(_) => return err!(self, "Invalid UTF-8 continuation bytes in string."),
           }
         }
       }
@@ -240,11 +239,11 @@ impl Jsonpiler {
       b'"' => self.parse_string(),
       b'{' => self.parse_object(),
       b'[' => self.parse_array(),
-      b't' => self.parse_keyword("true", Json::LBool(true)),
-      b'f' => self.parse_keyword("false", Json::LBool(false)),
-      b'n' => self.parse_keyword("null", Json::Null),
+      b't' => self.parse_keyword(b"true", Json::LBool(true)),
+      b'f' => self.parse_keyword(b"false", Json::LBool(false)),
+      b'n' => self.parse_keyword(b"null", Json::Null),
       b'0'..=b'9' | b'-' => self.parse_number(),
-      _ => err!(self, "This is not a json value."),
+      _ => err!(self, "Expected a json value, but an unknown value was passed."),
     };
     self.skip_ws()?;
     result

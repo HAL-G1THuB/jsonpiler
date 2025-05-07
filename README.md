@@ -9,18 +9,15 @@ This program converts a JSON-based program to GNU assembly, compiles it, and exe
 - [Docs.rs](https://docs.rs/jsonpiler/latest/jsonpiler)  
 - [Fallback Docs (if docs.rs fails)](https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html)  
 - [AI-generated Docs (DeepWiki)](https://deepwiki.com/HAL-G1THuB/jsonpiler)
+
 🚨 **This program only runs on Windows (x64)!** 🚨
 
 ## What's New
 
-- **Added new functions: `/`, `abs`, and `%`.**
-- Json objects now allow duplicate keys.
-- Objects are now treated as function calls:
-- It is no longer allowed to assign a user-defined function to a variable name that already exists as a built-in function.
-- Arrays now leave the result of evaluating all elements.
-- Supports multiple key-function entries.
-- Square brackets can now be omitted when a single argument is not an array.
-- the `begin` function was removed because it can now be represented by a column of objects.
+- **`Float` can now be assigned.**
+- **Function definitions now explicitly share only the global scope.**
+- **Fixed a bug in the `global` function.**
+- Added new functions: `/`, `abs`, and `%`.
 
 [Project History and Plans](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 
@@ -64,7 +61,7 @@ The variable `"a"` is assigned the string `"title"` using `"="`.
 
 A message box appears with the title (from the variable `"a"`) and the body `"345"` as specified by `"message"`.
 
-The program returns the integer ID of the button pressed in the message box (currently only `1` is supported, which corresponds to `IDOK` in C/C++), as the final value of the `begin` block.
+The program returns the integer ID of the button pressed in the message box (currently only `1` is supported, which corresponds to `IDOK` in C/C++), as the final value of the `{}` block.
 
 ## Error message
 
@@ -100,5 +97,5 @@ graph TD
   S[C:\Windows\System32\] --> KERNEL32[kernel32.dll] --> F[file.exe]
   S --> USER32[user32.dll] --> F[file.exe]
   S --> UCRTBASE[ucrtbase.dll] --> F[file.exe]
-  F --> Execute[(Execute!)]
+  F --> Execution[(Execution)]
 ```

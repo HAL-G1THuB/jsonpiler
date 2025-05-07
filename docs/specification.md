@@ -7,6 +7,25 @@ Specification of the Jsonpiler language.
 The syntax is based on the JSON specification.  
 See: [JSON specification](https://www.rfc-editor.org/info/rfc8259)
 
+## Types
+
+### Primitive Types
+
+- **Null**: Represents the absence of a value.
+- **Bool**: Represents a 1-bit boolean value, either `true` or `false`.
+- **Int**: Represents a 64-bit integer number.
+- **Float**: Represents a 64-bit floating-point number.
+- **String**: Represents a sequence of characters enclosed in double quotes.
+
+### Composite Types
+
+- **Array**: Represents an ordered collection of values.
+- **Object**: Represents a collection of key-value pairs.
+
+### Function Type
+
+- **Function**: Represents a function that can be called with arguments.
+
 ## Evaluation
 
 A Jsonpiler program is represented as a single JSON value.

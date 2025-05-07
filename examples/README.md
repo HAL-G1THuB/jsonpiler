@@ -25,3 +25,24 @@
   "$": "x"
 }
 ```
+
+[Squaring a number with a global variable](https://github.com/HAL-G1THuB/jsonpiler/tree/main/examples/square_global.json)
+
+```json
+{
+  "global": ["n", 5],
+  "=": [
+    "square_n",
+    {
+      "'": "This function returns 25.",
+      "lambda": [
+        [],
+        {
+          "*": [{ "$": "n" }, { "$": "n" }]
+        }
+      ]
+    }
+  ],
+  "square_n": []
+}
+```

@@ -1,7 +1,5 @@
 //! Implementation for `Jsonpiler` utility functions
-use crate::{
-  Bind, ErrOR, FuncInfo, Json, JsonWithPos, Jsonpiler, Position, VarKind::Tmp, add, err,
-};
+use crate::{Bind, ErrOR, FuncInfo, Json, JsonWithPos, Jsonpiler, Position, ScopeInfo, add, err};
 use core::mem::take;
 impl Jsonpiler {
   /// Format error with `^` pointing to the error span.
@@ -19,10 +17,7 @@ impl Jsonpiler {
       Some(i) => i.saturating_add(1),
       None => 0,
     };
-    let end = match (idx..len).find(|&i| self.source.get(i) == Some(&b'\n')) {
-      Some(i) => i,
-      None => len,
-    };
+    let end = (idx..len).find(|&i| self.source.get(i) == Some(&b'\n')).unwrap_or(len);
     let line = self.source.get(start..end).unwrap_or(&[]);
     let line_str = String::from_utf8_lossy(line);
     let caret_start = idx.saturating_sub(start);
@@ -54,15 +49,17 @@ impl Jsonpiler {
   }
   /// Generate an error.
   pub(crate) fn validate_args(
-    &self, name: &str, at_least: bool, expected: usize, supplied: usize, pos: &Position,
+    &self, args: &FuncInfo, at_least: bool, expected: usize,
   ) -> ErrOR<()> {
+    let supplied = args.args.len();
     let fmt_require = |text: &str| -> ErrOR<()> {
       let (plural, be) = if expected == 1 { ("", "is") } else { ("s", "are") };
       err!(
         self,
-        pos,
-        "`{name}` requires {text} {expected}{0}, but {supplied}{0} {be} supplied.",
-        format!(" argument{plural}")
+        args.pos,
+        "`{1}` requires {text} {expected}{0}, but {supplied}{0} {be} supplied.",
+        format!(" argument{plural}"),
+        args.name
       )
     };
     if at_least && supplied < expected {
@@ -76,55 +73,56 @@ impl Jsonpiler {
 }
 /// Generates stack string.
 #[expect(dead_code, reason = "")]
-fn gen_stack_string(value: &str, info: &mut FuncInfo) -> ErrOR<()> {
+fn gen_stack_string(value: &str, info: &mut ScopeInfo) -> ErrOR<()> {
   const MOV: &str = "  mov ";
   let mut bytes = value.as_bytes().to_vec();
   bytes.push(0);
   let mut i = 0;
   let total_len = bytes.len();
-  let mut offset = info.get_local(total_len)?;
+  let mut name = info.get_local(total_len)?;
   while i < bytes.len() {
     let remaining = bytes.len().saturating_sub(i);
     if remaining >= 4 {
-      let mut chunk = [0u8; 4];
-      chunk.copy_from_slice(bytes.get(i..add(i, 4)?).ok_or("InternalError: `gen_stack_string`")?);
+      let chunk = get_chunk::<4>(&mut bytes, i)?;
       let val = u32::from_le_bytes(chunk);
-      info.body.push(format!("{MOV}dword{offset}, 0x{val:08x}\n"));
+      info.body.push(format!("{MOV}dword{name}, 0x{val:08x}\n"));
       i = add(i, 4)?;
-      offset.seed = add(offset.seed, 4)?;
+      name.seed = add(name.seed, 4)?;
     } else if remaining >= 2 {
-      let mut chunk = [0u8; 2];
-      chunk.copy_from_slice(bytes.get(i..add(i, 2)?).ok_or("InternalError: `gen_stack_string`")?);
+      let chunk = get_chunk::<2>(&mut bytes, i)?;
       let val = u16::from_le_bytes(chunk);
-      info.body.push(format!("{MOV}word{offset}, 0x{val:04x}\n"));
+      info.body.push(format!("{MOV}word{name}, 0x{val:04x}\n"));
       i = add(i, 2)?;
-      offset.seed = add(offset.seed, 2)?;
+      name.seed = add(name.seed, 2)?;
     } else {
       let val = bytes.get(i).ok_or("InternalError: `gen_stack_string`")?;
-      info.body.push(format!("{MOV}byte{offset}, 0x{val:02x}\n"));
+      info.body.push(format!("{MOV}byte{name}, 0x{val:02x}\n"));
       i = add(i, 1)?;
-      offset.seed = add(offset.seed, 1)?;
+      name.seed = add(name.seed, 1)?;
     }
   }
   Ok(())
 }
+/// Utility functions for `gen_stack_string`.
+fn get_chunk<const T: usize>(bytes: &mut [u8], i: usize) -> ErrOR<[u8; T]> {
+  bytes
+    .get(i..add(i, T)?)
+    .ok_or("InternalError: `gen_stack_string`")?
+    .try_into()
+    .map_err(|_err| "InternalError: slice conversion failed in `gen_stack_string`".into())
+}
 /// Get integer string.
-pub(crate) fn get_int_str(int: &Bind<i64>, info: &mut FuncInfo) -> ErrOR<String> {
+pub(crate) fn get_int_str(int: &Bind<i64>, info: &mut ScopeInfo) -> ErrOR<String> {
   match int {
     Bind::Lit(l_int) => Ok(l_int.to_string()),
-    Bind::Var(name) => {
-      if name.var == Tmp {
-        info.free(name.seed, 8)?;
-      }
-      Ok(format!("qword{name}"))
-    }
+    Bind::Var(name) => name.try_free_and_2str(info),
   }
 }
 
 /// Call function.
 #[expect(clippy::single_call_fn, reason = "")]
 pub(crate) fn imp_call(func: &str) -> String {
-  format!("  call [qword ptr __imp_{func}[rip]]\n")
+  mn("call", &[&format!("[qword ptr __imp_{func}[rip]]")])
 }
 /// Write mnemonic.
 pub(crate) fn mn(mne: &str, args: &[&str]) -> String {
@@ -132,7 +130,7 @@ pub(crate) fn mn(mne: &str, args: &[&str]) -> String {
 }
 /// Begin scope.
 #[expect(clippy::single_call_fn, reason = "")]
-pub(crate) fn scope_begin(tmp: &mut FuncInfo, info: &mut FuncInfo) -> ErrOR<()> {
+pub(crate) fn scope_begin(tmp: &mut ScopeInfo, info: &mut ScopeInfo) -> ErrOR<()> {
   info.scope_align = add(info.scope_align, add(info.stack_size, 15)? & !15)?;
   tmp.body = take(&mut info.body);
   tmp.free_map = take(&mut info.free_map);
@@ -141,14 +139,14 @@ pub(crate) fn scope_begin(tmp: &mut FuncInfo, info: &mut FuncInfo) -> ErrOR<()> 
 }
 /// Begin scope.
 #[expect(clippy::single_call_fn, reason = "")]
-pub(crate) fn scope_end(tmp: &mut FuncInfo, info: &mut FuncInfo) -> ErrOR<()> {
+pub(crate) fn scope_end(tmp: &mut ScopeInfo, info: &mut ScopeInfo) -> ErrOR<()> {
   let align = add(info.stack_size, 15)? & !15;
   if align != 0 {
-    tmp.body.push(format!("  sub rsp, {align}\n"));
+    tmp.body.push(mn("sub", &["rsp", &align.to_string()]));
   }
   tmp.body.append(&mut info.body);
   if align != 0 {
-    tmp.body.push(format!("  add rsp, {align}\n"));
+    tmp.body.push(mn("add", &["rsp", &align.to_string()]));
   }
   info.body = take(&mut tmp.body);
   info.free_map = take(&mut tmp.free_map);
