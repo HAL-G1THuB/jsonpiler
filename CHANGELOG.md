@@ -12,11 +12,17 @@
 
 ### jsonpiler 0.3
 
+### 0.3.3
+
+- Fixed a bug where memory was not correctly released from the stack when handling scope-based logic.
+- Fixed a situation where the `scope` function ignored the first argument.
+- Removed redundant safety checks
+
 #### 0.3.2
 
 - `Float` can now be assigned.
 - Function definitions now explicitly share only the global scope.
-- Fixed a bug in the `global` function
+- Fixed a bug in the `global` function.
 
 #### 0.3.1
 

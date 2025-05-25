@@ -1,6 +1,6 @@
-//! Implementation for `FuncInfo`.
+//! Implementation for `ScopeInfo`.
 use crate::{
-  ErrOR, Name, ScopeInfo,
+  AsmBool, ErrOR, Name, ScopeInfo,
   VarKind::{Local, Tmp},
   add,
 };
@@ -16,7 +16,11 @@ impl ScopeInfo {
   }
   /// Free from stack.
   pub fn free(&mut self, end: usize, mut size: usize) -> ErrOR<()> {
-    let mut start = end.checked_sub(size).ok_or("InternalError: `free` failed")?;
+    let mut start = end
+      .checked_sub(size)
+      .ok_or("InternalError: `free` failed")?
+      .checked_sub(self.scope_align)
+      .ok_or("InternalError: `free` failed")?;
     if let Some((&prev_start, &prev_size)) = self.free_map.range(..start).next_back() {
       if add(prev_start, prev_size)? == start {
         self.free_map.remove(&prev_start);
@@ -32,6 +36,35 @@ impl ScopeInfo {
     }
     self.free_map.insert(start, size);
     Ok(())
+  }
+  /// Free a specific bit from bool map.
+  #[expect(dead_code, reason = "todo")]
+  pub fn free_bool(&mut self, asm_bool: &AsmBool) -> ErrOR<()> {
+    let seed = asm_bool.name.seed;
+    let bit = asm_bool.bit;
+    if let Some(bits) = self.bool_map.get_mut(&seed) {
+      *bits &= !(1 << bit);
+      if *bits == 0 {
+        self.bool_map.remove(&seed);
+        self.free(seed, 1)
+      } else {
+        Ok(())
+      }
+    } else {
+      Err("InternalError: Address not found in bool_map.".into())
+    }
+  }
+  /// get temporary variable name.
+  #[expect(dead_code, reason = "todo")]
+  pub fn get_bool_local(&mut self) -> ErrOR<AsmBool> {
+    let (end, bit) = self.push_bool()?;
+    Ok(AsmBool { name: Name { var: Local, seed: add(end, self.scope_align)? }, bit })
+  }
+  /// get temporary variable name.
+  #[expect(dead_code, reason = "todo")]
+  pub fn get_bool_tmp(&mut self) -> ErrOR<AsmBool> {
+    let (end, bit) = self.push_bool()?;
+    Ok(AsmBool { name: Name { var: Tmp, seed: add(end, self.scope_align)? }, bit })
   }
   /// get local variable name.
   pub fn get_local(&mut self, byte: usize) -> ErrOR<Name> {
@@ -71,6 +104,20 @@ impl ScopeInfo {
     let new_end = add(aligned_start, byte)?;
     self.stack_size = new_end;
     Ok(new_end)
+  }
+  /// Push bool to stack, using the next available bit.
+  fn push_bool(&mut self) -> ErrOR<(usize, u8)> {
+    for (&addr, bits) in &mut self.bool_map {
+      for i in 0..8 {
+        if *bits & (1 << i) == 0 {
+          *bits |= 1 << i;
+          return Ok((addr, i));
+        }
+      }
+    }
+    let addr = self.push(1)?;
+    self.bool_map.insert(addr, 0b0000_0001);
+    Ok((addr, 0))
   }
   /// Update `args_slots` (only if size is larger)
   #[expect(dead_code, reason = "todo")]

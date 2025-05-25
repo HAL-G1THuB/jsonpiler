@@ -8,16 +8,14 @@ This program converts a JSON-based program to GNU assembly, compiles it, and exe
 - [Crates.io](https://crates.io/crates/jsonpiler)  
 - [Docs.rs](https://docs.rs/jsonpiler/latest/jsonpiler)  
 - [Fallback Docs (if docs.rs fails)](https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html)  
-- [AI-generated Docs (DeepWiki)](https://deepwiki.com/HAL-G1THuB/jsonpiler)
-
+- [AI-generated Docs ![badge](https://deepwiki.com/badge.svg)](https://deepwiki.com/HAL-G1THuB/jsonpiler)  
 🚨 **This program only runs on Windows (x64)!** 🚨
 
 ## What's New
 
-- **`Float` can now be assigned.**
-- **Function definitions now explicitly share only the global scope.**
-- **Fixed a bug in the `global` function.**
-- Added new functions: `/`, `abs`, and `%`.
+- Fixed a bug where memory was not correctly released from the stack when handling scope-based logic.
+- Fixed a situation where the `scope` function ignored the first argument.
+- Removed redundant safety checks
 
 [Project History and Plans](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 

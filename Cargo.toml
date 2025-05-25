@@ -1,6 +1,6 @@
 [package]
 name = "jsonpiler"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
 documentation = "https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html"
@@ -33,3 +33,4 @@ single_char_lifetime_names = "allow"
 integer_division_remainder_used = "allow"
 std_instead_of_alloc = "allow"
 little_endian_bytes = "allow"
+indexing_slicing = "allow"

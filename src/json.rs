@@ -1,60 +1,33 @@
-//! Implementation of the `Json`
+//! Implementation of the `Json`.
 use super::{
-  AsmBool, Bind,
   Bind::{Lit, Var},
-  Json, JsonWithPos, Name,
-  VarKind::{Local, Tmp},
+  Json, JsonWithPos,
 };
-use core::{
-  fmt::{self, Write as _},
-  mem::take,
-};
+use core::fmt::{self, Write as _};
 impl Json {
   /// Determines if it is a temporary value.
   pub fn tmp(&self) -> Option<(usize, usize)> {
     match self {
       Json::LBool(_) | Json::Null | Json::VBool(_) | Json::Function(_) => None,
-      Json::Object(bind) => bind_match(bind, 8),
-      Json::Float(bind) => bind_match(bind, 8),
-      Json::Int(bind) => bind_match(bind, 8),
-      Json::String(bind) => bind_match(bind, 8),
-      Json::Array(bind) => bind_match(bind, 8),
-    }
-  }
-  /// Converts temporary value to Local variable.
-  pub fn tmp_to_local(&mut self) -> Self {
-    match *self {
-      Json::Object(Var(Name { var: Tmp, seed })) => Json::Object(Var(Name { var: Local, seed })),
-      Json::Array(Var(Name { var: Tmp, seed })) => Json::Array(Var(Name { var: Local, seed })),
-      Json::Float(Var(Name { var: Tmp, seed })) => Json::Float(Var(Name { var: Local, seed })),
-      Json::String(Var(Name { var: Tmp, seed })) => Json::String(Var(Name { var: Local, seed })),
-      Json::Int(Var(Name { var: Tmp, seed })) => Json::Int(Var(Name { var: Local, seed })),
-      Json::VBool(AsmBool { seed: Name { var: Tmp, seed }, bit }) => {
-        Json::VBool(AsmBool { seed: Name { var: Local, seed }, bit })
-      }
-      Json::String(_)
-      | Json::Int(_)
-      | Json::Object(_)
-      | Json::Float(_)
-      | Json::Array(_)
-      | Json::LBool(_)
-      | Json::VBool(_)
-      | Json::Function(_)
-      | Json::Null => take(self),
+      Json::Object(bind) => Some((bind.get_seed()?, 8)),
+      Json::Float(bind) => Some((bind.get_seed()?, 8)),
+      Json::Int(bind) => Some((bind.get_seed()?, 8)),
+      Json::String(bind) => Some((bind.get_seed()?, 8)),
+      Json::Array(bind) => Some((bind.get_seed()?, 8)),
     }
   }
   /// Generate type name.
   pub fn type_name(&self) -> String {
     match self {
-      Json::LBool(_) => "LBool".to_owned(),
+      Json::LBool(_) => "Literal Bool".to_owned(),
       Json::Null => "Null".to_owned(),
-      Json::VBool(_) => "VBool".to_owned(),
+      Json::VBool(_) => "Non-Literal Bool".to_owned(),
       Json::Function(_) => "Function".to_owned(),
-      Json::Float(float) => bind_name(float, "Float"),
-      Json::Object(obj) => bind_name(obj, "Object"),
-      Json::Int(int) => bind_name(int, "Int"),
-      Json::String(st) => bind_name(st, "String"),
-      Json::Array(arr) => bind_name(arr, "Array"),
+      Json::Float(bind) => bind.describe("Float"),
+      Json::Object(bind) => bind.describe("Object"),
+      Json::Int(bind) => bind.describe("Int"),
+      Json::String(bind) => bind.describe("String"),
+      Json::Array(bind) => bind.describe("Array"),
     }
   }
 }
@@ -64,63 +37,50 @@ impl fmt::Display for Json {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
       Json::Null => f.write_str("Null"),
-      Json::Array(ar) => match ar {
+      Json::Array(bind) => match bind {
         Lit(array) => {
           f.write_str("[")?;
           iter_write(array, f)?;
           f.write_str("]")
         }
-        Var(name) => write!(f, "VArray(qword{name})"),
+        Var(_) => f.write_str(&bind.describe("Array")),
       },
       Json::LBool(bo) => write!(f, "{bo}"),
-      Json::VBool(asm_bool) => write!(f, "VBool(qword{}-{})", asm_bool.seed, asm_bool.bit),
-      Json::Int(int) => match int {
+      Json::VBool(_) => write!(f, "Bool"),
+      Json::Int(bind) => match bind {
         Lit(l_int) => write!(f, "{l_int}"),
-        Var(name) => write!(f, "VInt(qword{name})"),
+        Var(_) => f.write_str(&bind.describe("Int")),
       },
-      Json::Float(float) => match float {
+      Json::Float(bind) => match bind {
         Lit(l_float) => write!(f, "{l_float}"),
-        Var(name) => write!(f, "VFloat(qword{name})"),
+        Var(_) => f.write_str(&bind.describe("Float")),
       },
-      Json::String(st) => match st {
+      Json::String(bind) => match bind {
         Lit(l_st) => f.write_str(&escape_string(l_st)?),
-        Var(name) => write!(f, "VString(qword{name})"),
+        Var(_) => f.write_str(&bind.describe("String")),
       },
-      Json::Function(fu) => {
-        write!(f, "{}(", fu.name)?;
-        iter_write(&fu.params, f)?;
+      Json::Function(asm_func) => {
+        write!(f, "{}(", asm_func.name)?;
+        iter_write(&asm_func.params, f)?;
         write!(f, ") -> ")?;
-        (*fu.ret).fmt(f)
+        (*asm_func.ret).fmt(f)
       }
-      Json::Object(object) => match object {
+      Json::Object(bind) => match bind {
         Lit(obj) => {
           f.write_str("{")?;
-          for (i, kv) in obj.iter().enumerate() {
+          for (i, key_val) in obj.iter().enumerate() {
             if i > 0 {
               f.write_str(", ")?;
             }
-            write!(f, "{}: ", escape_string(&kv.0)?)?;
-            kv.1.value.fmt(f)?;
+            write!(f, "{}: ", escape_string(&key_val.0)?)?;
+            key_val.1.value.fmt(f)?;
           }
           f.write_str("}")
         }
-        Var(name) => write!(f, "VObject(qword{name})"),
+        Var(_) => f.write_str(&bind.describe("Object")),
       },
     }
   }
-}
-/// Pattern match of the `Bind`.
-fn bind_match<T>(bind: &Bind<T>, byte: usize) -> Option<(usize, usize)> {
-  match bind {
-    Var(name) => (name.var == Tmp).then_some((name.seed, byte)),
-    Lit(_) => None,
-  }
-}
-/// gets name of the `Bind`.
-fn bind_name<T>(bind: &Bind<T>, ty: &str) -> String {
-  let mut l_or_v = if matches!(bind, Lit(_)) { "L" } else { "V" }.to_owned();
-  l_or_v.push_str(ty);
-  l_or_v
 }
 /// Escapes special characters in a string for proper JSON formatting.
 pub(crate) fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {

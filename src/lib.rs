@@ -6,17 +6,16 @@
 //!   run()
 //! }
 //! ```
+mod bind;
 mod builtin;
 mod compiler;
-mod func_info;
 mod json;
+mod name;
 mod object;
 mod parser;
+mod scope_info;
 mod utility;
-use core::{
-  error::Error,
-  fmt::{self, Display},
-};
+use core::error::Error;
 use std::{
   collections::{BTreeMap, HashMap, HashSet},
   env, fs,
@@ -42,15 +41,15 @@ macro_rules! include_once {
   };
 }
 /// Assembly boolean representation.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct AsmBool {
   /// bit offset.
-  bit: usize,
+  bit: u8,
   /// Name of function.
-  seed: Name,
+  name: Name,
 }
 /// Assembly function representation.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct AsmFunc {
   /// Name of function.
   name: usize,
@@ -60,7 +59,7 @@ struct AsmFunc {
   ret: Box<Json>,
 }
 /// Binding.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 enum Bind<T> {
   /// Literal.
   Lit(T),
@@ -68,7 +67,7 @@ enum Bind<T> {
   Var(Name),
 }
 /// Built-in function.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct Builtin {
   /// Pointer of function.
   func: JFunc,
@@ -80,7 +79,7 @@ struct Builtin {
 /// Contain `T` or `Box<dyn Error>`.
 type ErrOR<T> = Result<T, Box<dyn Error>>;
 /// Information of arguments.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct FuncInfo {
   /// Arguments.
   args: Vec<JsonWithPos>,
@@ -105,13 +104,13 @@ enum GlobalKind {
 /// Type of built-in function.
 type JFunc = fn(&mut Jsonpiler, FuncInfo, &mut ScopeInfo) -> ErrOR<Json>;
 /// Represents a JSON object with key-value pairs.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub(crate) struct JObject {
   /// Stores key-value pairs in the order they were inserted.
   entries: Vec<(String, JsonWithPos)>,
 }
 /// Type and value information.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 enum Json {
   /// Array.
   Array(Bind<Vec<JsonWithPos>>),
@@ -135,7 +134,7 @@ enum Json {
   VBool(AsmBool),
 }
 /// Json object.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 struct JsonWithPos {
   /// Line number of objects in the source code.
   pos: Position,
@@ -143,7 +142,7 @@ struct JsonWithPos {
   value: Json,
 }
 /// Parser and compiler.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct Jsonpiler {
   /// Buffer to store the contents of the bss section of the assembly.
   bss: Vec<String>,
@@ -167,33 +166,15 @@ pub struct Jsonpiler {
   vars: Vec<HashMap<String, Json>>,
 }
 /// Variable name.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct Name {
   /// Variable seed.
   seed: usize,
   /// Variable type.
   var: VarKind,
 }
-impl Name {
-  /// Try to free and convert to string.
-  pub(crate) fn try_free_and_2str(&self, info: &mut ScopeInfo) -> ErrOR<String> {
-    if self.var == VarKind::Tmp {
-      info.free(self.seed, 8)?;
-    }
-    Ok(format!("qword{self}"))
-  }
-}
-impl Display for Name {
-  #[expect(clippy::min_ident_chars, reason = "default name is 'f'")]
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self.var {
-      VarKind::Global => write!(f, " ptr .L{:x}[rip]", self.seed),
-      VarKind::Local | VarKind::Tmp => write!(f, " ptr -0x{:x}[rbp]", self.seed),
-    }
-  }
-}
 /// line and pos in source code.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 struct Position {
   /// Line number of the part being parsed.
   line: usize,
@@ -203,12 +184,14 @@ struct Position {
   size: usize,
 }
 /// Information of Scope.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 struct ScopeInfo {
   /// Size of arguments.
   args_slots: usize,
   /// Body of function.
   body: Vec<String>,
+  /// Bit-level allocation for bools.
+  bool_map: BTreeMap<usize, u8>,
   /// Free memory list.
   free_map: BTreeMap<usize, usize>,
   /// Registers used.
@@ -219,7 +202,7 @@ struct ScopeInfo {
   stack_size: usize,
 }
 /// Variable.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 enum VarKind {
   /// Global variable.
   Global,
