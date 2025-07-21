@@ -128,7 +128,6 @@ Assigned to local scope for `=` and to global scope for `global`.
 Currently, the following types are **not assignable**:
 
 - LArray  
-- LBool  
 - LObject  
 
 **Reassignment is not yet implemented.**

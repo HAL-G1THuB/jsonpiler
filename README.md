@@ -13,6 +13,16 @@ This program converts a JSON-based program to GNU assembly, compiles it, and exe
 
 ## What's New
 
+- **Support for `bool` type assignments.**
+
+```json
+{
+  "=": ["a", true],
+  "=": ["b", {"$": "a"}]
+}
+```
+
+- **Refactor the code to generate assembly instructions and labels in a more maintainable and systematic way.**
 - Fixed a bug where memory was not correctly released from the stack when handling scope-based logic.
 - Fixed a situation where the `scope` function ignored the first argument.
 - Removed redundant safety checks

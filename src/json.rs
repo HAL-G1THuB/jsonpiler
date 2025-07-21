@@ -1,27 +1,35 @@
 //! Implementation of the `Json`.
 use super::{
-  Bind::{Lit, Var},
-  Json, JsonWithPos,
+  AsmBool,
+  Bind::{self, Lit, Var},
+  Json, JsonWithPos, Name,
+  VarKind::Tmp,
 };
 use core::fmt::{self, Write as _};
 impl Json {
   /// Determines if it is a temporary value.
   pub fn tmp(&self) -> Option<(usize, usize)> {
+    fn get_id<T>(bind: &Bind<T>) -> Option<usize> {
+      match bind {
+        Var(Name { var: Tmp, id }) => Some(*id),
+        Var(_) | Lit(_) => None,
+      }
+    }
     match self {
       Json::LBool(_) | Json::Null | Json::VBool(_) | Json::Function(_) => None,
-      Json::Object(bind) => Some((bind.get_seed()?, 8)),
-      Json::Float(bind) => Some((bind.get_seed()?, 8)),
-      Json::Int(bind) => Some((bind.get_seed()?, 8)),
-      Json::String(bind) => Some((bind.get_seed()?, 8)),
-      Json::Array(bind) => Some((bind.get_seed()?, 8)),
+      Json::Object(bind) => Some((get_id(bind)?, 8)),
+      Json::Float(bind) => Some((get_id(bind)?, 8)),
+      Json::Int(bind) => Some((get_id(bind)?, 8)),
+      Json::String(bind) => Some((get_id(bind)?, 8)),
+      Json::Array(bind) => Some((get_id(bind)?, 8)),
     }
   }
   /// Generate type name.
   pub fn type_name(&self) -> String {
     match self {
-      Json::LBool(_) => "Literal Bool".to_owned(),
+      Json::LBool(_) => "Bool (Literal)".to_owned(),
+      Json::VBool(AsmBool { name, .. }) => format!("Bool ({})", name.describe()),
       Json::Null => "Null".to_owned(),
-      Json::VBool(_) => "Non-Literal Bool".to_owned(),
       Json::Function(_) => "Function".to_owned(),
       Json::Float(bind) => bind.describe("Float"),
       Json::Object(bind) => bind.describe("Object"),

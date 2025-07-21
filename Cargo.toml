@@ -1,6 +1,6 @@
 [package]
 name = "jsonpiler"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
 documentation = "https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html"

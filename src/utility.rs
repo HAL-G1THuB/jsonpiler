@@ -1,5 +1,7 @@
 //! Implementation for `Jsonpiler` utility functions
-use crate::{Bind, ErrOR, FuncInfo, Json, JsonWithPos, Jsonpiler, Position, ScopeInfo, add, err};
+use crate::{
+  Bind, ErrOR, FuncInfo, Json, JsonWithPos, Jsonpiler, Position, ScopeInfo, add, err, mn,
+};
 use core::mem::take;
 impl Jsonpiler {
   /// Format error with `^` pointing to the error span.
@@ -73,83 +75,75 @@ impl Jsonpiler {
 }
 /// Generates stack string.
 #[expect(dead_code, reason = "")]
-fn gen_stack_string(value: &str, info: &mut ScopeInfo) -> ErrOR<()> {
-  const MOV: &str = "  mov ";
+fn gen_stack_string(value: &str, scope: &mut ScopeInfo) -> ErrOR<()> {
   let mut bytes = value.as_bytes().to_vec();
   bytes.push(0);
   let mut i = 0;
   let total_len = bytes.len();
-  let mut name = info.get_local(total_len)?;
+  let mut name = scope.get_local(total_len)?;
   while i < bytes.len() {
     let remaining = bytes.len().saturating_sub(i);
     if remaining >= 4 {
       let chunk = get_chunk::<4>(&mut bytes, i)?;
       let val = u32::from_le_bytes(chunk);
-      info.body.push(format!("{MOV}dword{name}, 0x{val:08x}\n"));
+      scope.body.push(mn!("mov", format!("dword{name}"), format!("{val:#08x}")));
       i = add(i, 4)?;
-      name.seed = add(name.seed, 4)?;
+      name.id = add(name.id, 4)?;
     } else if remaining >= 2 {
       let chunk = get_chunk::<2>(&mut bytes, i)?;
       let val = u16::from_le_bytes(chunk);
-      info.body.push(format!("{MOV}word{name}, 0x{val:04x}\n"));
+      scope.body.push(mn!("mov", format!("word{name}"), format!("{val:#04x}")));
       i = add(i, 2)?;
-      name.seed = add(name.seed, 2)?;
+      name.id = add(name.id, 2)?;
     } else {
-      let val = bytes.get(i).ok_or("InternalError: `gen_stack_string`")?;
-      info.body.push(format!("{MOV}byte{name}, 0x{val:02x}\n"));
+      let val = bytes[i];
+      scope.body.push(mn!("mov", format!("byte{name}"), format!("{val:#02x}")));
       i = add(i, 1)?;
-      name.seed = add(name.seed, 1)?;
+      name.id = add(name.id, 1)?;
     }
   }
   Ok(())
 }
 /// Utility functions for `gen_stack_string`.
 fn get_chunk<const T: usize>(bytes: &mut [u8], i: usize) -> ErrOR<[u8; T]> {
-  bytes
-    .get(i..add(i, T)?)
-    .ok_or("InternalError: `gen_stack_string`")?
+  bytes[i..add(i, T)?]
     .try_into()
     .map_err(|_err| "InternalError: slice conversion failed in `gen_stack_string`".into())
 }
 /// Get integer string.
-pub(crate) fn get_int_str(int: &Bind<i64>, info: &mut ScopeInfo) -> ErrOR<String> {
+pub(crate) fn get_int_str(int: &Bind<i64>, scope: &mut ScopeInfo) -> ErrOR<String> {
   match int {
     Bind::Lit(l_int) => Ok(l_int.to_string()),
-    Bind::Var(name) => name.try_free_and_2str(info),
+    Bind::Var(name) => name.try_free_and_2str(scope),
   }
 }
-
 /// Call function.
 #[expect(clippy::single_call_fn, reason = "")]
 pub(crate) fn imp_call(func: &str) -> String {
-  mn("call", &[&format!("[qword ptr __imp_{func}[rip]]")])
-}
-/// Write mnemonic.
-pub(crate) fn mn(mne: &str, args: &[&str]) -> String {
-  if args.is_empty() { format!("  {mne}\n") } else { format!("  {mne} {}\n", args.join(", ")) }
+  mn!("call", format!("[qword ptr __imp_{func}[rip]]"))
 }
 /// Begin scope.
 #[expect(clippy::single_call_fn, reason = "")]
-pub(crate) fn scope_begin(tmp: &mut ScopeInfo, info: &mut ScopeInfo) -> ErrOR<()> {
-  info.scope_align = add(info.scope_align, add(info.stack_size, 15)? & !15)?;
-  tmp.body = take(&mut info.body);
-  tmp.free_map = take(&mut info.free_map);
-  tmp.stack_size = take(&mut info.stack_size);
+pub(crate) fn scope_begin(tmp: &mut ScopeInfo, scope: &mut ScopeInfo) -> ErrOR<()> {
+  scope.scope_align = add(scope.scope_align, add(scope.stack_size, 15)? & !15)?;
+  tmp.body = take(&mut scope.body);
+  tmp.free_map = take(&mut scope.free_map);
+  tmp.stack_size = take(&mut scope.stack_size);
   Ok(())
 }
 /// Begin scope.
 #[expect(clippy::single_call_fn, reason = "")]
-pub(crate) fn scope_end(tmp: &mut ScopeInfo, info: &mut ScopeInfo) -> ErrOR<()> {
-  let align = add(info.stack_size, 15)? & !15;
+pub(crate) fn scope_end(tmp: &mut ScopeInfo, scope: &mut ScopeInfo) -> ErrOR<()> {
+  let align = add(scope.stack_size, 15)? & !15;
   if align != 0 {
-    tmp.body.push(mn("sub", &["rsp", &align.to_string()]));
+    tmp.body.push(mn!("sub", "rsp", &align.to_string()));
   }
-  tmp.body.append(&mut info.body);
+  tmp.body.append(&mut scope.body);
   if align != 0 {
-    tmp.body.push(mn("add", &["rsp", &align.to_string()]));
+    tmp.body.push(mn!("add", "rsp", &align.to_string()));
   }
-  info.body = take(&mut tmp.body);
-  info.free_map = take(&mut tmp.free_map);
-  info.stack_size = take(&mut tmp.stack_size);
+  scope.body = take(&mut tmp.body);
+  scope.free_map = take(&mut tmp.free_map);
+  scope.stack_size = take(&mut tmp.stack_size);
   Ok(())
 }

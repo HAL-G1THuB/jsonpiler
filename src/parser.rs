@@ -24,7 +24,7 @@ impl Jsonpiler {
       self.inc()?;
       Ok(())
     } else {
-      err!(self, self.pos, "Expected byte '{}' not found.", char::from(expected))
+      err!(self, self.pos, "Expected character '{}' not found.", char::from(expected))
     }
   }
   /// Advances the position by `n` characters.

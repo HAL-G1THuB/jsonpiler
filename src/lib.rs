@@ -1,3 +1,4 @@
+//! A JSON-based programming language compiler.
 //! (main.rs)
 //! ```
 //! use jsonpiler::run;
@@ -40,30 +41,44 @@ macro_rules! include_once {
     }
   };
 }
+/// Macro to generate mnemonic.
+#[macro_export]
+macro_rules! mn {
+  ($mne:expr) => {format!("  {}\n", $mne)};
+  ($mne:expr, $($arg:expr),+ $(,)?) => {format!("  {} {}\n", $mne, vec![$($arg),+].join(", "))};
+}
+/// Macro to generate mnemonic.
+#[macro_export]
+macro_rules! mn_write {
+  ($dest:expr, $mne:expr) => {writeln!($dest, "  {}", $mne)};
+  ($dest:expr, $mne:expr, $($arg:expr),+ $(,)?) => {
+    writeln!($dest, "  {} {}", $mne, vec![$($arg),+].join(", "))
+  };
+}
 /// Assembly boolean representation.
 #[derive(Clone)]
 struct AsmBool {
   /// bit offset.
   bit: u8,
-  /// Name of function.
+  /// Name of the variable holding the boolean value.
   name: Name,
 }
 /// Assembly function representation.
 #[derive(Clone)]
 struct AsmFunc {
-  /// Name of function.
-  name: usize,
+  /// Unique identifier for the function (used to generate a label).
+  name: Name,
   /// Parameters of function.
   params: Vec<JsonWithPos>,
   /// Return type of function.
   ret: Box<Json>,
 }
-/// Binding.
+/// Represents a value that can be either a literal or a variable.
 #[derive(Clone)]
 enum Bind<T> {
   /// Literal.
   Lit(T),
-  /// Global variable.
+  /// Variable binding.
   Var(Name),
 }
 /// Built-in function.
@@ -71,12 +86,12 @@ enum Bind<T> {
 struct Builtin {
   /// Pointer of function.
   func: JFunc,
-  /// If it is true, function introduces a new scope.
+  /// Whether the function introduces a new scope.
   scoped: bool,
-  /// Should arguments already be evaluated.
+  /// Whether to skip evaluation of arguments before calling the function.
   skip_eval: bool,
 }
-/// Contain `T` or `Box<dyn Error>`.
+/// A type alias for `Result<T, Box<dyn Error>>`.
 type ErrOR<T> = Result<T, Box<dyn Error>>;
 /// Information of arguments.
 #[derive(Clone)]
@@ -88,20 +103,7 @@ struct FuncInfo {
   /// Position of function call.
   pos: Position,
 }
-/// Type of global variable.
-enum GlobalKind {
-  /// BSS variable.
-  Bss,
-  /// Global float.
-  Float,
-  /// Global function.
-  Func,
-  /// Global integer.
-  Int,
-  /// Global string.
-  Str,
-}
-/// Type of built-in function.
+/// A type alias for a built-in function pointer.
 type JFunc = fn(&mut Jsonpiler, FuncInfo, &mut ScopeInfo) -> ErrOR<Json>;
 /// Represents a JSON object with key-value pairs.
 #[derive(Clone, Default)]
@@ -109,7 +111,7 @@ pub(crate) struct JObject {
   /// Stores key-value pairs in the order they were inserted.
   entries: Vec<(String, JsonWithPos)>,
 }
-/// Type and value information.
+/// Represents a JSON value.
 #[derive(Clone, Default)]
 enum Json {
   /// Array.
@@ -120,7 +122,7 @@ enum Json {
   Function(AsmFunc),
   /// Integer.
   Int(Bind<i64>),
-  /// Bool.
+  /// Literal boolean.
   LBool(bool),
   /// Null.
   #[default]
@@ -129,8 +131,7 @@ enum Json {
   Object(Bind<JObject>),
   /// String.
   String(Bind<String>),
-  /// Bool variable.
-  #[expect(dead_code, reason = "todo")]
+  /// Variable boolean.
   VBool(AsmBool),
 }
 /// Json object.
@@ -150,10 +151,12 @@ pub struct Jsonpiler {
   builtin: HashMap<String, Builtin>,
   /// Buffer to store the contents of the data section of the assembly.
   data: Vec<String>,
-  /// Seed to generate names.
-  global_seed: usize,
+  /// Bit-level allocation for bools.
+  global_bool_map: BTreeMap<usize, u8>,
   /// Flag to avoid including the same file twice.
   include_flag: HashSet<String>,
+  /// Internal unique ID.
+  label_id: usize,
   /// Information to be used during parsing.
   pos: Position,
   /// Source code.
@@ -162,14 +165,16 @@ pub struct Jsonpiler {
   str_cache: HashMap<String, usize>,
   /// Buffer to store the contents of the text section of the assembly.
   text: Vec<String>,
-  /// Variable table.
-  vars: Vec<HashMap<String, Json>>,
+  /// Global variable table.
+  vars_global: HashMap<String, Json>,
+  /// Local variable table.
+  vars_local: Vec<HashMap<String, Json>>,
 }
 /// Variable name.
 #[derive(Clone)]
 struct Name {
-  /// Variable seed.
-  seed: usize,
+  /// Variable label.
+  id: usize,
   /// Variable type.
   var: VarKind,
 }
@@ -213,7 +218,7 @@ enum VarKind {
 }
 /// Safe addition.
 fn add(op1: usize, op2: usize) -> ErrOR<usize> {
-  op1.checked_add(op2).ok_or("InternalError: Overflow".into())
+  op1.checked_add(op2).ok_or("InternalError: Overflow occurred".into())
 }
 /// Compiles and executes a JSON-based program using the Jsonpiler.
 /// This function performs the following steps:
@@ -290,7 +295,7 @@ pub fn run() -> ExitCode {
     Err(err) => exit!("Failed to get current directory: {err}"),
   }
   .join(&exe);
-  let exe_status = match Command::new(cwd).args(args.get(2..).unwrap_or(&[])).status() {
+  let exe_status = match Command::new(cwd).args(&args[2..]).status() {
     Ok(status) => status,
     Err(err) => exit!("Failed to execute compiled program: {err}"),
   };
@@ -301,4 +306,8 @@ pub fn run() -> ExitCode {
     exit!("Internal error: Unexpected error in exit code conversion.")
   };
   ExitCode::from(code)
+}
+/// Safe subtraction.
+fn sub(op1: usize, op2: usize) -> ErrOR<usize> {
+  op1.checked_sub(op2).ok_or("InternalError: Underflow occurred".into())
 }

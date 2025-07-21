@@ -4,13 +4,17 @@
 
 - Implement `if` function
 - Implement bitwise operations
-- Support assignment of `bool` type
 - Enables data to be stored in the heap area
 - Allow heap release when exiting scope
 
 ## Released
 
 ### jsonpiler 0.3
+
+### 0.3.4
+
+- Support for `bool` type assignments.
+- Refactor the code to generate assembly instructions and labels in a more maintainable and systematic way.
 
 ### 0.3.3
 
