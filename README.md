@@ -4,9 +4,9 @@
 
 This program converts a JSON-based program to GNU assembly, compiles it, and executes the result.  
 
-[japanese(日本語)](https://github.com/HAL-G1THuB/jsonpiler.git/blob/main/README-ja.md)
+[japanese(日本語)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/README-ja.md)
 
-- [GitHub repository](https://github.com/HAL-G1THuB/jsonpiler.git)  
+- [GitHub repository](https://github.com/HAL-G1THuB/jsonpiler)  
 - [Crates.io](https://crates.io/crates/jsonpiler)  
 - [Docs.rs](https://docs.rs/jsonpiler/latest/jsonpiler)  
 - [Fallback Docs (if docs.rs fails)](https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html)  

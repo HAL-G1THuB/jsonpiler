@@ -7,9 +7,9 @@ Jsonとほぼ同様の文法であるプログラミング言語と、
 このプログラムは、JSONベースのプログラムをGNUアセンブリに変換し、
 さらに実行ファイルにGNU AS、GNU LDを使用して結果を実行します。
 
-[英語(English)](https://github.com/HAL-G1THuB/jsonpiler.git/blob/main/README.md)
+[英語(English)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/README.md)
 
-- [GitHubリポジトリ](https://github.com/HAL-G1THuB/jsonpiler.git)  
+- [GitHubリポジトリ](https://github.com/HAL-G1THuB/jsonpiler)  
 - [Crates.io](https://crates.io/crates/jsonpiler)  
 - [Docs.rs](https://docs.rs/jsonpiler/latest/jsonpiler)  
 - [代替ドキュメント](https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html)  
