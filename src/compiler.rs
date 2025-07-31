@@ -2,9 +2,9 @@
 use super::{
   AsmBool,
   Bind::{Lit, Var},
-  Builtin, ErrOR, FuncInfo, JFunc, Json, JsonWithPos, Jsonpiler, Name, Position, ScopeInfo,
+  Builtin, ErrOR, FuncInfo, JFunc, Json, JsonWithPos, Jsonpiler, Position, ScopeInfo,
   VarKind::Global,
-  add, err, mn, mn_write,
+  Variable, err, mn, mn_write,
   utility::{get_int_str, imp_call, scope_begin, scope_end},
 };
 use core::mem::take;
@@ -14,19 +14,6 @@ use std::{
   io::{self, Write as _},
 };
 impl Jsonpiler {
-  /// Builds the assembly code from the parsed JSON.
-  /// This function is the main entry point for the compilation.
-  /// It takes the parsed JSON, sets up the initial function table,
-  /// evaluates the JSON, and writes the resulting assembly code to a file.
-  /// # Arguments
-  /// * `source` - The JSON string.
-  /// * `json_file` - The name of the original JSON file.
-  /// * `out_file` - The name of the file to write the assembly code to.
-  /// # Returns
-  /// * `Ok(())`
-  /// * `Err(Box<dyn Error>)` - If an error occurred during the compilation.
-  /// # Errors
-  /// * `Box<dyn Error>` - If an error occurred during the compilation.
   #[inline]
   pub fn build(&mut self, source: String, out_file: &str) -> ErrOR<()> {
     let json = self.parse(source)?;
@@ -43,7 +30,10 @@ impl Jsonpiler {
     let result = self.eval(json.value, &mut scope)?;
     let mut writer = io::BufWriter::new(File::create(out_file)?);
     mn_write!(&mut writer, ".intel_syntax", "noprefix")?;
-    writer.write_all(include_bytes!("asm/once/data.s"))?;
+    writer.write_all(
+      format!(include_str!("asm/once/data.s"), msg = include_str!("txt/SEH_HANDLER_MSG.txt"))
+        .as_bytes(),
+    )?;
     for data in &mut self.data {
       writer.write_all(data.as_bytes())?;
     }
@@ -75,7 +65,6 @@ impl Jsonpiler {
     writer.flush()?;
     Ok(())
   }
-  /// Evaluates JSON representation.
   pub(crate) fn eval(&mut self, mut json: Json, scope: &mut ScopeInfo) -> ErrOR<Json> {
     if let Json::Array(Lit(list)) = &mut json {
       Ok(Json::Array(Lit(self.eval_args(take(list), scope)?)))
@@ -112,7 +101,7 @@ impl Jsonpiler {
           scope.body.push(mn!("call", asm_func.name.to_ref()));
           result = if let Json::Int(_) = *asm_func.ret {
             let name = scope.get_tmp(8)?;
-            scope.body.push(mn!("mov", &format!("qword{name}"), "rax"));
+            scope.body.push(mn!("mov", &format!("{name}"), "rax"));
             Json::Int(Var(name))
           } else {
             Json::Null
@@ -126,7 +115,6 @@ impl Jsonpiler {
       Ok(json)
     }
   }
-  /// Evaluate arguments.
   fn eval_args(
     &mut self, mut args: Vec<JsonWithPos>, scope: &mut ScopeInfo,
   ) -> ErrOR<Vec<JsonWithPos>> {
@@ -137,13 +125,12 @@ impl Jsonpiler {
     }
     Ok(args)
   }
-  /// Gets a global boolean.
   pub(crate) fn get_global_bool(&mut self) -> ErrOR<AsmBool> {
-    for (&addr, bits) in &mut self.global_bool_map {
+    for (&id, bits) in &mut self.global_bool_map {
       for bit in 0u8..8u8 {
         if *bits & (1 << bit) == 0 {
           *bits |= 1 << bit;
-          let name = Name { var: Global, id: addr };
+          let name = Variable { kind: Global, id, byte: 1 };
           return Ok(AsmBool { bit, name });
         }
       }
@@ -153,38 +140,33 @@ impl Jsonpiler {
     self.global_bool_map.insert(abs_addr, 0b0000_0001);
     Ok(AsmBool { name, bit: 0 })
   }
-  /// Generates a unique name for internal use.
-  pub(crate) fn get_global_bss(&mut self, value: u8) -> ErrOR<Name> {
+  pub(crate) fn get_global_bss(&mut self, value: u8) -> ErrOR<Variable> {
     let label = self.get_global_label()?;
     self.bss.push(mn!(".lcomm", label.to_ref(), value.to_string()));
     Ok(label)
   }
-  /// Generates a unique name for internal use.
-  pub(crate) fn get_global_float(&mut self, value: u64) -> ErrOR<Name> {
+  pub(crate) fn get_global_float(&mut self, value: u64) -> ErrOR<Variable> {
     let label = self.get_global_label()?;
     self.data.push(mn!(".align", "8"));
     self.data.push(label.to_def());
     self.data.push(mn!(".quad", format!("{value:#x}")));
     Ok(label)
   }
-  /// Generates a unique name for internal use.
-  pub(crate) fn get_global_int(&mut self, value: i64) -> ErrOR<Name> {
+  pub(crate) fn get_global_int(&mut self, value: i64) -> ErrOR<Variable> {
     let label = self.get_global_label()?;
     self.data.push(mn!(".align", "8"));
     self.data.push(label.to_def());
     self.data.push(mn!(".quad", format!("{value:#x}")));
     Ok(label)
   }
-  /// Generates a unique name for internal use.
-  pub(crate) fn get_global_label(&mut self) -> ErrOR<Name> {
+  pub(crate) fn get_global_label(&mut self) -> ErrOR<Variable> {
     let label = self.label_id;
-    self.label_id = add(label, 1)?;
-    Ok(Name { id: label, var: Global })
+    self.label_id = label.checked_add(1).ok_or("InternalError: Overflow occurred")?;
+    Ok(Variable { id: label, kind: Global, byte: 8 })
   }
-  /// Generates a unique name for internal use.
-  pub(crate) fn get_global_str(&mut self, value: &str) -> ErrOR<Name> {
+  pub(crate) fn get_global_str(&mut self, value: &str) -> ErrOR<Variable> {
     if let Some(cached_label) = self.str_cache.get(value) {
-      return Ok(Name { var: Global, id: *cached_label });
+      return Ok(Variable { kind: Global, id: *cached_label, byte: 8 });
     }
     let label = self.get_global_label()?;
     self.str_cache.insert(value.to_owned(), label.id);
@@ -192,7 +174,6 @@ impl Jsonpiler {
     self.data.push(mn!(".string", format!("\"{value}\"")));
     Ok(label)
   }
-  /// Gets variable.
   pub(crate) fn get_var(&self, var_name: &str, pos: &Position) -> ErrOR<Json> {
     for scope in self.vars_local.iter().rev() {
       if let Some(val) = scope.get(var_name) {
@@ -204,7 +185,6 @@ impl Jsonpiler {
     }
     err!(self, pos, "Undefined variables: `{var_name}`")
   }
-  /// Registers a function in the function table.
   pub(crate) fn register(&mut self, name: &str, (scoped, skip_eval): (bool, bool), func: JFunc) {
     self.builtin.insert(name.into(), Builtin { func, scoped, skip_eval });
   }

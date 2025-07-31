@@ -2,7 +2,6 @@
 
 ## Planned
 
-- Implement `if` function
 - Implement bitwise operations
 - Enables data to be stored in the heap area
 - Allow heap release when exiting scope
@@ -10,6 +9,14 @@
 ## Released
 
 ### jsonpiler 0.3
+
+### 0.3.5
+
+- Added new function: `if`
+- Fixed an issue in version 0.1.6 where docs.rs documents were sometimes not generated, and removed alternative documents that were no longer needed.
+- Change space characters around instructions in the generated assembly to tab characters.
+- Removed documentation comments with little content.
+- Added Japanese version to changelog and README.md.
 
 ### 0.3.4
 

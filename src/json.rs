@@ -2,16 +2,16 @@
 use super::{
   AsmBool,
   Bind::{self, Lit, Var},
-  Json, JsonWithPos, Name,
+  Json, JsonWithPos,
   VarKind::Tmp,
+  Variable,
 };
 use core::fmt::{self, Write as _};
 impl Json {
-  /// Determines if it is a temporary value.
-  pub fn tmp(&self) -> Option<(usize, usize)> {
-    fn get_id<T>(bind: &Bind<T>) -> Option<usize> {
+  pub fn tmp(&self) -> Option<(isize, isize)> {
+    fn get_id<T>(bind: &Bind<T>) -> Option<isize> {
       match bind {
-        Var(Name { var: Tmp, id }) => Some(*id),
+        Var(Variable { kind: Tmp, id, .. }) => Some(*id),
         Var(_) | Lit(_) => None,
       }
     }
@@ -24,7 +24,6 @@ impl Json {
       Json::Array(bind) => Some((get_id(bind)?, 8)),
     }
   }
-  /// Generate type name.
   pub fn type_name(&self) -> String {
     match self {
       Json::LBool(_) => "Bool (Literal)".to_owned(),
@@ -40,7 +39,6 @@ impl Json {
   }
 }
 impl fmt::Display for Json {
-  /// Formats the `Json` object as a compact string without indentation.
   #[expect(clippy::min_ident_chars, reason = "default name is 'f'")]
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
@@ -90,7 +88,6 @@ impl fmt::Display for Json {
     }
   }
 }
-/// Escapes special characters in a string for proper JSON formatting.
 pub(crate) fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {
   let mut escaped = String::new();
   escaped.push('"');
@@ -110,7 +107,6 @@ pub(crate) fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {
   escaped.push('"');
   Ok(escaped)
 }
-/// Iterates over a list of `Json` objects and writes them without indentation.
 fn iter_write(list: &[JsonWithPos], out: &mut fmt::Formatter) -> fmt::Result {
   for (i, item) in list.iter().enumerate() {
     if i > 0 {

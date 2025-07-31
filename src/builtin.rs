@@ -1,20 +1,23 @@
 //! Built-in functions.
 use crate::{
-  AsmFunc,
+  AsmBool, AsmFunc,
   Bind::{self, Lit, Var},
-  ErrOR, FuncInfo, Json, JsonWithPos, Jsonpiler, Position, ScopeInfo, add, err, include_once, mn,
+  ErrOR, FuncInfo, Json, JsonWithPos, Jsonpiler, Position, ScopeInfo,
+  VarKind::Tmp,
+  err, include_once, mn,
   utility::get_int_str,
+  warn,
 };
 use core::mem::{replace, take};
 use std::collections::HashMap;
 impl Jsonpiler {
-  /// Registers all functions.
   pub(crate) fn all_register(&mut self) {
     let common = (false, false);
     let special = (false, true);
     let sp_scope = (true, true);
     self.register("lambda", special, Jsonpiler::lambda);
     self.register("scope", sp_scope, Jsonpiler::scope);
+    self.register("if", sp_scope, Jsonpiler::f_if);
     self.register("global", common, Jsonpiler::set_global);
     self.register("=", common, Jsonpiler::set_local);
     self.register("message", common, Jsonpiler::message);
@@ -32,7 +35,6 @@ impl Jsonpiler {
 }
 #[expect(clippy::single_call_fn, clippy::needless_pass_by_value, reason = "")]
 impl Jsonpiler {
-  /// Absolute value.
   fn abs(&mut self, func: FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
     self.validate_args(&func, false, 1)?;
     let json = &func.args[0];
@@ -45,15 +47,78 @@ impl Jsonpiler {
     scope.body.push(mn!("xor", "rax", "rdx"));
     scope.body.push(mn!("sub", "rax", "rdx"));
     let ret = scope.get_tmp(8)?;
-    scope.body.push(mn!("mov", &format!("qword{ret}"), "rax"));
+    scope.body.push(mn!("mov", ret, "rax"));
     Ok(Json::Int(Var(ret)))
   }
-  /// Returns the first argument.
   fn f_eval(&mut self, mut func: FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
     self.validate_args(&func, false, 1)?;
     self.eval(take(&mut func.args[0]).value, scope)
   }
-  /// Evaluates a lambda function definition.
+  fn f_if(&mut self, mut func: FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
+    self.validate_args(&func, true, 1)?;
+    let mut used_true = false;
+    let if_end_label = self.get_global_label()?;
+    for (idx, arg) in func.args.drain(..).enumerate() {
+      if used_true {
+        warn!(
+          self,
+          &arg.pos,
+          "Expressions in clauses following a clause with a literal `true` condition are not evaluated at runtime, but they are still present and parsed."
+        );
+        return Ok(Json::Null);
+      }
+      let Json::Array(Lit(mut condition_then_pair)) = arg.value else {
+        return self.typ_err(idx + 1, &func.name, "Array[Bool, Any] (Literal)", &arg);
+      };
+      if condition_then_pair.len() != 2 {
+        return err!(
+          self,
+          arg.pos,
+          "Each 'if' clause must have exactly two elements: a condition and a then expression."
+        );
+      }
+      let mut cond_jwp = condition_then_pair.remove(0);
+      let mut then_jwp = condition_then_pair.remove(0);
+      cond_jwp.value = self.eval(take(&mut cond_jwp.value), scope)?;
+      let Json::VBool(cond_bool) = cond_jwp.value else {
+        if let Json::LBool(l_bool) = cond_jwp.value {
+          if l_bool {
+            then_jwp.value = self.eval(then_jwp.value, scope)?;
+            if let Some((addr, size)) = then_jwp.value.tmp() {
+              scope.free(addr, size)?;
+            }
+            used_true = true;
+            continue;
+          }
+          warn!(
+            self,
+            then_jwp.pos,
+            "Expressions in clauses with a literal `false` condition are not evaluated at runtime, but they are still passed as arguments to the `if` function."
+          );
+          continue;
+        }
+        return self.typ_err(1, &func.name, "Bool", &cond_jwp);
+      };
+      if used_true {
+        return Ok(Json::Null);
+      }
+      let next_clause_label = self.get_global_label()?;
+      if cond_bool.name.kind == Tmp {
+        scope.free_bool(&cond_bool)?;
+      }
+      scope.body.push(mn!("movzx", "eax", cond_bool.name));
+      scope.body.push(mn!("test", "al", &format!("{:#010b}", 1u8 << cond_bool.bit)));
+      scope.body.push(mn!("jz", next_clause_label.to_ref()));
+      let then_result = self.eval(then_jwp.value, scope)?;
+      if let Some((addr, size)) = then_result.tmp() {
+        scope.free(addr, size)?;
+      }
+      scope.body.push(mn!("jmp", if_end_label.to_ref()));
+      scope.body.push(next_clause_label.to_def());
+    }
+    scope.body.push(if_end_label.to_def());
+    Ok(Json::Null)
+  }
   fn lambda(&mut self, mut func: FuncInfo, _: &mut ScopeInfo) -> ErrOR<Json> {
     self.validate_args(&func, true, 2)?;
     let mut tmp_local_scope = replace(&mut self.vars_local, vec![HashMap::new()]);
@@ -84,7 +149,15 @@ impl Jsonpiler {
     }
     self.text.push(mn!("push", "rbp"));
     self.text.push(mn!(".seh_pushreg", "rbp"));
-    let size = format!("{:#x}", scope.calc_alloc((scope.reg_used.len() % 2).saturating_mul(8))?);
+    let size = format!(
+      "{:#x}",
+      scope.calc_alloc(
+        (scope.reg_used.len() % 2)
+          .saturating_mul(8)
+          .try_into()
+          .map_err(|_| "InternalError: Overflow occurred")?
+      )?
+    );
     self.text.push(format!(include_str!("asm/common/prologue.s"), size = size));
     for body in scope.body {
       self.text.push(body);
@@ -92,7 +165,7 @@ impl Jsonpiler {
     if let Json::Int(int) = &*ret {
       let int_str = match int {
         Lit(l_int) => l_int.to_string(),
-        Var(bind_name) => format!("qword{bind_name}"),
+        Var(bind_name) => format!("{bind_name}"),
       };
       self.text.push(mn!("mov", "rax", &int_str));
     } else {
@@ -109,13 +182,11 @@ impl Jsonpiler {
     self.vars_local = take(&mut tmp_local_scope);
     Ok(Json::Function(AsmFunc { name: func_name, params, ret }))
   }
-  /// Returns the arguments.
   #[expect(clippy::unnecessary_wraps, reason = "")]
   #[expect(clippy::unused_self, reason = "")]
   fn list(&mut self, func: FuncInfo, _: &mut ScopeInfo) -> ErrOR<Json> {
     Ok(Json::Array(Lit(func.args)))
   }
-  /// Displays a message box.
   fn message(&mut self, mut func: FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
     self.validate_args(&func, false, 2)?;
     scope.reg_used.insert("rdi".into());
@@ -148,23 +219,21 @@ impl Jsonpiler {
     ));
     Ok(Json::Int(Var(ret)))
   }
-  /// Utility functions for binary operations.
   fn op(
     &mut self, func: FuncInfo, scope: &mut ScopeInfo, mne: &str, identity_element: usize,
   ) -> ErrOR<Json> {
     if let Some(op_r) = func.args.first() {
-      self.op_mn(op_r, "mov", 1, scope, &func.name)?;
+      self.op_mn(op_r, "mov", 0, scope, &func.name)?;
       for (ord, op_l) in func.args.iter().enumerate().skip(1) {
-        self.op_mn(op_l, mne, add(ord, 1)?, scope, &func.name)?;
+        self.op_mn(op_l, mne, ord, scope, &func.name)?;
       }
     } else {
       scope.body.push(mn!("mov", "rax", &identity_element.to_string()));
     }
     let ret = scope.get_tmp(8)?;
-    scope.body.push(mn!("mov", &format!("qword{ret}"), "rax"));
+    scope.body.push(mn!("mov", ret, "rax"));
     Ok(Json::Int(Var(ret)))
   }
-  /// Performs division.
   fn op_div(&mut self, mut func: FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
     self.validate_args(&func, true, 2)?;
     let json1 = take(&mut func.args[0]);
@@ -175,17 +244,16 @@ impl Jsonpiler {
     scope.body.push(mn!("mov", "rax", &int_str1));
     for (ord, op_l) in func.args.iter().enumerate().skip(1) {
       let Json::Int(int_l) = &op_l.value else {
-        return self.typ_err(add(ord, 1)?, &func.name, "Int", op_l);
+        return self.typ_err(ord, &func.name, "Int", op_l);
       };
       let int_str2 = self.op_nonzero_int_str(int_l, &op_l.pos, scope)?;
       scope.body.push(mn!("cqo"));
       scope.body.push(mn!("idiv", int_str2));
     }
     let ret = scope.get_tmp(8)?;
-    scope.body.push(mn!("mov", &format!("qword{ret}"), "rax"));
+    scope.body.push(mn!("mov", &format!("{ret}"), "rax"));
     Ok(Json::Int(Var(ret)))
   }
-  /// Performs subtraction.
   fn op_minus(&mut self, func: FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
     if let Some(first) = func.args.first() {
       if func.args.len() == 1 {
@@ -194,7 +262,7 @@ impl Jsonpiler {
           scope.body.push(mn!("mov", "rax", &int_str));
           scope.body.push(mn!("neg", "rax"));
           let ret = scope.get_tmp(8)?;
-          scope.body.push(mn!("mov", &format!("qword{ret}"), "rax"));
+          scope.body.push(mn!("mov", &format!("{ret}"), "rax"));
           Ok(Json::Int(Var(ret)))
         } else {
           self.typ_err(1, &func.name, "Int", first)
@@ -204,13 +272,12 @@ impl Jsonpiler {
       }
     } else {
       let ret = scope.get_tmp(8)?;
-      scope.body.push(mn!("mov", &format!("qword{ret}"), "0"));
+      scope.body.push(mn!("mov", ret, "0"));
       Ok(Json::Int(Var(ret)))
     }
   }
-  /// Writes Binary operation mnemonic.
   fn op_mn(
-    &self, json: &JsonWithPos, mne: &str, ord: usize, scope: &mut ScopeInfo, f_name: &str,
+    &self, json: &JsonWithPos, mne: &str, ord0b: usize, scope: &mut ScopeInfo, f_name: &str,
   ) -> ErrOR<()> {
     if let Json::Int(int) = &json.value {
       let int_str = match int {
@@ -226,15 +293,13 @@ impl Jsonpiler {
       };
       scope.body.push(mn!(mne, "rax", &int_str));
     } else {
-      self.typ_err(ord, f_name, "Int", json)?;
+      self.typ_err(ord0b.saturating_add(1), f_name, "Int", json)?;
     }
     Ok(())
   }
-  /// Performs addition.
   fn op_mul(&mut self, func: FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
     self.op(func, scope, "imul", 1)
   }
-  /// Checks zero otherwise gets integer string.
   fn op_nonzero_int_str(
     &mut self, int: &Bind<i64>, pos: &Position, scope: &mut ScopeInfo,
   ) -> ErrOR<String> {
@@ -256,11 +321,9 @@ impl Jsonpiler {
       }
     }
   }
-  /// Performs addition.
   fn op_plus(&mut self, func: FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
     self.op(func, scope, "add", 0)
   }
-  /// Performs remain.
   fn op_rem(&mut self, mut func: FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
     self.validate_args(&func, false, 2)?;
     let json1 = take(&mut func.args[0]);
@@ -277,15 +340,13 @@ impl Jsonpiler {
     scope.body.push(mn!("cqo"));
     scope.body.push(mn!("idiv", int_str2));
     let ret = scope.get_tmp(8)?;
-    scope.body.push(mn!("mov", &format!("qword{ret}"), "rdx"));
+    scope.body.push(mn!("mov", &format!("{ret}"), "rdx"));
     Ok(Json::Int(Var(ret)))
   }
-  /// Returns the first argument without evaluating it.
   fn quote(&mut self, mut func: FuncInfo, _: &mut ScopeInfo) -> ErrOR<Json> {
     self.validate_args(&func, false, 1)?;
     Ok(take(&mut func.args[0]).value)
   }
-  /// Evaluates a `scope` block.
   fn scope(&mut self, mut func: FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
     self.validate_args(&func, true, 1)?;
     let dec_len = func.args.len().saturating_sub(1);
@@ -298,7 +359,6 @@ impl Jsonpiler {
     }
     self.eval(last, scope)
   }
-  /// Sets a variable.
   fn set(&mut self, mut func: FuncInfo, scope: &mut ScopeInfo, is_global: bool) -> ErrOR<Json> {
     self.validate_args(&func, false, 2)?;
     let json1 = take(&mut func.args[0]);
@@ -314,73 +374,63 @@ impl Jsonpiler {
         Json::Function(asm_func)
       }
       Json::String(Lit(st)) => Json::String(Var(self.get_global_str(&st)?)),
-      var @ Json::String(Var(_)) => {
-        if is_global {
-          return err!(self, json2.pos, "Local string cannot be assigned to a global variable.");
-        }
-        var
+      Json::String(Var(_)) if is_global => {
+        return err!(self, json2.pos, "Local string cannot be assigned to a global variable.");
       }
+      var @ Json::String(Var(_)) => var,
       Json::Null => Json::Null,
       Json::Int(Lit(int)) if is_global => Json::Int(Var(self.get_global_int(int)?)),
       Json::Int(Lit(int)) => {
         let name = scope.get_local(8)?;
-        scope.body.push(mn!("mov", format!("qword{name}"), int.to_string()));
+        let int_str = int.to_string();
+        scope.body.push(mn!("mov", name, int_str));
         Json::Int(Var(name))
       }
       Json::Int(int @ Var(_)) => {
         let name = if is_global { self.get_global_bss(8) } else { scope.get_local(8) }?;
         let int_str = get_int_str(&int, scope)?;
-        scope.body.push(mn!("mov", format!("qword{name}"), int_str));
+        scope.body.push(mn!("mov", name, int_str));
         Json::Int(Var(name))
       }
       Json::LBool(l_bool) => {
-        let asm_bool = if is_global { self.get_global_bool() } else { scope.get_bool_local() }?;
-        let bit_mask = 1u8 << asm_bool.bit;
+        let dest_bool = if is_global { self.get_global_bool() } else { scope.get_bool_local() }?;
+        let bit_mask = 1u8 << dest_bool.bit;
         if l_bool {
-          scope.body.push(mn!(
-            "or",
-            format!("byte{}", asm_bool.name),
-            format!("{:#010b}", bit_mask)
-          ));
+          scope.body.push(mn!("or", dest_bool.name, &format!("{bit_mask:#010b}")));
         } else {
-          scope.body.push(mn!(
-            "and",
-            format!("byte{}", asm_bool.name),
-            format!("{:#010b}", !bit_mask)
-          ));
+          scope.body.push(mn!("and", dest_bool.name, &format!("{:#010b}", !bit_mask)));
         }
-        Json::VBool(asm_bool)
+        Json::VBool(dest_bool)
       }
-      Json::VBool(asm_bool) => {
-        let new_asm_bool = if is_global { self.get_global_bool() } else { scope.get_bool_local() }?;
-        let src_name_str = format!("byte{}", asm_bool.name);
-        scope.body.push(mn!("movzx", "eax", &src_name_str));
-        scope.body.push(mn!("and", "al", &format!("{:#010b}", 1u8 << asm_bool.bit)));
-        let dest_name = format!("byte{}", asm_bool.name);
-        let new_bit_mask = 1u8 << new_asm_bool.bit;
+      Json::VBool(AsmBool { name, bit }) => {
+        let dest_bool = if is_global { self.get_global_bool() } else { scope.get_bool_local() }?;
+        scope.body.push(mn!("movzx", "eax", name));
+        scope.body.push(mn!("and", "al", &format!("{:#010b}", 1u8 << bit)));
+        let bit_mask = 1u8 << dest_bool.bit;
         let false_label = self.get_global_label()?;
         let end_label = self.get_global_label()?;
         scope.body.push(mn!("test", "al", "al"));
         scope.body.push(mn!("jz", false_label.to_ref()));
-        scope.body.push(mn!("or", dest_name.as_str(), &format!("{new_bit_mask:#010b}")));
+        scope.body.push(mn!("or", dest_bool.name, &format!("{bit_mask:#010b}")));
         scope.body.push(mn!("jmp", end_label.to_ref()));
         scope.body.push(false_label.to_def());
-        scope.body.push(mn!("and", dest_name.as_str(), &format!("{new_bit_mask:#010b}")));
+        scope.body.push(mn!("and", dest_bool.name, &format!("{:#010b}", !bit_mask)));
         scope.body.push(end_label.to_def());
-        Json::VBool(new_asm_bool)
+        Json::VBool(dest_bool)
       }
       Json::Float(Lit(float)) if is_global => {
-        Json::Int(Var(self.get_global_float(float.to_bits())?))
+        Json::Float(Var(self.get_global_float(float.to_bits())?))
       }
       Json::Float(Lit(float)) => {
         let name = scope.get_local(8)?;
-        scope.body.push(mn!("mov", format!("qword{name}"), format!("{:#x}", float.to_bits())));
-        Json::Int(Var(name))
+        let int_str = format!("{:#x}", float.to_bits());
+        scope.body.push(mn!("mov", name, int_str));
+        Json::Float(Var(name))
       }
       Json::Float(Var(float)) => {
         let name = if is_global { self.get_global_bss(8) } else { scope.get_local(8) }?;
-        scope.body.push(mn!("mov", format!("qword{name}"), format!("qword{float}")));
-        Json::Int(Var(name))
+        scope.body.push(mn!("mov", name, float));
+        Json::Float(Var(name))
       }
       Json::Array(_) | Json::Object(_) => {
         return self.typ_err(
@@ -403,15 +453,12 @@ impl Jsonpiler {
     }
     Ok(Json::Null)
   }
-  /// Sets a global variable.
   fn set_global(&mut self, func: FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
     self.set(func, scope, true)
   }
-  /// Sets a local variable.
   fn set_local(&mut self, func: FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
     self.set(func, scope, false)
   }
-  /// Gets the value of a local variable.
   fn variable(&mut self, func: FuncInfo, _: &mut ScopeInfo) -> ErrOR<Json> {
     self.validate_args(&func, false, 1)?;
     let json1 = &func.args[0];

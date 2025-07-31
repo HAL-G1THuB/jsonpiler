@@ -1,7 +1,6 @@
 //! Implementation of the parser inside the `Jsonpiler`.
 use crate::{Bind::Lit, ErrOR, JObject, Json, JsonWithPos, Jsonpiler, Position, add, err};
 use core::str;
-/// Macro to return if the next character matches the expected one.
 macro_rules! return_if {
   ($self: ident, $ch: expr, $pos: expr, $value: expr) => {
     if $self.peek()? == $ch {
@@ -12,12 +11,10 @@ macro_rules! return_if {
   };
 }
 impl Jsonpiler {
-  /// Advances the position by `num` characters.
   fn advance(&mut self, num: usize) -> ErrOR<()> {
-    self.pos.offset = add(self.pos.offset, num)?;
+    self.pos.offset = add!(self.pos.offset, num)?;
     Ok(())
   }
-  /// Checks if the next character in the input code matches the expected character.
   fn expect(&mut self, expected: u8) -> ErrOR<()> {
     let byte = self.peek()?;
     if byte == expected {
@@ -27,24 +24,14 @@ impl Jsonpiler {
       err!(self, self.pos, "Expected character '{}' not found.", char::from(expected))
     }
   }
-  /// Advances the position by `n` characters.
   fn inc(&mut self) -> ErrOR<()> {
     self.advance(1)
   }
-  /// Advances the current position in the input code and returns the next character.
   fn next(&mut self) -> ErrOR<u8> {
     let byte = self.peek()?;
     self.inc()?;
     Ok(byte)
   }
-  /// Parses the entire input code and returns the resulting `Json` representation.
-  /// # Arguments
-  /// * `code` - The input code to parse.
-  /// # Returns
-  /// * `Ok(Json)` - The parsed `Json` representation.
-  /// * `Err(Box<dyn Error>)` - An error if the input code is invalid.
-  /// # Errors
-  /// * `Box<dyn Error>` - An error if the input code is invalid.
   pub(crate) fn parse(&mut self, code: String) -> ErrOR<JsonWithPos> {
     self.source = code.into_bytes();
     self.pos = Position { offset: 0, line: 1, size: 1 };
@@ -55,7 +42,6 @@ impl Jsonpiler {
       err!(self, "Unexpected trailing characters")
     }
   }
-  /// Parses an array from the input code.
   fn parse_array(&mut self) -> ErrOR<JsonWithPos> {
     let mut start = self.pos.clone();
     let mut array = vec![];
@@ -68,7 +54,6 @@ impl Jsonpiler {
       self.expect(b',')?;
     }
   }
-  /// Parses a specific name and returns a `Json` object with the associated value.
   fn parse_keyword(&mut self, name: &[u8], value: Json) -> ErrOR<JsonWithPos> {
     if self
       .source
@@ -83,7 +68,6 @@ impl Jsonpiler {
       err!(self, self.pos, "Failed to parse '{}'", String::from_utf8_lossy(name))
     }
   }
-  /// Parses a number (integer or float) from the input code.
   fn parse_number(&mut self) -> ErrOR<JsonWithPos> {
     fn push_number(parser: &mut Jsonpiler, num_str: &mut Vec<u8>) -> ErrOR<()> {
       loop {
@@ -141,7 +125,6 @@ impl Jsonpiler {
       )
     }
   }
-  /// Parses an object from the input code.
   fn parse_object(&mut self) -> ErrOR<JsonWithPos> {
     let mut pos = self.pos.clone();
     let mut object = JObject::default();
@@ -161,7 +144,6 @@ impl Jsonpiler {
       self.skip_ws()?;
     }
   }
-  /// Parses a string from the input code.
   fn parse_string(&mut self) -> ErrOR<JsonWithPos> {
     let mut pos = self.pos.clone();
     self.expect(b'"')?;
@@ -216,7 +198,7 @@ impl Jsonpiler {
             _ => return err!(self, "Invalid UTF-8 start byte in string."),
           };
           let Some(slice) =
-            self.source.get(self.pos.offset.saturating_sub(1)..add(self.pos.offset, dec_len)?)
+            self.source.get(self.pos.offset.saturating_sub(1)..add!(self.pos.offset, dec_len)?)
           else {
             break;
           };
@@ -232,7 +214,6 @@ impl Jsonpiler {
     }
     err!(self, "Unterminated string.")
   }
-  /// Parses a value from the input code.
   fn parse_value(&mut self) -> ErrOR<JsonWithPos> {
     self.skip_ws()?;
     let result = match self.peek()? {
@@ -248,7 +229,6 @@ impl Jsonpiler {
     self.skip_ws()?;
     result
   }
-  /// Peek next character.
   fn peek(&self) -> ErrOR<u8> {
     self
       .source
@@ -256,14 +236,13 @@ impl Jsonpiler {
       .copied()
       .ok_or(self.fmt_err("Unexpected EOF.", &self.pos).into())
   }
-  /// Skips whitespace characters in the input code.
   fn skip_ws(&mut self) -> ErrOR<()> {
     while let Ok(ch) = self.peek() {
       if !ch.is_ascii_whitespace() {
         break;
       }
       if ch == b'\n' {
-        self.pos.line = add(self.pos.line, 1)?;
+        self.pos.line = add!(self.pos.line, 1)?;
       }
       self.inc()?;
     }

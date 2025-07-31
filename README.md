@@ -4,6 +4,8 @@
 
 This program converts a JSON-based program to GNU assembly, compiles it, and executes the result.  
 
+[japanese(日本語)](https://github.com/HAL-G1THuB/jsonpiler.git/tree/main/README-ja.md)
+
 - [GitHub repository](https://github.com/HAL-G1THuB/jsonpiler.git)  
 - [Crates.io](https://crates.io/crates/jsonpiler)  
 - [Docs.rs](https://docs.rs/jsonpiler/latest/jsonpiler)  
@@ -13,19 +15,13 @@ This program converts a JSON-based program to GNU assembly, compiles it, and exe
 
 ## What's New
 
-- **Support for `bool` type assignments.**
-
-```json
-{
-  "=": ["a", true],
-  "=": ["b", {"$": "a"}]
-}
-```
-
-- **Refactor the code to generate assembly instructions and labels in a more maintainable and systematic way.**
-- Fixed a bug where memory was not correctly released from the stack when handling scope-based logic.
-- Fixed a situation where the `scope` function ignored the first argument.
-- Removed redundant safety checks
+- **Added new function: `if`**
+- **Fixed an issue in version 0.1.6 where docs.rs documents were sometimes not generated, and removed alternative documents that were no longer needed.**
+- **Change space characters around instructions in the generated assembly to tab characters.**
+- **Removed documentation comments with little content.**
+- **Added Japanese version to changelog and README.md.**
+- Support for `bool` type assignments.
+- Refactor the code to generate assembly instructions and labels in a more maintainable and systematic way.
 
 [Project History and Plans](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
 
@@ -71,7 +67,7 @@ A message box appears with the title (from the variable `"a"`) and the body `"34
 
 The program returns the integer ID of the button pressed in the message box (currently only `1` is supported, which corresponds to `IDOK` in C/C++), as the final value of the `{}` block.
 
-## Error message
+## Error or warning message format
 
 ```json
 { "message": ["title", { "$": "doesn't_exist" }] }
@@ -105,5 +101,5 @@ graph TD
   S[C:\Windows\System32\] --> KERNEL32[kernel32.dll] --> F[file.exe]
   S --> USER32[user32.dll] --> F[file.exe]
   S --> UCRTBASE[ucrtbase.dll] --> F[file.exe]
-  F --> Execution[(Execution)]
+  F --> Exec[(Execution)]
 ```
