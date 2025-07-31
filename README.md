@@ -4,7 +4,7 @@
 
 This program converts a JSON-based program to GNU assembly, compiles it, and executes the result.  
 
-[japanese(日本語)](https://github.com/HAL-G1THuB/jsonpiler.git/tree/main/README-ja.md)
+[japanese(日本語)](https://github.com/HAL-G1THuB/jsonpiler.git/blob/main/README-ja.md)
 
 - [GitHub repository](https://github.com/HAL-G1THuB/jsonpiler.git)  
 - [Crates.io](https://crates.io/crates/jsonpiler)  
@@ -23,7 +23,7 @@ This program converts a JSON-based program to GNU assembly, compiles it, and exe
 - Support for `bool` type assignments.
 - Refactor the code to generate assembly instructions and labels in a more maintainable and systematic way.
 
-[Project History and Plans](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG.md)
+[Project History and Plans](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)
 
 ## Prerequisites
 
@@ -49,7 +49,7 @@ Replace `(input_json_file)` with the actual JSON file you want to compile.
 
 ## Example
 
-[Examples](https://github.com/HAL-G1THuB/jsonpiler/tree/main/examples)
+[Examples](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples)
 
 ```json
 { "=": ["a", "title"], "message": [{"$": "a"}, "345"] }
@@ -83,11 +83,11 @@ Error position:
 
 ## Function Documentation
 
-[Function Reference (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/docs/functions.md)
+[Function Reference (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md)
 
 ## Language Documentation
 
-[Language Reference (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/docs/specification.md)
+[Language Reference (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md)
 
 ## Execution
 

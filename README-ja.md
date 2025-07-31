@@ -7,7 +7,7 @@ Jsonとほぼ同様の文法であるプログラミング言語と、
 このプログラムは、JSONベースのプログラムをGNUアセンブリに変換し、
 さらに実行ファイルにGNU AS、GNU LDを使用して結果を実行します。
 
-[英語(English)](https://github.com/HAL-G1THuB/jsonpiler.git/tree/main/README.md)
+[英語(English)](https://github.com/HAL-G1THuB/jsonpiler.git/blob/main/README.md)
 
 - [GitHubリポジトリ](https://github.com/HAL-G1THuB/jsonpiler.git)  
 - [Crates.io](https://crates.io/crates/jsonpiler)  
@@ -25,7 +25,7 @@ Jsonとほぼ同様の文法であるプログラミング言語と、
 - **変更履歴とREADMEに日本語版を追加。**
 - `bool`型の代入をサポート。
 - より保守的で体系的なアセンブリ命令とラベルの生成方法に変更。
-[プロジェクトの歴史と計画](https://github.com/HAL-G1THuB/jsonpiler/tree/main/CHANGELOG-ja.md)
+[プロジェクトの歴史と計画](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG-ja.md)
 
 ## Prerequisites
 
@@ -51,7 +51,7 @@ jsonpiler (input_json_file (UTF-8)) [arguments of .exe ...]
 
 ## 例
 
-[例](https://github.com/HAL-G1THuB/jsonpiler/tree/main/examples)
+[例](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples)
 
 ```json
 { "=": ["a", "title"], "message": [{"$": "a"}, "345"] }
@@ -85,11 +85,11 @@ Error position:
 
 ## 関数一覧
 
-[関数一覧 (マークダウン)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/docs/functions.md)
+[関数一覧 (マークダウン)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md)
 
 ## 言語仕様
 
-[言語仕様 (マークダウン)](https://github.com/HAL-G1THuB/jsonpiler/tree/main/docs/specification.md)
+[言語仕様 (マークダウン)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md)
 
 ## 実行のイメージ図
 

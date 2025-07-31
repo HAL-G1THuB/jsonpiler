@@ -1,12 +1,12 @@
 # Examples
 
-[Display a message box](https://github.com/HAL-G1THuB/jsonpiler/tree/main/examples/message_box.json)
+[Display a message box](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/message_box.json)
 
 ```json
 { "message": ["Hello", "This is a message box!"] }
 ```
 
-[Arithmetic operations](https://github.com/HAL-G1THuB/jsonpiler/tree/main/examples/arithmetic.json)
+[Arithmetic operations](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/arithmetic.json)
 
 ```json
 {
@@ -15,7 +15,7 @@
 }
 ```
 
-[Scope](https://github.com/HAL-G1THuB/jsonpiler/tree/main/examples/scope.json)
+[Scope](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/scope.json)
 
 ```json
 {
@@ -26,7 +26,7 @@
 }
 ```
 
-[Squaring a number with a global variable](https://github.com/HAL-G1THuB/jsonpiler/tree/main/examples/square_global.json)
+[Squaring a number with a global variable](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/square_global.json)
 
 ```json
 {
