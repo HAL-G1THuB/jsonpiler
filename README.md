@@ -4,7 +4,7 @@
 
 This program converts a JSON-based program to GNU assembly, compiles it, and executes the result.  
 
-[japanese(日本語)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/README-ja.md)
+[Japanese(日本語)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/README-ja.md)
 
 - [GitHub repository](https://github.com/HAL-G1THuB/jsonpiler)  
 - [Crates.io](https://crates.io/crates/jsonpiler)  
@@ -15,13 +15,15 @@ This program converts a JSON-based program to GNU assembly, compiles it, and exe
 
 ## What's New
 
-- **Added new function: `if`**
-- **Fixed an issue in version 0.1.6 where docs.rs documents were sometimes not generated, and removed alternative documents that were no longer needed.**
-- **Change space characters around instructions in the generated assembly to tab characters.**
-- **Removed documentation comments with little content.**
-- **Added Japanese version to changelog and README.md.**
-- Support for `bool` type assignments.
-- Refactor the code to generate assembly instructions and labels in a more maintainable and systematic way.
+- **Added new function: `not`, `xor`, `or`, and `and`.**
+- **The built-in functions have become bloated and have been split into multiple files.**
+- **Changed bool type memory area from 1bit to 1byte due to expected large performance degradation due to instruction bloat**
+- **Intuitive function argument validation**.
+- Added new function: `if`
+- Fixed an issue in version 0.1.6 where docs.rs documents were sometimes not generated, and removed alternative documents that were no longer needed.
+- Change space characters around instructions in the generated assembly to tab characters.
+- Removed documentation comments with little content.
+- Added Japanese version to changelog and README.md.
 
 [Project History and Plans](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)
 

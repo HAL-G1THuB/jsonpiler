@@ -8,7 +8,7 @@
 - `V...` - A non-literal value of type `...`  
 - `"..."` - Zero or more arguments matching the previous pattern  
 
-## `scope`
+## scope
 
 ```json
 {"scope": [{"expr": "Any"}, "...", {"return_value": "Any"}]} -> "Any"
@@ -21,7 +21,7 @@ It evaluates each expression in order and returns the result of the last one.
 { "scope": [{"+": [1, 3]}, 0] } => 0
 ```
 
-## `+`
+## +
 
 ```json
 {"+": [{ "operand": "Int..." }, "..."]} -> "VInt"
@@ -34,7 +34,7 @@ If given zero arguments, it returns the identity element (0).
 { "+": [ 1, 5, ["+", 4, 6]] } => 16
 ```
 
-## `-`
+## -
 
 ```json
 { "-": [{ "operand": "Int..." }, "..."] } -> "VInt"
@@ -48,7 +48,7 @@ If given one argument, invert the sign.
 {"-": [30, 5, {"+": [4, 6]}]} => 15
 ```
 
-## `*`
+## *
 
 ```json
 {"*": [{"operand": "Int..."}, "..."]} -> "VInt"
@@ -61,7 +61,7 @@ If given zero arguments, it returns the identity element (1).
 {"*": [30, 5, {"+":[4, 6]}]} => 1500
 ```
 
-## `/`
+## /
 
 ```json
 {"/": [{"operand": "Int"}, {"operand": "Int"}, "..."]} -> "VInt"
@@ -75,7 +75,7 @@ If the number to divide is zero, an error is generated at runtime or compile tim
 {"/": [30, 5, 6]} => 1
 ```
 
-## `%`
+## %
 
 ```json
 {"%": [{"operand": "Int"}, {"operand": "Int"}]} -> "VInt"
@@ -87,7 +87,7 @@ Returns the result of the remainder operation.
 {"%": [30, 7]} => 2
 ```
 
-## `lambda`
+## lambda
 
 ```json
 {"lambda": [{"params": "empty [] (todo)"}, {"body": "Any"}, "..."]} -> "Function"
@@ -102,7 +102,7 @@ the remaining arguments form the function body and are evaluated when the functi
 {"lambda": [[], {"+": [4, 6]}, 1]}
 ```
 
-## `message`
+## message
 
 ```json
 {"message": [{"title": "String"}, {"text": "String"}]} => 1
@@ -112,7 +112,7 @@ Displays a message box.
 The first argument is the title; the second is the body text.  
 Returns the ID of the button pressed - currently always `1` (equivalent to `IDOK` in C/C++).
 
-## `=`/`global`
+## = / global
 
 ```json
 {"=": [{"variable": "LString"}, {"value": "Any"}]} -> "Null"
@@ -132,7 +132,7 @@ Currently, the following types are **not assignable**:
 
 **Reassignment is not yet implemented.**
 
-## `$`
+## $
 
 ```json
 {"$": {"variable": "LString"}} -> "VAny"
@@ -140,7 +140,7 @@ Currently, the following types are **not assignable**:
 
 Returns the value bound to the given variable name.
 
-## `'`
+## '
 
 ```json
 {"'": {"expr": "Any"}} -> {"unevaluated_expr": "Any"}
@@ -149,7 +149,7 @@ Returns the value bound to the given variable name.
 Returns the expression without evaluating it.
 Can also be used as a comment.
 
-## `eval`
+## eval
 
 ```json
 {"eval": {"expr": "Any"}} -> {"evaluated_expr": "Any"}
@@ -179,6 +179,54 @@ Returns the absolute value of the given integer.
 
 ```json
 {"abs": -5} => 5
+```
+
+## not
+
+```json
+{"not": {"expr": "Bool"}} -> "VBool"
+```
+
+Returns the logical NOT of the given boolean.
+
+```json
+{"not": true} => false
+```
+
+## and
+
+```json
+{"and": [{"arg": "Bool"}, "..."]} -> "VBool"
+```
+
+Returns the logical AND of the given booleans.
+
+```json
+{"and": [true, false]} => false
+```
+
+## or
+
+```json
+{"or": [{"arg": "Bool"}, "..."]} -> "VBool"
+```
+
+Returns the logical OR of the given booleans.
+
+```json
+{"or": [true, false]} => true
+```
+
+## xor
+
+```json
+{"xor": [{"arg": "Bool"}, "..."]} -> "VBool"
+```
+
+Returns the logical OR of the given booleans.
+
+```json
+{"xor": [true, false]} => true
 ```
 
 ## if

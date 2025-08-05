@@ -1,19 +1,55 @@
-//! Implementation for `ScopeInfo`.
 use crate::{
-  AsmBool, ErrOR, ScopeInfo,
+  Bind::Var,
+  ErrOR, Json, Label, ScopeInfo,
   VarKind::{Local, Tmp},
-  Variable, add, sub,
+  add, mn, sub,
 };
-use core::cmp;
+use core::{
+  cmp,
+  mem::{replace, take},
+};
 impl ScopeInfo {
-  pub fn calc_alloc(&self, align: isize) -> Result<isize, &'static str> {
+  pub(crate) fn begin(&mut self) -> ErrOR<ScopeInfo> {
+    let prev_align = self.scope_align;
+    self.scope_align = add!(self.scope_align, align_up(self.stack_size, 16)?)?;
+    Ok(ScopeInfo {
+      body: take(&mut self.body),
+      free_map: take(&mut self.free_map),
+      stack_size: take(&mut self.stack_size),
+      scope_align: prev_align,
+      ..ScopeInfo::default()
+    })
+  }
+  pub fn calc_alloc(&self, align: usize) -> ErrOR<usize> {
     let args_size = self.args_slots.checked_mul(8).ok_or("Overflow: args_slots * 8")?;
     let raw = add!(self.stack_size, args_size)?;
-    let locals = add!(raw, 15)? & !15;
-    let shadow_space = add!(align, 32)?;
-    add!(locals, shadow_space)
+    let locals = align_up(raw, 16)?;
+    let aligned = add!(locals, align)?;
+    let shadow_space = 32;
+    Ok(add!(aligned, shadow_space)?)
   }
-  pub fn free(&mut self, abs_end: isize, mut size: isize) -> ErrOR<()> {
+  pub fn drop_json(&mut self, json: Json) -> ErrOR<()> {
+    if let Some(Label { kind: Tmp, id, size }) = json.get_label() {
+      return self.free(id, size);
+    }
+    Ok(())
+  }
+  pub(crate) fn end(&mut self, tmp: ScopeInfo) -> ErrOR<()> {
+    let align = align_up(self.stack_size, 16)?;
+    let mut scope_body = replace(&mut self.body, tmp.body);
+    if align != 0 {
+      self.body.push(mn!("sub", "rsp", format!("{align:#x}")));
+    }
+    self.body.append(&mut scope_body);
+    if align != 0 {
+      self.body.push(mn!("add", "rsp", format!("{align:#x}")));
+    }
+    self.stack_size = tmp.stack_size;
+    self.scope_align = tmp.scope_align;
+    self.free_map = tmp.free_map;
+    Ok(())
+  }
+  fn free(&mut self, abs_end: usize, mut size: usize) -> ErrOR<()> {
     let end = sub!(abs_end, self.scope_align)?;
     let mut start = sub!(end, size)?;
     if let Some((&prev_start, &prev_size)) = self.free_map.range(..start).next_back() {
@@ -32,78 +68,60 @@ impl ScopeInfo {
     self.free_map.insert(start, size);
     Ok(())
   }
-  pub fn free_bool(&mut self, asm_bool: &AsmBool) -> ErrOR<()> {
-    let abs_end = asm_bool.name.id;
-    let bit = asm_bool.bit;
-    if let Some(bits) = self.bool_map.get_mut(&sub!(abs_end, self.scope_align)?) {
-      *bits &= !(1 << bit);
-      if *bits == 0 {
-        self.bool_map.remove(&abs_end);
-        self.free(abs_end, 1)
-      } else {
-        Ok(())
-      }
-    } else {
-      Err("InternalError: Address not found in bool_map.".into())
-    }
+  pub fn free_if_tmp(&mut self, bind: &Label) -> ErrOR<()> {
+    if bind.kind == Tmp { self.free(bind.id, bind.size) } else { Ok(()) }
   }
-  pub fn get_bool_local(&mut self) -> ErrOR<AsmBool> {
-    let (end, bit) = self.push_bool()?;
-    Ok(AsmBool { name: Variable { kind: Local, id: add!(end, self.scope_align)?, byte: 1 }, bit })
+  pub fn get_local(&mut self, size: usize) -> ErrOR<Label> {
+    Ok(Label { kind: Local, id: add!(self.push(size)?, self.scope_align)?, size })
   }
-  #[expect(dead_code, reason = "todo")]
-  pub fn get_bool_tmp(&mut self) -> ErrOR<AsmBool> {
-    let (end, bit) = self.push_bool()?;
-    Ok(AsmBool { name: Variable { kind: Tmp, id: add!(end, self.scope_align)?, byte: 1 }, bit })
+  pub fn get_tmp(&mut self, size: usize) -> ErrOR<Label> {
+    Ok(Label { kind: Tmp, id: add!(self.push(size)?, self.scope_align)?, size })
   }
-  pub fn get_local(&mut self, byte: isize) -> ErrOR<Variable> {
-    Ok(Variable { kind: Local, id: add!(self.push(byte)?, self.scope_align)?, byte })
+  pub fn mov_tmp(&mut self, reg: &str) -> ErrOR<Label> {
+    let return_value = self.get_tmp(8)?;
+    self.body.push(mn!("mov", return_value, reg));
+    Ok(return_value)
   }
-  pub fn get_tmp(&mut self, byte: isize) -> ErrOR<Variable> {
-    Ok(Variable { kind: Tmp, id: add!(self.push(byte)?, self.scope_align)?, byte })
+  pub fn mov_tmp_bool(&mut self, reg: &str) -> ErrOR<Json> {
+    let return_value = self.get_tmp(1)?;
+    self.body.push(mn!("mov", return_value, reg));
+    Ok(Json::Bool(Var(return_value)))
   }
-  fn push(&mut self, byte: isize) -> ErrOR<isize> {
-    let dec_align = sub!(byte, 1)?;
-    for (&start, &size) in &self.free_map {
-      let aligned_start = add!(start, dec_align)? & !dec_align;
+  fn push(&mut self, size: usize) -> ErrOR<usize> {
+    for (&start, &size2) in &self.free_map {
+      let aligned_start = align_up(start, size)?;
       let padding = sub!(aligned_start, start)?;
-      if size >= add!(padding, byte)? {
+      if size2 >= add!(padding, size)? {
         self.free_map.remove(&start);
         if padding > 0 {
           self.free_map.insert(start, padding);
         }
-        let used_end = add!(aligned_start, byte)?;
-        let tail_size = sub!(add!(start, size)?, used_end)?;
+        let used_end = add!(aligned_start, size)?;
+        let tail_size = sub!(add!(start, size2)?, used_end)?;
         if tail_size > 0 {
           self.free_map.insert(used_end, tail_size);
         }
         return Ok(used_end);
       }
     }
-    let aligned_start = add!(self.stack_size, dec_align)? & !dec_align;
+    let aligned_start = align_up(self.stack_size, size)?;
     if aligned_start > self.stack_size {
       let gap_size = sub!(aligned_start, self.stack_size)?;
       self.free_map.insert(self.stack_size, gap_size);
     }
-    let new_end = add!(aligned_start, byte)?;
+    let new_end = add!(aligned_start, size)?;
     self.stack_size = new_end;
     Ok(new_end)
   }
-  fn push_bool(&mut self) -> ErrOR<(isize, u8)> {
-    for (&addr, bits) in &mut self.bool_map {
-      for i in 0..8 {
-        if *bits & (1 << i) == 0 {
-          *bits |= 1 << i;
-          return Ok((addr, i));
-        }
-      }
-    }
-    let addr = self.push(1)?;
-    self.bool_map.insert(addr, 0b0000_0001);
-    Ok((addr, 0))
-  }
   #[expect(dead_code, reason = "todo")]
-  pub fn update_max(&mut self, size: isize) {
+  pub fn update_max(&mut self, size: usize) {
     self.args_slots = cmp::max(self.args_slots, size);
   }
+  pub fn use_reg(&mut self, reg: &str) {
+    self.reg_used.insert(reg.to_owned());
+  }
+}
+fn align_up(num: usize, align: usize) -> ErrOR<usize> {
+  let dec_align = sub!(align, 1)?;
+  Ok(add!(num, dec_align)? & !dec_align)
 }

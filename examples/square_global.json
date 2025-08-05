@@ -3,7 +3,7 @@
   "=": [
     "square_n",
     {
-      "'": "This function returns 25.",
+      "message": ["", "This function returns 25."],
       "lambda": [
         [],
         {

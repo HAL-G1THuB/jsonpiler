@@ -1,33 +1,31 @@
-//! Implementation of the `Json`.
 use super::{
-  AsmBool,
-  Bind::{self, Lit, Var},
-  Json, JsonWithPos,
-  VarKind::Tmp,
-  Variable,
+  AsmFunc,
+  Bind::{Lit, Var},
+  Json, Label, WithPos,
 };
 use core::fmt::{self, Write as _};
 impl Json {
-  pub fn tmp(&self) -> Option<(isize, isize)> {
-    fn get_id<T>(bind: &Bind<T>) -> Option<isize> {
-      match bind {
-        Var(Variable { kind: Tmp, id, .. }) => Some(*id),
-        Var(_) | Lit(_) => None,
-      }
-    }
+  pub fn get_label(self) -> Option<Label> {
     match self {
-      Json::LBool(_) | Json::Null | Json::VBool(_) | Json::Function(_) => None,
-      Json::Object(bind) => Some((get_id(bind)?, 8)),
-      Json::Float(bind) => Some((get_id(bind)?, 8)),
-      Json::Int(bind) => Some((get_id(bind)?, 8)),
-      Json::String(bind) => Some((get_id(bind)?, 8)),
-      Json::Array(bind) => Some((get_id(bind)?, 8)),
+      Json::Int(Var(label))
+      | Json::Float(Var(label))
+      | Json::String(Var(label))
+      | Json::Bool(Var(label))
+      | Json::Array(Var(label))
+      | Json::Object(Var(label))
+      | Json::Function(AsmFunc { label, .. }) => Some(label),
+      Json::Array(_)
+      | Json::Bool(_)
+      | Json::Float(_)
+      | Json::Int(_)
+      | Json::Null
+      | Json::Object(_)
+      | Json::String(_) => None,
     }
   }
   pub fn type_name(&self) -> String {
     match self {
-      Json::LBool(_) => "Bool (Literal)".to_owned(),
-      Json::VBool(AsmBool { name, .. }) => format!("Bool ({})", name.describe()),
+      Json::Bool(bind) => bind.describe("Bool"),
       Json::Null => "Null".to_owned(),
       Json::Function(_) => "Function".to_owned(),
       Json::Float(bind) => bind.describe("Float"),
@@ -51,8 +49,10 @@ impl fmt::Display for Json {
         }
         Var(_) => f.write_str(&bind.describe("Array")),
       },
-      Json::LBool(bo) => write!(f, "{bo}"),
-      Json::VBool(_) => write!(f, "Bool"),
+      Json::Bool(bind) => match bind {
+        Lit(l_bool) => write!(f, "{l_bool}"),
+        Var(_) => f.write_str(&bind.describe("Bool")),
+      },
       Json::Int(bind) => match bind {
         Lit(l_int) => write!(f, "{l_int}"),
         Var(_) => f.write_str(&bind.describe("Int")),
@@ -66,7 +66,7 @@ impl fmt::Display for Json {
         Var(_) => f.write_str(&bind.describe("String")),
       },
       Json::Function(asm_func) => {
-        write!(f, "{}(", asm_func.name)?;
+        write!(f, "{}(", asm_func.label)?;
         iter_write(&asm_func.params, f)?;
         write!(f, ") -> ")?;
         (*asm_func.ret).fmt(f)
@@ -78,7 +78,7 @@ impl fmt::Display for Json {
             if i > 0 {
               f.write_str(", ")?;
             }
-            write!(f, "{}: ", escape_string(&key_val.0)?)?;
+            write!(f, "{}: ", escape_string(&key_val.0.value)?)?;
             key_val.1.value.fmt(f)?;
           }
           f.write_str("}")
@@ -107,7 +107,7 @@ pub(crate) fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {
   escaped.push('"');
   Ok(escaped)
 }
-fn iter_write(list: &[JsonWithPos], out: &mut fmt::Formatter) -> fmt::Result {
+fn iter_write(list: &[WithPos<Json>], out: &mut fmt::Formatter) -> fmt::Result {
   for (i, item) in list.iter().enumerate() {
     if i > 0 {
       out.write_str(", ")?;

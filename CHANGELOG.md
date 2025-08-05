@@ -2,15 +2,24 @@
 
 ## Planned
 
-- Implement bitwise operations
 - Enables data to be stored in the heap area
 - Allow heap release when exiting scope
+- Eliminate assignment ambiguity and build ownership systems
 
 ## Released
 
+### jsonpiler 0.4
+
+#### 0.4.0
+
+- Added new function: `not`, `xor`, `or`, and `and`.
+- The built-in functions have become bloated and have been split into multiple files.
+- Changed bool type memory area from 1bit to 1byte due to expected large performance degradation due to instruction bloat
+- Intuitive function argument validation.
+
 ### jsonpiler 0.3
 
-### 0.3.5
+#### 0.3.5
 
 - Added new function: `if`
 - Fixed an issue in version 0.1.6 where docs.rs documents were sometimes not generated, and removed alternative documents that were no longer needed.
@@ -18,12 +27,12 @@
 - Removed documentation comments with little content.
 - Added Japanese version to changelog and README.md.
 
-### 0.3.4
+#### 0.3.4
 
 - Support for `bool` type assignments.
 - Refactor the code to generate assembly instructions and labels in a more maintainable and systematic way.
 
-### 0.3.3
+#### 0.3.3
 
 - Fixed a bug where memory was not correctly released from the stack when handling scope-based logic.
 - Fixed a situation where the `scope` function ignored the first argument.

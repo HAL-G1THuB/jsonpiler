@@ -1,9 +1,8 @@
 [package]
 name = "jsonpiler"
-version = "0.3.5"
+version = "0.4.0"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
-documentation = "https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html"
 license = "Apache-2.0"
 repository = "https://github.com/HAL-G1THub/jsonpiler.git"
 categories = ["compilers"]
@@ -38,3 +37,4 @@ missing_docs_in_private_items = "allow"
 missing_errors_doc = "allow"
 arithmetic_side_effects = "allow"
 map_err_ignore = "allow"
+self_named_module_files = "allow"

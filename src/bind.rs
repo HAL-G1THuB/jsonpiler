@@ -1,4 +1,3 @@
-//! Implementation for `Bind`.
 use crate::Bind::{self, Lit, Var};
 impl<T> Bind<T> {
   pub(crate) fn describe(&self, ty: &str) -> String {
@@ -6,7 +5,7 @@ impl<T> Bind<T> {
       "{ty} ({})",
       match self {
         Lit(_) => "Literal",
-        Var(name) => name.describe(),
+        Var(label) => label.describe(),
       }
     )
   }

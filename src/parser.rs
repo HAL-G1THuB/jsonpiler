@@ -1,12 +1,11 @@
-//! Implementation of the parser inside the `Jsonpiler`.
-use crate::{Bind::Lit, ErrOR, JObject, Json, JsonWithPos, Jsonpiler, Position, add, err};
+use crate::{Bind::Lit, ErrOR, Json, Jsonpiler, Position, WithPos, add, err};
 use core::str;
 macro_rules! return_if {
   ($self: ident, $ch: expr, $pos: expr, $value: expr) => {
     if $self.peek()? == $ch {
       $self.inc()?;
       $pos.size = $self.pos.offset.saturating_sub($pos.offset);
-      return Ok(JsonWithPos { pos: $pos, value: $value });
+      return Ok(WithPos { pos: $pos, value: $value });
     }
   };
 }
@@ -32,7 +31,7 @@ impl Jsonpiler {
     self.inc()?;
     Ok(byte)
   }
-  pub(crate) fn parse(&mut self, code: String) -> ErrOR<JsonWithPos> {
+  pub(crate) fn parse(&mut self, code: String) -> ErrOR<WithPos<Json>> {
     self.source = code.into_bytes();
     self.pos = Position { offset: 0, line: 1, size: 1 };
     let result = self.parse_value()?;
@@ -42,7 +41,7 @@ impl Jsonpiler {
       err!(self, "Unexpected trailing characters")
     }
   }
-  fn parse_array(&mut self) -> ErrOR<JsonWithPos> {
+  fn parse_array(&mut self) -> ErrOR<WithPos<Json>> {
     let mut start = self.pos.clone();
     let mut array = vec![];
     self.expect(b'[')?;
@@ -54,21 +53,21 @@ impl Jsonpiler {
       self.expect(b',')?;
     }
   }
-  fn parse_keyword(&mut self, name: &[u8], value: Json) -> ErrOR<JsonWithPos> {
+  fn parse_keyword(&mut self, keyword: &[u8], value: Json) -> ErrOR<WithPos<Json>> {
     if self
       .source
       .get(self.pos.offset..)
       .ok_or(self.fmt_err("Unexpected EOF.", &self.pos))?
-      .starts_with(name)
+      .starts_with(keyword)
     {
-      let pos = Position { size: name.len(), ..self.pos };
-      self.advance(name.len())?;
-      Ok(JsonWithPos { pos, value })
+      let pos = Position { size: keyword.len(), ..self.pos };
+      self.advance(keyword.len())?;
+      Ok(WithPos { pos, value })
     } else {
-      err!(self, self.pos, "Failed to parse '{}'", String::from_utf8_lossy(name))
+      err!(self, self.pos, "Failed to parse '{}'", String::from_utf8_lossy(keyword))
     }
   }
-  fn parse_number(&mut self) -> ErrOR<JsonWithPos> {
+  fn parse_number(&mut self) -> ErrOR<WithPos<Json>> {
     fn push_number(parser: &mut Jsonpiler, num_str: &mut Vec<u8>) -> ErrOR<()> {
       loop {
         let ch = parser.peek()?;
@@ -116,35 +115,34 @@ impl Jsonpiler {
     if is_float {
       str::from_utf8(&num_str)?.parse::<f64>().map_or_else(
         |_| err!(self, "Invalid numeric value."),
-        |float| Ok(JsonWithPos { pos, value: Json::Float(Lit(float)) }),
+        |float| Ok(WithPos { pos, value: Json::Float(Lit(float)) }),
       )
     } else {
       str::from_utf8(&num_str)?.parse::<i64>().map_or_else(
         |_| err!(self, "Invalid numeric value."),
-        |int| Ok(JsonWithPos { pos, value: Json::Int(Lit(int)) }),
+        |int| Ok(WithPos { pos, value: Json::Int(Lit(int)) }),
       )
     }
   }
-  fn parse_object(&mut self) -> ErrOR<JsonWithPos> {
+  fn parse_object(&mut self) -> ErrOR<WithPos<Json>> {
     let mut pos = self.pos.clone();
-    let mut object = JObject::default();
+    let mut object = vec![];
     self.expect(b'{')?;
     self.skip_ws()?;
     return_if!(self, b'}', pos, Json::Object(Lit(object)));
     loop {
-      let key = self.parse_string()?;
+      let key = self.parse_value()?;
       let Json::String(Lit(string)) = key.value else {
         return err!(self, &key.pos, "Keys must be strings.");
       };
-      self.skip_ws()?;
       self.expect(b':')?;
-      object.insert(string, self.parse_value()?);
+      object.push((WithPos { value: string, pos: key.pos }, self.parse_value()?));
       return_if!(self, b'}', pos, Json::Object(Lit(object)));
       self.expect(b',')?;
       self.skip_ws()?;
     }
   }
-  fn parse_string(&mut self) -> ErrOR<JsonWithPos> {
+  fn parse_string(&mut self) -> ErrOR<WithPos<Json>> {
     let mut pos = self.pos.clone();
     self.expect(b'"')?;
     let mut result = String::new();
@@ -152,7 +150,7 @@ impl Jsonpiler {
       match byte {
         b'"' => {
           pos.size = self.pos.offset.saturating_sub(pos.offset);
-          return Ok(JsonWithPos { pos, value: Json::String(Lit(result)) });
+          return Ok(WithPos { pos, value: Json::String(Lit(result)) });
         }
         b'\\' => {
           let esc = self.next()?;
@@ -214,14 +212,14 @@ impl Jsonpiler {
     }
     err!(self, "Unterminated string.")
   }
-  fn parse_value(&mut self) -> ErrOR<JsonWithPos> {
+  fn parse_value(&mut self) -> ErrOR<WithPos<Json>> {
     self.skip_ws()?;
     let result = match self.peek()? {
       b'"' => self.parse_string(),
       b'{' => self.parse_object(),
       b'[' => self.parse_array(),
-      b't' => self.parse_keyword(b"true", Json::LBool(true)),
-      b'f' => self.parse_keyword(b"false", Json::LBool(false)),
+      b't' => self.parse_keyword(b"true", Json::Bool(Lit(true))),
+      b'f' => self.parse_keyword(b"false", Json::Bool(Lit(false))),
       b'n' => self.parse_keyword(b"null", Json::Null),
       b'0'..=b'9' | b'-' => self.parse_number(),
       _ => err!(self, "Expected a json value, but an unknown value was passed."),

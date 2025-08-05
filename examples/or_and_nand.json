@@ -1,0 +1,48 @@
+{
+  "=": ["true", true],
+  "=": ["false", false],
+  "message": [
+    "",
+    "This program performs or, and, and nand operations on two arguments: true and false."
+  ],
+  "message": [
+    "",
+    "If each operation evaluates to true, a message box displaying the name of the operation is shown."
+  ],
+  "message": [
+    "",
+    "Therefore, message boxes labeled `or` and `nand` will be displayed."
+  ],
+  "if": [
+    [
+      {
+        "or": [{ "$": "false" }, { "$": "true" }]
+      },
+      {
+        "message": ["", "or"]
+      }
+    ]
+  ],
+  "if": [
+    [
+      {
+        "and": [{ "$": "false" }, { "$": "true" }]
+      },
+      {
+        "message": ["", "and"]
+      }
+    ]
+  ],
+  "if": [
+    [
+      {
+        "not": {
+          "and": [{ "$": "false" }, { "$": "true" }]
+        }
+      },
+      {
+        "message": ["", "nand"]
+      }
+    ]
+  ]
+}
