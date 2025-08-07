@@ -1,9 +1,10 @@
 use crate::{
   ArgLen::{self, Any, AtLeast, AtMost, Exactly, NoArgs, Range, SomeArg},
-  ErrOR, FuncInfo, Json, Jsonpiler, Position, WithPos, err,
+  ErrOR, FuncInfo, Json, Parser, Position, WithPos, parse_err,
 };
-impl Jsonpiler {
+impl Parser {
   #[must_use]
+  // No risk of overflow
   pub(crate) fn fmt_err(&self, err: &str, pos: &Position) -> String {
     let gen_err = |msg: &str| -> String {
       format!("{err}\nError occurred on line: {}\nError position:\n{msg}", pos.line)
@@ -13,12 +14,12 @@ impl Jsonpiler {
     }
     let len = self.source.len();
     let index = pos.offset.min(len);
-    let start = (0..index).rfind(|&i| self.source[i] == b'\n').map_or(0, |st| st.saturating_add(1));
+    let start = (0..index).rfind(|&i| self.source[i] == b'\n').map_or(0, |st| st + 1);
     let end = (index..len).find(|&i| self.source[i] == b'\n').unwrap_or(len);
     let line = &self.source[start..end];
     let line_str = String::from_utf8_lossy(line);
-    let caret_start = index.saturating_sub(start);
-    let caret_len = pos.size.max(1).min(end.saturating_sub(index));
+    let caret_start = index - start;
+    let caret_len = pos.size.max(1).min(end - index);
     let ws = " ".repeat(caret_start);
     let carets = "^".repeat(caret_len);
     gen_err(&format!("{line_str}\n{ws}{carets}"))
@@ -36,7 +37,7 @@ impl Jsonpiler {
       },
     };
     let typ = json.value.type_name();
-    err!(
+    parse_err!(
       self,
       &json.pos,
       "The {ord}{suffix} argument to `{name}` must be of \
@@ -48,7 +49,7 @@ impl Jsonpiler {
     let fmt_require = |text: &str, count_desc: String| -> ErrOR<()> {
       let plural = if supplied == 1 { "" } else { "s" };
       let be = if supplied == 1 { "is" } else { "are" };
-      err!(
+      parse_err!(
         self,
         func.pos,
         "`{}` requires {text} {count_desc}, but {supplied} argument{plural} {be} supplied.",

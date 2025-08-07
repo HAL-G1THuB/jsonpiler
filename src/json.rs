@@ -91,18 +91,31 @@ impl fmt::Display for Json {
 pub(crate) fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {
   let mut escaped = String::new();
   escaped.push('"');
-  for ch in unescaped.chars() {
-    match ch {
-      '"' => write!(escaped, r#"\""#)?,
-      '\\' => write!(escaped, r"\\")?,
-      '\n' => write!(escaped, r"\n")?,
-      '\t' => write!(escaped, r"\t")?,
-      '\r' => write!(escaped, r"\r")?,
-      '\u{08}' => write!(escaped, r"\b")?,
-      '\u{0C}' => write!(escaped, r"\f")?,
-      u_ch if u_ch < '\u{20}' => write!(escaped, r"\u{:04x}", u32::from(ch))?,
-      _ => escaped.push(ch),
+  let mut chars = unescaped.chars().peekable();
+  let mut bytes = Vec::new();
+  while let Some(char) = chars.next() {
+    if char == '\\' {
+      let mut oct_digits = String::new();
+      for _ in 0u8..3u8 {
+        match chars.next() {
+          Some(digit @ '0'..='7') => oct_digits.push(digit),
+          Some(ch) => {
+            escaped.push('\\');
+            escaped.push(ch);
+            break;
+          }
+          None => return Err(fmt::Error),
+        }
+      }
+      let byte = u8::from_str_radix(&oct_digits, 8).map_err(|_| fmt::Error)?;
+      bytes.push(byte);
+    } else {
+      return Err(fmt::Error);
     }
+  }
+  let utf8_str = str::from_utf8(&bytes).map_err(|_| fmt::Error)?;
+  for ch in utf8_str.chars() {
+    write!(escaped, "\\u{:04X}", u32::from(ch))?;
   }
   escaped.push('"');
   Ok(escaped)

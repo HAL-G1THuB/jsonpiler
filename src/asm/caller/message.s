@@ -12,7 +12,15 @@
 	test	rax,	rax
 	jz	.L__WIN_HANDLER
 	mov	{ret},	rax
-	mov	rcx,	rdi
-	call	[qword	ptr	__imp_free[rip]]
-	mov	rcx,	rsi
-	call	[qword	ptr	__imp_free[rip]]
+	mov	rcx,	[qword	ptr	.L__HEAP[rip]]
+	xor	edx,	edx
+	mov	r8,	rdi
+	call	[qword	ptr	__imp_HeapFree[rip]]
+	test	rax,	rax
+	jz	.L__WIN_HANDLER
+	mov	rcx,	[qword	ptr	.L__HEAP[rip]]
+	xor	edx,	edx
+	mov	r8,	rsi
+	call	[qword	ptr	__imp_HeapFree[rip]]
+	test	rax,	rax
+	jz	.L__WIN_HANDLER

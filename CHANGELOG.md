@@ -10,6 +10,16 @@
 
 ### jsonpiler 0.4
 
+#### 0.4.1
+
+- Limiting input files to 1 GB or less eliminates unnecessary safety checks in the parser and speeds up the process.
+- Changed the way assembly instructions are stored, improving processing speed and memory efficiency.
+- Eliminated dependence on c functions (malloc, free), making `ucrtbase.dll` unnecessary.
+- Split the documentation of built-in functions into several files because they became bloated.
+- The timing of releasing a temporary value passed as an argument of a function not bound to a variable is now fixed at the end of the function. (Exception: the last temporary value of the body of `if` is released.)
+- The argument format of `if`, `scope`, and `lambda` has been changed.
+- A new function `value` has been added. This function returns the given evaluated value as-is and is used to add a literal to the end of an Object's instruction sequence.
+
 #### 0.4.0
 
 - Added new function: `not`, `xor`, `or`, and `and`.

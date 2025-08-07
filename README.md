@@ -9,21 +9,22 @@ This program converts a JSON-based program to GNU assembly, compiles it, and exe
 - [GitHub repository](https://github.com/HAL-G1THuB/jsonpiler)  
 - [Crates.io](https://crates.io/crates/jsonpiler)  
 - [Docs.rs](https://docs.rs/jsonpiler/latest/jsonpiler)  
-- [Fallback Docs (if docs.rs fails)](https://hal-g1thub.github.io/jsonpiler-doc/jsonpiler/index.html)  
 - [AI-generated Docs ![badge](https://deepwiki.com/badge.svg)](https://deepwiki.com/HAL-G1THuB/jsonpiler)  
 🚨 **This program only runs on Windows (x64)!** 🚨
 
 ## What's New
 
-- **Added new function: `not`, `xor`, `or`, and `and`.**
-- **The built-in functions have become bloated and have been split into multiple files.**
-- **Changed bool type memory area from 1bit to 1byte due to expected large performance degradation due to instruction bloat**
-- **Intuitive function argument validation**.
-- Added new function: `if`
-- Fixed an issue in version 0.1.6 where docs.rs documents were sometimes not generated, and removed alternative documents that were no longer needed.
-- Change space characters around instructions in the generated assembly to tab characters.
-- Removed documentation comments with little content.
-- Added Japanese version to changelog and README.md.
+- **Limiting input files to 1 GB or less eliminates unnecessary safety checks in the parser and speeds up the process.**
+- **Changed the way assembly instructions are stored, improving processing speed and memory efficiency.**
+- **Eliminated dependence on c functions (malloc, free), making `ucrtbase.dll` unnecessary.**
+- **Split the documentation of built-in functions into several files because they became bloated.**
+- **The timing of releasing a temporary value passed as an argument of a function not bound to a variable is now fixed at the end of the function. (Exception: the last temporary value of the body of `if` is released.)**
+- **The argument format of `if`, `scope`, and `lambda` has been changed.**
+- **A new function `value` has been added. This function returns the given evaluated value as-is and is used to add a literal to the end of an Object's instruction sequence.**
+- Added new function: `not`, `xor`, `or`, and `and`.
+- The built-in functions have become bloated and have been split into multiple files.
+- Changed bool type memory area from 1bit to 1byte due to expected large performance degradation due to instruction bloat
+- Intuitive function argument validation.
 
 [Project History and Plans](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)
 
@@ -38,7 +39,6 @@ This program converts a JSON-based program to GNU assembly, compiles it, and exe
 
 - `kernel32.dll`  
 - `user32.dll`  
-- `ucrtbase.dll`  
 
 ## Installation & Usage
 
@@ -100,8 +100,7 @@ graph TD
   C -->|Compile| D[file.s]
   D --> |Assembling with GNU AS| E[file.obj]
   E --> |Linking with GNU LD| F[file.exe]
-  S[C:\Windows\System32\] --> KERNEL32[kernel32.dll] --> F[file.exe]
-  S --> USER32[user32.dll] --> F[file.exe]
-  S --> UCRTBASE[ucrtbase.dll] --> F[file.exe]
+  S[C:\Windows\System32\] --> KERNEL32[kernel32.dll] --> F
+  S --> USER32[user32.dll] --> F
   F --> Exec[(Execution)]
 ```

@@ -27,6 +27,7 @@ Windows only.
 */
 mod bind;
 mod builtin;
+mod compile_context;
 mod err_msg;
 mod func_info;
 mod json;
@@ -35,8 +36,13 @@ mod macros;
 mod parser;
 mod scope_info;
 mod utility;
+use compile_context::CompileContext;
 use core::error::Error;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::{
+  collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
+  fs::File,
+  io::BufWriter,
+};
 #[derive(Debug, Copy, Clone)]
 enum ArgLen {
   Any,
@@ -61,22 +67,24 @@ enum Bind<T> {
   Lit(T),
   Var(Label),
 }
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Builtin {
   arg_len: ArgLen,
   func: JFunc,
   scoped: bool,
   skip_eval: bool,
 }
+
 type ErrOR<T> = Result<T, Box<dyn Error>>;
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct FuncInfo {
   args: VecDeque<WithPos<Json>>,
+  free_list: Vec<Label>,
   len: usize,
   name: String,
   pos: Position,
 }
-type JFunc = fn(&mut Jsonpiler, FuncInfo, &mut ScopeInfo) -> ErrOR<Json>;
+type JFunc = fn(&mut Jsonpiler, &mut FuncInfo, &mut ScopeInfo) -> ErrOR<Json>;
 #[derive(Debug, Clone, Default)]
 enum Json {
   Array(Bind<Vec<WithPos<Json>>>),
@@ -89,39 +97,41 @@ enum Json {
   Object(Bind<Vec<(WithPos<String>, WithPos<Json>)>>),
   String(Bind<String>),
 }
-#[derive(Debug, Clone, Default)]
+#[derive(Debug)]
 #[doc(hidden)]
 pub struct Jsonpiler {
-  bss: Vec<String>,
+  bss: Vec<(usize, usize)>,
   builtin: HashMap<String, Builtin>,
-  data: Vec<String>,
-  include_flag: HashSet<String>,
-  label_id: usize,
-  pos: Position,
-  source: Vec<u8>,
-  str_cache: HashMap<String, usize>,
+  ctx: CompileContext,
+  data: BufWriter<File>,
+  globals: HashMap<String, Json>,
+  parser: Parser,
   text: Vec<String>,
-  vars_global: HashMap<String, Json>,
-  vars_local: Vec<HashMap<String, Json>>,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 struct Label {
   id: usize,
   kind: VarKind,
   size: usize,
 }
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
+struct Parser {
+  pos: Position,
+  source: Vec<u8>,
+}
+#[derive(Debug, Copy, Clone, Default)]
 struct Position {
   line: usize,
   offset: usize,
   size: usize,
 }
-#[derive(Debug, Clone, Default)]
+#[derive(Debug)]
 struct ScopeInfo {
+  alloc_map: BTreeMap<usize, usize>,
   args_slots: usize,
   body: Vec<String>,
-  free_map: BTreeMap<usize, usize>,
-  reg_used: HashSet<String>,
+  locals: Vec<HashMap<String, Json>>,
+  reg_used: BTreeSet<String>,
   scope_align: usize,
   stack_size: usize,
 }

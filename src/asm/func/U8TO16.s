@@ -22,8 +22,10 @@
 	jz	.L__WIN_HANDLER
 	shl	rax,	1
 	mov	rsi,	rax
-	mov	rcx,	rsi
-	call	[qword	ptr	__imp_malloc[rip]]
+	mov	rcx,	[qword	ptr	.L__HEAP[rip]]
+	xor	edx,	edx
+	mov	r8,	rsi
+	call	[qword	ptr	__imp_HeapAlloc[rip]]
 	mov	rbx,	rax
 	mov	ecx,	65001
 	xor	edx,	edx

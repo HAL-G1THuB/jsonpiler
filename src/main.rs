@@ -22,17 +22,26 @@ fn main() -> ExitCode {
   let Some(input_file) = args.get(1) else {
     exit!("Usage: {program_name} <input_json_file> [args for .exe]")
   };
-  let source = match fs::read_to_string(input_file) {
+  let metadata = match fs::metadata(input_file) {
+    Ok(metadata) => metadata,
+    Err(err) => exit!("Failed to get the file size of `{input_file}`: {err}"),
+  };
+  if metadata.len() > 1 << 30u8 {
+    exit!("Input file size exceeds 1GB. Please provide a smaller file.");
+  }
+  let source = match fs::read(input_file) {
     Ok(content) => content,
     Err(err) => exit!("Failed to read `{input_file}`: {err}"),
   };
-  let mut jsonpiler = Jsonpiler::default();
   let file = Path::new(input_file);
   let with_ext = |ext: &str| -> String { file.with_extension(ext).to_string_lossy().to_string() };
   let asm = with_ext("s");
   let obj = with_ext("obj");
   let exe = with_ext("exe");
-  if let Err(err) = jsonpiler.build(source, &asm) {
+  let Ok(mut jsonpiler) = Jsonpiler::setup(source, &asm) else {
+    exit!("Can't create File `{asm}`");
+  };
+  if let Err(err) = jsonpiler.run() {
     exit!("Compilation error: {err}");
   }
   invoke!("as", &[&asm, "-o", &obj], "assembler");
@@ -42,7 +51,7 @@ fn main() -> ExitCode {
   }
   invoke!(
     "ld",
-    [&obj, "-o", &exe, "-LC:/Windows/System32", "-luser32", "-lkernel32", "-lucrtbase", "-emain"],
+    [&obj, "-o", &exe, "-LC:/Windows/System32", "-luser32", "-lkernel32", "-emain"],
     "linker"
   );
   if let Err(err) = fs::remove_file(&obj) {

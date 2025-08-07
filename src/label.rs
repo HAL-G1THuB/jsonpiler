@@ -1,5 +1,5 @@
 use crate::{
-  ErrOR, Label, ScopeInfo,
+  FuncInfo, Label,
   VarKind::{Global, Local, Tmp},
 };
 use core::fmt::{self, Display};
@@ -11,15 +11,15 @@ impl Label {
       Global => "Global variable",
     }
   }
-  pub(crate) fn to_def(&self) -> String {
+  pub(crate) fn sched_free_2str(&self, scope: &mut FuncInfo) -> String {
+    scope.sched_free_tmp(self);
+    format!("{self}")
+  }
+  pub(crate) fn to_def(self) -> String {
     format!(".L{:x}:\n", self.id)
   }
-  pub(crate) fn to_ref(&self) -> String {
+  pub(crate) fn to_ref(self) -> String {
     format!(".L{:x}", self.id)
-  }
-  pub(crate) fn try_free_and_2str(&self, scope: &mut ScopeInfo) -> ErrOR<String> {
-    scope.free_if_tmp(self)?;
-    Ok(format!("{self}"))
   }
 }
 impl Display for Label {

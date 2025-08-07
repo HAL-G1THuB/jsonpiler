@@ -8,16 +8,18 @@ use core::{
   cmp,
   mem::{replace, take},
 };
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 impl ScopeInfo {
   pub(crate) fn begin(&mut self) -> ErrOR<ScopeInfo> {
     let prev_align = self.scope_align;
     self.scope_align = add!(self.scope_align, align_up(self.stack_size, 16)?)?;
+    self.locals.push(HashMap::new());
     Ok(ScopeInfo {
       body: take(&mut self.body),
-      free_map: take(&mut self.free_map),
+      alloc_map: take(&mut self.alloc_map),
       stack_size: take(&mut self.stack_size),
       scope_align: prev_align,
-      ..ScopeInfo::default()
+      ..ScopeInfo::new()
     })
   }
   pub fn calc_alloc(&self, align: usize) -> ErrOR<usize> {
@@ -29,8 +31,8 @@ impl ScopeInfo {
     Ok(add!(aligned, shadow_space)?)
   }
   pub fn drop_json(&mut self, json: Json) -> ErrOR<()> {
-    if let Some(Label { kind: Tmp, id, size }) = json.get_label() {
-      return self.free(id, size);
+    if let Some(label) = json.get_label() {
+      return self.free(label);
     }
     Ok(())
   }
@@ -46,30 +48,28 @@ impl ScopeInfo {
     }
     self.stack_size = tmp.stack_size;
     self.scope_align = tmp.scope_align;
-    self.free_map = tmp.free_map;
+    self.alloc_map = tmp.alloc_map;
+    self.locals.pop();
     Ok(())
   }
-  fn free(&mut self, abs_end: usize, mut size: usize) -> ErrOR<()> {
-    let end = sub!(abs_end, self.scope_align)?;
-    let mut start = sub!(end, size)?;
-    if let Some((&prev_start, &prev_size)) = self.free_map.range(..start).next_back() {
+  pub(crate) fn free(&mut self, mut label: Label) -> ErrOR<()> {
+    let end = sub!(label.id, self.scope_align)?;
+    let mut start = sub!(end, label.size)?;
+    if let Some((&prev_start, &prev_size)) = self.alloc_map.range(..start).next_back() {
       if add!(prev_start, prev_size)? == start {
-        self.free_map.remove(&prev_start);
+        self.alloc_map.remove(&prev_start);
         start = prev_start;
-        size = add!(size, prev_size)?;
+        label.size = add!(label.size, prev_size)?;
       }
     }
-    if let Some((&next_start, &next_size)) = self.free_map.range(start..).next() {
+    if let Some((&next_start, &next_size)) = self.alloc_map.range(start..).next() {
       if end == next_start {
-        self.free_map.remove(&next_start);
-        size = add!(size, next_size)?;
+        self.alloc_map.remove(&next_start);
+        label.size = add!(label.size, next_size)?;
       }
     }
-    self.free_map.insert(start, size);
+    self.alloc_map.insert(start, label.size);
     Ok(())
-  }
-  pub fn free_if_tmp(&mut self, bind: &Label) -> ErrOR<()> {
-    if bind.kind == Tmp { self.free(bind.id, bind.size) } else { Ok(()) }
   }
   pub fn get_local(&mut self, size: usize) -> ErrOR<Label> {
     Ok(Label { kind: Local, id: add!(self.push(size)?, self.scope_align)?, size })
@@ -87,19 +87,30 @@ impl ScopeInfo {
     self.body.push(mn!("mov", return_value, reg));
     Ok(Json::Bool(Var(return_value)))
   }
+  pub(crate) fn new() -> Self {
+    Self {
+      alloc_map: BTreeMap::new(),
+      args_slots: 0,
+      body: vec![],
+      locals: vec![HashMap::new()],
+      reg_used: BTreeSet::new(),
+      scope_align: 0,
+      stack_size: 0,
+    }
+  }
   fn push(&mut self, size: usize) -> ErrOR<usize> {
-    for (&start, &size2) in &self.free_map {
+    for (&start, &size2) in &self.alloc_map {
       let aligned_start = align_up(start, size)?;
       let padding = sub!(aligned_start, start)?;
       if size2 >= add!(padding, size)? {
-        self.free_map.remove(&start);
+        self.alloc_map.remove(&start);
         if padding > 0 {
-          self.free_map.insert(start, padding);
+          self.alloc_map.insert(start, padding);
         }
         let used_end = add!(aligned_start, size)?;
         let tail_size = sub!(add!(start, size2)?, used_end)?;
         if tail_size > 0 {
-          self.free_map.insert(used_end, tail_size);
+          self.alloc_map.insert(used_end, tail_size);
         }
         return Ok(used_end);
       }
@@ -107,7 +118,7 @@ impl ScopeInfo {
     let aligned_start = align_up(self.stack_size, size)?;
     if aligned_start > self.stack_size {
       let gap_size = sub!(aligned_start, self.stack_size)?;
-      self.free_map.insert(self.stack_size, gap_size);
+      self.alloc_map.insert(self.stack_size, gap_size);
     }
     let new_end = add!(aligned_start, size)?;
     self.stack_size = new_end;

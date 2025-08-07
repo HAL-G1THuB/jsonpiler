@@ -21,3 +21,7 @@
 	cmp	rax,	-1
 	je	.L__WIN_HANDLER
 	mov	qword	ptr	.L__STDE[rip],	rax
+	call	[qword	ptr	__imp_GetProcessHeap[rip]]
+	test	rax,	rax
+	jz	.L__WIN_HANDLER
+	mov	qword	ptr	.L__HEAP[rip],	rax
