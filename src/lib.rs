@@ -28,7 +28,6 @@ Windows only.
 mod bind;
 mod builtin;
 mod compile_context;
-mod err_msg;
 mod func_info;
 mod json;
 mod label;
@@ -38,28 +37,29 @@ mod scope_info;
 mod utility;
 use compile_context::CompileContext;
 use core::error::Error;
+use parser::Parser;
 use std::{
-  collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
+  collections::{BTreeMap, BTreeSet, HashMap},
   fs::File,
   io::BufWriter,
+  vec::IntoIter,
 };
 #[derive(Debug, Copy, Clone)]
-enum ArgLen {
+enum Arity {
   Any,
   AtLeast(usize),
-  #[expect(dead_code, reason = "")]
+  #[expect(dead_code)]
   AtMost(usize),
   Exactly(usize),
-  #[expect(dead_code, reason = "")]
+  #[expect(dead_code)]
   NoArgs,
-  #[expect(dead_code, reason = "")]
+  #[expect(dead_code)]
   Range(usize, usize),
-  SomeArg,
 }
 #[derive(Debug, Clone)]
 struct AsmFunc {
   label: Label,
-  params: Vec<WithPos<Json>>,
+  params: Vec<Json>,
   ret: Box<Json>,
 }
 #[derive(Debug, Clone)]
@@ -69,16 +69,15 @@ enum Bind<T> {
 }
 #[derive(Debug)]
 struct Builtin {
-  arg_len: ArgLen,
+  arg_len: Arity,
   func: JFunc,
   scoped: bool,
   skip_eval: bool,
 }
-
 type ErrOR<T> = Result<T, Box<dyn Error>>;
 #[derive(Debug)]
 struct FuncInfo {
-  args: VecDeque<WithPos<Json>>,
+  args: IntoIter<WithPos<Json>>,
   free_list: Vec<Label>,
   len: usize,
   name: String,
@@ -113,11 +112,6 @@ struct Label {
   id: usize,
   kind: VarKind,
   size: usize,
-}
-#[derive(Debug, Clone)]
-struct Parser {
-  pos: Position,
-  source: Vec<u8>,
 }
 #[derive(Debug, Copy, Clone, Default)]
 struct Position {

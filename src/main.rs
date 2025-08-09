@@ -5,7 +5,7 @@ use std::{
   process::{Command, ExitCode},
 };
 fn main() -> ExitCode {
-  macro_rules! exit {($($arg: tt)*) =>{{eprintln!($($arg)*);return ExitCode::FAILURE;}}}
+  macro_rules! exit {($($arg:tt)*) =>{{eprintln!($($arg)*);return ExitCode::FAILURE;}}}
   macro_rules! invoke {
     ($cmd:literal, $list:expr, $name:literal) => {
       match Command::new($cmd).args($list).status() {

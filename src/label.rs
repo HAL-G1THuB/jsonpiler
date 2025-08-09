@@ -1,6 +1,7 @@
 use crate::{
   FuncInfo, Label,
   VarKind::{Global, Local, Tmp},
+  utility::get_prefix,
 };
 use core::fmt::{self, Display};
 impl Label {
@@ -23,20 +24,14 @@ impl Label {
   }
 }
 impl Display for Label {
-  #[expect(clippy::min_ident_chars, reason = "default name is 'f'")]
+  #[expect(clippy::min_ident_chars)]
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self.size {
-      1 => write!(f, "byte"),
-      2 => write!(f, "word"),
-      4 => write!(f, "dword"),
-      8 => write!(f, "qword"),
-      _ => Err(fmt::Error),
-    }?;
-    write!(f, " ptr ")?;
+    f.write_str(get_prefix(self.size).ok_or(fmt::Error)?)?;
+    write!(f, "\tptr\t")?;
     match self.kind {
       Global => write!(f, "{}[rip]", self.to_ref()),
       Local | Tmp => {
-        write!(f, "-{:#x}[rbp]", self.id)
+        write!(f, "-{:#X}[rbp]", self.id)
       }
     }
   }

@@ -3,13 +3,13 @@
 ## scope
 
 ```json
-{"scope": {"expression": "Object"}} -> "Any"
+{"scope": {"expression": "Sequence"}} -> "Any"
 ```
 
 It introduces a new scope and evaluates the expression in order and returns the result.
 
 ```json
-{ "scope": {"+": [1, 3], "value": 1} } => 0
+{ "scope": {"+": [1, 3], "value": 1} } => 1
 ```
 
 ## = / global

@@ -1,6 +1,6 @@
 # Jsonpiler - JSON文法プログラミング言語
 
-**Jsonpiler(ジェイソンパイラー)**は  
+**Jsonpiler**(**ジェイソンパイラー**)は  
 Jsonとほぼ同様の文法であるプログラミング言語と、  
 それを実行可能な.exeファイルに変換するコンパイラです。
 
@@ -11,23 +11,24 @@ Jsonとほぼ同様の文法であるプログラミング言語と、
 
 - [GitHubリポジトリ](https://github.com/HAL-G1THuB/jsonpiler)  
 - [Crates.io](https://crates.io/crates/jsonpiler)  
-- [Docs.rs](https://docs.rs/jsonpiler/latest/jsonpiler)  
 - [AI生成ドキュメント![badge](https://deepwiki.com/badge.svg)](https://deepwiki.com/HAL-G1THuB/jsonpiler)  
 🚨 **Windowsでのみ作動します (x64)!** 🚨
 
 ## 変更履歴
 
-- **入力ファイルを1GB以下に制限したため、不要となったパーサー内のセーフティーチェックを排除し、高速化。**
-- **アセンブリ命令の保存方法を変え、処理速度とメモリ効率を改善。**
-- **cの関数(malloc, free)への依存をなくしたことにより、`ucrtbase.dll`が不要となった。**
-- **組み込み関数のドキュメントが肥大化したため、複数のファイルに分割した。**
-- **変数に束縛されていない関数の引数として渡された一時的な値が解放されるタイミングが、その関数が終了したときに定まった。(例外として、`if`の本体の最後の一時的な値は解放される)**
-- **`if`, `scope`,`lambda`の引数の形式が変更された。**
-- **新しい関数`value`が追加された。この関数は与えられた評価済みの値をそのまま返し、Objectの命令列の最後にリテラルを追加するために使用される。**
-- 新しい関数を追加: `not`, `xor`, `or`, `and`
-- 組み込み関数が肥大化したため、複数のファイルに分割した。
-- 命令の肥大化による性能低下が予想されるため、bool型のメモリ領域を1bitから1byteに変更。
-- 関数の引数検証を直感的に。
+### 0.4.2
+
+- 新しい関数`concat`が追加された。この関数は文字列リテラル同士をリテラルを保ちながら結合するために使用される。
+- Objectを3つの亜種に分割。
+- **HashMap**: キーと値のペアのコレクションを表す。
+- **Sequence**: 命令の順序付けられたシーケンスを表す。
+- **TypeAnnotations**: 変数または関数の型アノテーションを表す。
+- 四則演算関数の引数を与えない場合、エラーが出るようになった。
+- `lambda`の引数を実装。
+- `lambda`の返り値にできる型が豊富になった。
+- `+`, `/`, `*`, `or`, `and`, `xor`の最低限の引数の数が2になった。
+- `message`の返り値が`Null`になった。
+
 [プロジェクトの歴史と計画](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG-ja.md)
 
 ## 前提条件
@@ -51,6 +52,14 @@ jsonpiler (input_json_file (UTF-8)) [arguments of .exe ...]
 
 (input_json_file)`をコンパイルしたい実際のJSONファイルに置き換えてください。
 
+## 関数一覧
+
+[関数一覧 (マークダウン)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md)
+
+## 言語仕様
+
+[言語仕様 (マークダウン)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md)
+
 ## 例
 
 [例](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples)
@@ -61,15 +70,26 @@ jsonpiler (input_json_file (UTF-8)) [arguments of .exe ...]
 
 **実行順序:**
 
-jsonpilerのコードは1つのJSONオブジェクトから構成されます。
+jsonpilerのコードは、1つのJSONオブジェクトで構成される。
 
-式は順番に評価されます。
+式は順番に評価される。
 
-変数 `"a"` には `"="` を使って文字列 `"title"` が代入されます。
+キー `"="` は文字列 `"title"` を変数 `a` に代入する。  
 
-タイトル（変数 `"a"` から）と本文 `"message"` で指定された `"345"` を含むメッセージボックスが表示されます。
+次に、`"message"` キーは `a` の値の後に文字列 `"345"` を続けたものを使ってメッセージを表示する。  
 
-プログラムは `{}` ブロックの最終値として、メッセージボックスの中で押されたボタンの ID を整数で返します（現在は `1` のみがサポートされており、C/C++ では `IDOK` に相当します）。
+最後に、`"+"`キーは `1`、`2`、`3`の和を計算し、結果 `6` を生成する。
+
+このプログラムは `{}` ブロックの最終値として `6` を返す。
+
+このプログラムをcargoで動作するjsonpilerに読み込ませると、次のように表示される（上記のように6を返す）。
+
+```plaintext
+error: process didn't exit successfully： `jsonpiler.exe test.json` (exit code: 6)
+
+```
+
+これは予期せぬエラーではなく、正常な動作である。
 
 ## エラー、もしくは警告メッセージの形式
 
@@ -84,14 +104,6 @@ Error position:
 { "message": ["title", { "$": "doesn't_exist" }] }
                               ^^^^^^^^^^^^^^^
 ```
-
-## 関数一覧
-
-[関数一覧 (マークダウン)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md)
-
-## 言語仕様
-
-[言語仕様 (マークダウン)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md)
 
 ## 実行のイメージ図
 

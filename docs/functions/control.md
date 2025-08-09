@@ -3,11 +3,11 @@
 ## lambda
 
 ```json
-{"lambda": [{"params": "empty [] (todo)"}, {"body": "LObject"}]} -> "Function"
+{"lambda": [{"params": "TypeAnnotations"}, {"body": "Sequence"}]} -> "Function"
 ```
 
 Creates a function.  
-The first argument specifies the parameter list;  
+The first argument specifies the parameters as an object of type annotations;  
 the remaining arguments form the function body and are evaluated when the function is called.
 `lambda` introduces a new scope.
 
@@ -15,11 +15,27 @@ the remaining arguments form the function body and are evaluated when the functi
 {"lambda": [[], {"+": [4, 6]}, 1]}
 ```
 
+**Types that can be assigned to arguments**:
+
+- `Int`
+- `String`
+- `Bool`
+- `Null`
+- `Float`
+
+**Types that can be returned by the function**:
+
+- `Int`
+- `String`
+- `Bool`
+- `Null`
+- `Float`
+
 ## if
 
 ```json
 {"if": [
-  [{"condition": "Bool"}, {"then": "LObject"}], "..."
+  [{"condition": "Bool"}, {"then": "Sequence"}], "..."
   ]
 } -> "Null"
 ```

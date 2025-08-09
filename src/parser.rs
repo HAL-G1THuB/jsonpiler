@@ -1,12 +1,9 @@
-use crate::{Bind::Lit, ErrOR, Json, Parser, Position, WithPos, parse_err};
-macro_rules! return_if {
-  ($self: ident, $ch: expr, $pos: ident, $value: expr) => {
-    if $self.peek() == $ch {
-      $self.pos.offset += 1;
-      $pos.extend_to($self.pos.offset);
-      return Ok(WithPos { $pos, value: $value });
-    }
-  };
+mod err_msg;
+use crate::{Bind::Lit, ErrOR, Json, Position, WithPos, parse_err, return_if};
+#[derive(Debug, Clone)]
+pub(crate) struct Parser {
+  pos: Position,
+  source: Vec<u8>,
 }
 impl Position {
   fn extend_to(&mut self, end: usize) {
@@ -31,6 +28,10 @@ impl Parser {
     } else {
       parse_err!(self, self.pos, "Expected character '{}' not found.", char::from(expected))
     }
+  }
+  #[expect(clippy::single_call_fn)]
+  pub(crate) fn from(source: Vec<u8>) -> Self {
+    Self { pos: Position { line: 1, offset: 0, size: 0 }, source }
   }
   fn next(&mut self) -> ErrOR<u8> {
     let byte = self.peek();
@@ -133,7 +134,7 @@ impl Parser {
     loop {
       let key = self.parse_value()?;
       let Json::String(Lit(string)) = key.value else {
-        return parse_err!(self, &key.pos, "Keys must be strings.");
+        return parse_err!(self, key.pos, "Keys must be strings.");
       };
       self.skip_ws()?;
       self.expect(b':')?;

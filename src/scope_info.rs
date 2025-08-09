@@ -40,11 +40,11 @@ impl ScopeInfo {
     let align = align_up(self.stack_size, 16)?;
     let mut scope_body = replace(&mut self.body, tmp.body);
     if align != 0 {
-      self.body.push(mn!("sub", "rsp", format!("{align:#x}")));
+      self.body.push(mn!("sub", "rsp", format!("{align:#X}")));
     }
     self.body.append(&mut scope_body);
     if align != 0 {
-      self.body.push(mn!("add", "rsp", format!("{align:#x}")));
+      self.body.push(mn!("add", "rsp", format!("{align:#X}")));
     }
     self.stack_size = tmp.stack_size;
     self.scope_align = tmp.scope_align;
@@ -71,19 +71,16 @@ impl ScopeInfo {
     self.alloc_map.insert(start, label.size);
     Ok(())
   }
-  pub fn get_local(&mut self, size: usize) -> ErrOR<Label> {
+  pub fn local(&mut self, size: usize) -> ErrOR<Label> {
     Ok(Label { kind: Local, id: add!(self.push(size)?, self.scope_align)?, size })
   }
-  pub fn get_tmp(&mut self, size: usize) -> ErrOR<Label> {
-    Ok(Label { kind: Tmp, id: add!(self.push(size)?, self.scope_align)?, size })
-  }
   pub fn mov_tmp(&mut self, reg: &str) -> ErrOR<Label> {
-    let return_value = self.get_tmp(8)?;
+    let return_value = self.tmp(8)?;
     self.body.push(mn!("mov", return_value, reg));
     Ok(return_value)
   }
   pub fn mov_tmp_bool(&mut self, reg: &str) -> ErrOR<Json> {
-    let return_value = self.get_tmp(1)?;
+    let return_value = self.tmp(1)?;
     self.body.push(mn!("mov", return_value, reg));
     Ok(Json::Bool(Var(return_value)))
   }
@@ -124,7 +121,10 @@ impl ScopeInfo {
     self.stack_size = new_end;
     Ok(new_end)
   }
-  #[expect(dead_code, reason = "todo")]
+  pub fn tmp(&mut self, size: usize) -> ErrOR<Label> {
+    Ok(Label { kind: Tmp, id: add!(self.push(size)?, self.scope_align)?, size })
+  }
+  #[expect(dead_code)]
   pub fn update_max(&mut self, size: usize) {
     self.args_slots = cmp::max(self.args_slots, size);
   }

@@ -1,16 +1,15 @@
 {
-  "global": ["n", 5],
   "=": [
     "square_n",
     {
-      "message": ["", "This function returns 25."],
       "lambda": [
-        [],
+        { "n": "Int" },
         {
           "*": [{ "$": "n" }, { "$": "n" }]
         }
       ]
     }
   ],
-  "square_n": []
+  "message": ["", "This program returns 4^2 + 5^2 = 41."],
+  "+": [{ "square_n": [4] }, { "square_n": [5] }]
 }

@@ -11,7 +11,6 @@
 	call	[qword	ptr	__imp_MessageBoxW[rip]]
 	test	rax,	rax
 	jz	.L__WIN_HANDLER
-	mov	{ret},	rax
 	mov	rcx,	[qword	ptr	.L__HEAP[rip]]
 	xor	edx,	edx
 	mov	r8,	rdi

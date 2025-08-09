@@ -1,7 +1,7 @@
 use super::{
   AsmFunc,
   Bind::{Lit, Var},
-  Json, Label, WithPos,
+  Json, Label,
 };
 use core::fmt::{self, Write as _};
 impl Json {
@@ -37,14 +37,19 @@ impl Json {
   }
 }
 impl fmt::Display for Json {
-  #[expect(clippy::min_ident_chars, reason = "default name is 'f'")]
+  #[expect(clippy::min_ident_chars)]
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
       Json::Null => f.write_str("Null"),
       Json::Array(bind) => match bind {
         Lit(array) => {
           f.write_str("[")?;
-          iter_write(array, f)?;
+          for (i, item) in array.iter().enumerate() {
+            if i > 0 {
+              f.write_str(", ")?;
+            }
+            write!(f, "{}", item.value)?;
+          }
           f.write_str("]")
         }
         Var(_) => f.write_str(&bind.describe("Array")),
@@ -67,7 +72,12 @@ impl fmt::Display for Json {
       },
       Json::Function(asm_func) => {
         write!(f, "{}(", asm_func.label)?;
-        iter_write(&asm_func.params, f)?;
+        for (i, item) in asm_func.params.iter().enumerate() {
+          if i > 0 {
+            f.write_str(", ")?;
+          }
+          write!(f, "{item}")?;
+        }
         write!(f, ") -> ")?;
         (*asm_func.ret).fmt(f)
       }
@@ -119,13 +129,4 @@ pub(crate) fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {
   }
   escaped.push('"');
   Ok(escaped)
-}
-fn iter_write(list: &[WithPos<Json>], out: &mut fmt::Formatter) -> fmt::Result {
-  for (i, item) in list.iter().enumerate() {
-    if i > 0 {
-      out.write_str(", ")?;
-    }
-    write!(out, "{}", item.value)?;
-  }
-  Ok(())
 }

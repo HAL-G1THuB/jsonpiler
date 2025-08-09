@@ -1,6 +1,6 @@
 [package]
 name = "jsonpiler"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
 license = "Apache-2.0"
@@ -40,3 +40,4 @@ map_err_ignore = "allow"
 self_named_module_files = "allow"
 undocumented_unsafe_blocks = "allow"
 let-underscore_must_use = "allow"
+allow_attributes_without_reason = "allow"

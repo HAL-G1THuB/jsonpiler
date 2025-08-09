@@ -2,13 +2,29 @@
 
 ## Planned
 
-- Enables data to be stored in the heap area
+- Loop implementation
+- More input/output functions
+- More string manipulation functions
+- Support for storing data in the heap area
 - Allow heap release when exiting scope
 - Eliminate assignment ambiguity and build ownership systems
 
 ## Released
 
 ### jsonpiler 0.4
+
+### 0.4.2
+
+- Added a new function `concat` to concatenate string literals while preserving their literal nature.
+- Split `Object` into three variants:
+  - **HashMap**: a collection of key/value pairs.
+  - **Sequence**: an ordered sequence of instructions.
+  - **TypeAnnotations**: type annotations for variables or functions.
+- Now generates an error if a quadratic function is called without arguments.
+- Implemented support for `lambda` arguments.
+- Enhanced the types of `lambda` return values for richer type information.
+- The minimum length of arguments for `+`, `/`, `*`, `or`, `and`, and `xor` is now 2.
+- The return value of `message` is now `Null`.
 
 #### 0.4.1
 

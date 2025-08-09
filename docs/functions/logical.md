@@ -3,7 +3,7 @@
 ## not
 
 ```json
-{"not": {"expr": "Bool"}} -> "VBool"
+{"not": "Bool"} -> "VBool"
 ```
 
 Returns the logical NOT of the given boolean.
@@ -15,7 +15,7 @@ Returns the logical NOT of the given boolean.
 ## and
 
 ```json
-{"and": [{"arg": "Bool"}, "..."]} -> "VBool"
+{"and": ["Bool", "Bool", "..."]} -> "VBool"
 ```
 
 Returns the logical AND of the given booleans.
@@ -27,7 +27,7 @@ Returns the logical AND of the given booleans.
 ## or
 
 ```json
-{"or": [{"arg": "Bool"}, "..."]} -> "VBool"
+{"or": ["Bool", "Bool", "..."]} -> "VBool"
 ```
 
 Returns the logical OR of the given booleans.
@@ -39,7 +39,7 @@ Returns the logical OR of the given booleans.
 ## xor
 
 ```json
-{"xor": [{"arg": "Bool"}, "..."]} -> "VBool"
+{"xor": ["Bool", "Bool", "..."]} -> "VBool"
 ```
 
 Returns the logical OR of the given booleans.

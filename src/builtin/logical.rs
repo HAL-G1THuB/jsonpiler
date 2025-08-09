@@ -1,40 +1,14 @@
-use super::super::{
-  ArgLen::{Exactly, SomeArg},
+use crate::{
+  Arity::{AtLeast, Exactly},
   Bind::{Lit, Var},
-  ErrOR, FuncInfo, Json, Jsonpiler, ScopeInfo, mn,
-  utility::get_bool_str,
-  validate_type,
+  ErrOR, FuncInfo, Json, Jsonpiler, ScopeInfo, built_in, mn, take_arg,
 };
-impl Jsonpiler {
-  pub(crate) fn logical(&mut self) {
-    let common = (false, false);
-    self.register("or", common, Jsonpiler::or, SomeArg);
-    self.register("and", common, Jsonpiler::and, SomeArg);
-    self.register("xor", common, Jsonpiler::xor, SomeArg);
-    self.register("not", common, Jsonpiler::not, Exactly(1));
-  }
-}
-#[expect(clippy::single_call_fn, reason = "")]
-impl Jsonpiler {
-  fn and(&mut self, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
-    self.logical_template("and", func, scope)
-  }
-  fn logical_template(&mut self, mn: &str, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
-    let mut arg = func.arg()?;
-    let mut boolean = validate_type!(self, func, 1, arg, Json::Bool(x) => x, "Bool");
-    let mut bool_str = get_bool_str(&boolean, func);
-    scope.body.push(mn!("mov", "al", bool_str));
-    for ord in 2..=func.len {
-      arg = func.arg()?;
-      boolean = validate_type!(self, func, ord, arg, Json::Bool(x) => x, "Bool");
-      bool_str = get_bool_str(&boolean, func);
-      scope.body.push(mn!(mn, "al", bool_str));
-    }
-    scope.mov_tmp_bool("al")
-  }
-  fn not(&mut self, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
-    let arg = func.arg()?;
-    let bind = validate_type!(self, func, 1, arg, Json::Bool(x) => x, "Bool");
+built_in! {self, func, scope, logical;
+  and => {"and", COMMON, AtLeast(2), {
+        self.logical_template("and", func, scope)
+  }},
+  not => {"not", COMMON, Exactly(1), {
+    let bind = take_arg!(self, func, 1,"Bool", Json::Bool(x) => x).0;
     match bind {
       Lit(l_bool) => Ok(Json::Bool(Lit(!l_bool))),
       Var(var) => {
@@ -43,11 +17,24 @@ impl Jsonpiler {
         scope.mov_tmp_bool("al")
       }
     }
-  }
-  fn or(&mut self, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
-    self.logical_template("or", func, scope)
-  }
-  fn xor(&mut self, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
-    self.logical_template("xor", func, scope)
+  }},
+  or => {"or", COMMON, AtLeast(2), {
+        self.logical_template("or", func, scope)
+  }},
+  xor => {"xor", COMMON, AtLeast(2), {
+        self.logical_template("xor", func, scope)
+  }}
+}
+impl Jsonpiler {
+  fn logical_template(
+    &mut self, mn: &str, func: &mut FuncInfo, scope: &mut ScopeInfo,
+  ) -> ErrOR<Json> {
+    let mut bool_str = self.get_bool_str(func, 1)?;
+    scope.body.push(mn!("mov", "al", bool_str));
+    for nth in 2..=func.len {
+      bool_str = self.get_bool_str(func, nth)?;
+      scope.body.push(mn!(mn, "al", bool_str));
+    }
+    scope.mov_tmp_bool("al")
   }
 }
