@@ -1,29 +1,28 @@
 use super::{
-  AsmFunc,
   Bind::{Lit, Var},
   Json, Label,
 };
 use core::fmt::{self, Write as _};
 impl Json {
-  pub fn get_label(self) -> Option<Label> {
+  pub(crate) fn get_label(self) -> Option<Label> {
     match self {
       Json::Int(Var(label))
       | Json::Float(Var(label))
       | Json::String(Var(label))
       | Json::Bool(Var(label))
       | Json::Array(Var(label))
-      | Json::Object(Var(label))
-      | Json::Function(AsmFunc { label, .. }) => Some(label),
+      | Json::Object(Var(label)) => Some(label),
       Json::Array(_)
       | Json::Bool(_)
       | Json::Float(_)
       | Json::Int(_)
+      | Json::Function(_)
       | Json::Null
       | Json::Object(_)
       | Json::String(_) => None,
     }
   }
-  pub fn type_name(&self) -> String {
+  pub(crate) fn type_name(&self) -> String {
     match self {
       Json::Bool(bind) => bind.describe("Bool"),
       Json::Null => "Null".to_owned(),
@@ -71,7 +70,7 @@ impl fmt::Display for Json {
         Var(_) => f.write_str(&bind.describe("String")),
       },
       Json::Function(asm_func) => {
-        write!(f, "{}(", asm_func.label)?;
+        write!(f, "{}(", asm_func.id)?;
         for (i, item) in asm_func.params.iter().enumerate() {
           if i > 0 {
             f.write_str(", ")?;

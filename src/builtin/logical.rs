@@ -1,40 +1,67 @@
 use crate::{
   Arity::{AtLeast, Exactly},
   Bind::{Lit, Var},
-  ErrOR, FuncInfo, Json, Jsonpiler, ScopeInfo, built_in, mn, take_arg,
+  ErrOR, FuncInfo,
+  Inst::*,
+  Json, Jsonpiler,
+  Reg::*,
+  ScopeInfo, built_in, take_arg,
 };
 built_in! {self, func, scope, logical;
   and => {"and", COMMON, AtLeast(2), {
-        self.logical_template("and", func, scope)
+    self.mov_bool(Rax, func, 1, scope)?;
+    for nth in 2..=func.len {
+    let boolean = take_arg!(self, func, nth, "Bool", Json::Bool(x) => x).0;
+      match boolean {
+      Lit(l_bool) => scope.push(MovRbIb(Rcx, if l_bool { 0xFF } else { 0 })),
+      Var(label) => {
+        func.sched_free_tmp(&label);
+        scope.push(MovRbMb(Rcx, label.kind));
+      }
+    }
+    scope.push(AndRbRb(Rax, Rcx));
+    }
+    scope.mov_tmp_bool(Rax)
   }},
   not => {"not", COMMON, Exactly(1), {
     let bind = take_arg!(self, func, 1,"Bool", Json::Bool(x) => x).0;
     match bind {
       Lit(l_bool) => Ok(Json::Bool(Lit(!l_bool))),
       Var(var) => {
-        scope.body.push(mn!("mov", "al", var));
-        scope.body.push(mn!("not", "al"));
-        scope.mov_tmp_bool("al")
+        scope.push(MovRbMb(Rax, var.kind));
+        scope.push(NotRb(Rax));
+    scope.mov_tmp_bool(Rax)
       }
     }
   }},
   or => {"or", COMMON, AtLeast(2), {
-        self.logical_template("or", func, scope)
+    self.mov_bool(Rax, func, 1, scope)?;
+    for nth in 2..=func.len {
+    let boolean = take_arg!(self, func, nth, "Bool", Json::Bool(x) => x).0;
+      match boolean {
+      Lit(l_bool) => scope.push(MovRbIb(Rcx, if l_bool { 0xFF } else { 0 })),
+      Var(label) => {
+        func.sched_free_tmp(&label);
+        scope.push(MovRbMb(Rcx, label.kind));
+      }
+    }
+    scope.push(OrRbRb(Rax, Rcx));
+    }
+    scope.mov_tmp_bool(Rax)
   }},
   xor => {"xor", COMMON, AtLeast(2), {
-        self.logical_template("xor", func, scope)
-  }}
-}
-impl Jsonpiler {
-  fn logical_template(
-    &mut self, mn: &str, func: &mut FuncInfo, scope: &mut ScopeInfo,
-  ) -> ErrOR<Json> {
-    let mut bool_str = self.get_bool_str(func, 1)?;
-    scope.body.push(mn!("mov", "al", bool_str));
+    self.mov_bool(Rax, func, 1, scope)?;
     for nth in 2..=func.len {
-      bool_str = self.get_bool_str(func, nth)?;
-      scope.body.push(mn!(mn, "al", bool_str));
+    let boolean = take_arg!(self, func, nth, "Bool", Json::Bool(x) => x).0;
+      match boolean {
+      Lit(l_bool) => scope.push(MovRbIb(Rcx, if l_bool { 0xFF } else { 0 })),
+      Var(label) => {
+        func.sched_free_tmp(&label);
+        scope.push(MovRbMb(Rcx, label.kind));
+      }
     }
-    scope.mov_tmp_bool("al")
-  }
+    scope.push(XorRbRb(Rax, Rcx));
+    }
+    scope.mov_tmp_bool(Rax)
+  }}
 }

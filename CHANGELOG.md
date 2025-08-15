@@ -11,6 +11,23 @@
 
 ## Released
 
+### jsonpiler 0.5
+
+## 0.5.3 ~ 0.5.4
+
+- Fixed a critical bug in 0.5.0
+
+### 0.5.1 ~ 0.5.2
+
+- Added `.bin binary` in .gitattributes
+
+### 0.5.0
+
+- Fixed issue where some `mov` instructions with values ≥ 32-bit caused assembler errors.
+- **Implemented assembler and linker inside `jsonpiler`; GNU `as` and `ld` no longer required.**
+- Temporarily generated and deleted .s and .obj files are no longer generated.
+- Temporarily disabled SEH.
+
 ### jsonpiler 0.4
 
 ### 0.4.2

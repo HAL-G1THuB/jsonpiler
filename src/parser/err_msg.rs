@@ -29,7 +29,7 @@ impl Parser {
     let be = if func.len == 1 { "is" } else { "are" };
     self.fmt_err(
       &format!(
-        "`{}` requires {text} {count_desc}, but {} argument{plural} {be} supplied.",
+        "ArityError: `{}` requires {text} {count_desc}, but {} argument{plural} {be} supplied.",
         func.name, func.len
       ),
       func.pos,
@@ -50,11 +50,7 @@ impl Parser {
     let typ = json.value.type_name();
     self.fmt_err(
       &format!(
-        concat!(
-          "The {}{} argument to `{}` must be of a type `{}`, ",
-          "but a value of type `{}` was provided."
-        ),
-        nth, suffix, name, expected, typ
+        "TypeError: Argument {nth}{suffix} of `{name}` expected type `{expected}`, but got `{typ}`.",
       ),
       json.pos,
     )

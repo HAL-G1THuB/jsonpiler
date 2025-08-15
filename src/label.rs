@@ -1,26 +1,16 @@
 use crate::{
-  FuncInfo, Label,
-  VarKind::{Global, Local, Tmp},
+  Label,
+  VarKind::{self, Global, Local, Tmp},
   utility::get_prefix,
 };
 use core::fmt::{self, Display};
 impl Label {
   pub(crate) fn describe(&self) -> &str {
     match self.kind {
-      Tmp => "Temporary value",
-      Local => "Local variable",
-      Global => "Global variable",
+      Tmp { .. } => "Temporary value",
+      Local { .. } => "Local variable",
+      Global { .. } => "Global variable",
     }
-  }
-  pub(crate) fn sched_free_2str(&self, scope: &mut FuncInfo) -> String {
-    scope.sched_free_tmp(self);
-    format!("{self}")
-  }
-  pub(crate) fn to_def(self) -> String {
-    format!(".L{:x}:\n", self.id)
-  }
-  pub(crate) fn to_ref(self) -> String {
-    format!(".L{:x}", self.id)
   }
 }
 impl Display for Label {
@@ -29,10 +19,18 @@ impl Display for Label {
     f.write_str(get_prefix(self.size).ok_or(fmt::Error)?)?;
     write!(f, "\tptr\t")?;
     match self.kind {
-      Global => write!(f, "{}[rip]", self.to_ref()),
-      Local | Tmp => {
-        write!(f, "-{:#X}[rbp]", self.id)
+      Global { id } => write!(f, ".L{id:#X}[rip]"),
+      Local { offset } | Tmp { offset } => {
+        write!(f, "-{offset:#X}[rbp]")
       }
+    }
+  }
+}
+impl VarKind {
+  pub(crate) fn size_of_mo_si_di(&self) -> u32 {
+    match self {
+      Global { .. } => 5,
+      Local { .. } | Tmp { .. } => 6,
     }
   }
 }

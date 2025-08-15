@@ -1,6 +1,6 @@
 mod err_msg;
 use crate::{Bind::Lit, ErrOR, Json, Position, WithPos, parse_err, return_if};
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct Parser {
   pos: Position,
   source: Vec<u8>,
@@ -29,7 +29,6 @@ impl Parser {
       parse_err!(self, self.pos, "Expected character '{}' not found.", char::from(expected))
     }
   }
-  #[expect(clippy::single_call_fn)]
   pub(crate) fn from(source: Vec<u8>) -> Self {
     Self { pos: Position { line: 1, offset: 0, size: 0 }, source }
   }

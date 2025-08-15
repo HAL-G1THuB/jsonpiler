@@ -1,131 +1,131 @@
 use crate::{
-  Bind,
-  Bind::{Lit, Var},
-  CompileContext, ErrOR, FuncInfo, Json, Jsonpiler, Label, Parser, ScopeInfo,
+  Bind::{self, Lit, Var},
+  CompileContext, ErrOR, FuncInfo,
+  Inst::{self, *},
+  Json, Jsonpiler, Label,
+  OpQ::{Iq, Mq, Rq},
+  Parser,
+  Reg::{self, *},
+  ScopeInfo,
   VarKind::Global,
-  WithPos, err, mn, mn_write, take_arg,
+  take_arg,
 };
-use core::{fmt::UpperHex, iter};
 use std::{
   collections::HashMap,
-  fs::File,
-  io::{BufWriter, Write as _},
+  time::{SystemTime, UNIX_EPOCH},
 };
 impl Jsonpiler {
   pub(crate) const COMMON: (bool, bool) = (false, false);
+  pub(crate) const KERNEL32: &'static str = "kernel32.dll";
+  pub(crate) const REGS: [Reg; 4] = [Rcx, Rdx, R8, R9];
   pub(crate) const SPECIAL: (bool, bool) = (false, true);
   pub(crate) const SP_SCOPE: (bool, bool) = (true, true);
-  // label.kind == Local
-  pub(crate) fn get_argument(&mut self, jwp: &WithPos<Json>) -> ErrOR<String> {
-    match &jwp.value {
-      Json::String(string) => Ok(match string {
-        Lit(l_str) => format!("{}", self.global_str(l_str)?),
-        Var(label) => format!("[{label}]"),
-      }),
-      Json::Float(Var(label)) | Json::Bool(Bind::Var(label)) | Json::Int(Var(label)) => {
-        Ok(format!("{label}"))
-      }
-      Json::Null => Ok("0".to_owned()),
-      Json::Int(Bind::Lit(l_int)) => Ok(l_int.to_string()),
-      Json::Bool(Bind::Lit(l_bool)) => Ok(if *l_bool { "0xFF" } else { "0x00" }.to_owned()),
-      Json::Float(Lit(l_float)) => Ok(format!("{:#016x}", l_float.to_bits())),
-      Json::Array(_) | Json::Object(_) | Json::Function(_) => {
-        err!(
-          self,
-          jwp.pos,
-          "This type cannot be accepted as an argument of an user-defined function."
-        )
-      }
-    }
-  }
-  pub(crate) fn get_bool_str(&self, func: &mut FuncInfo, nth: usize) -> ErrOR<String> {
-    let boolean = take_arg!(self, func, nth, "Bool", Json::Bool(x) => x).0;
-    Ok(match boolean {
-      Bind::Lit(l_bool) => if l_bool { "0xFF" } else { "0x00" }.to_owned(),
-      Bind::Var(label) => label.sched_free_2str(func),
-    })
-  }
-  pub(crate) fn get_bss(&mut self, size: usize) -> ErrOR<Label> {
-    let label = self.ctx.global(size)?;
-    self.bss.push((label.id, size));
-    Ok(label)
-  }
-  pub(crate) fn get_int_str(&self, func: &mut FuncInfo, nth: usize) -> ErrOR<String> {
-    let int = take_arg!(self, func, nth, "Int", Json::Int(x) => x).0;
-    Ok(match int {
-      Bind::Lit(l_int) => l_int.to_string(),
-      Bind::Var(label) => label.sched_free_2str(func),
-    })
-  }
-  pub(crate) fn get_str_str(&mut self, func: &mut FuncInfo, nth: usize) -> ErrOR<String> {
-    let string = take_arg!(self, func, nth, "String", Json::String(x) => x).0;
-    Ok(match string {
-      Lit(l_str) => format!("{}", self.global_str(&l_str)?),
-      Var(label) if label.kind == Global => format!("{label}"),
-      Var(label) => format!("[{}]", label.sched_free_2str(func)),
-    })
+  pub(crate) const USER32: &'static str = "user32.dll";
+  pub(crate) fn get_bss_id(&mut self, size: u32) -> usize {
+    let id = self.ctx.gen_id();
+    self.insts.push(Bss(id, size));
+    id
   }
   pub(crate) fn get_var(&self, var_name: &str, scope: &ScopeInfo) -> Option<Json> {
-    for table in scope.locals.iter().rev().chain(iter::once(&self.globals)) {
+    for table in scope.iter_all_scope(&self.globals) {
       if let Some(val) = table.get(var_name) {
         return Some(val.clone());
       }
     }
     None
   }
-  pub(crate) fn global_bool(&mut self, boolean: bool) -> ErrOR<Label> {
-    let label = self.ctx.global(8)?;
-    self.data.write_all(label.to_def().as_bytes())?;
-    mn_write!(self.data, ".byte", if boolean { "0xFF" } else { "0x00" });
-    Ok(label)
+  pub(crate) fn global_bool(&mut self, boolean: bool) -> usize {
+    let id = self.ctx.gen_id();
+    self.insts.push(Byte(id, if boolean { 0xFF } else { 0 }));
+    id
   }
-  pub(crate) fn global_num<T: UpperHex>(&mut self, value: T) -> ErrOR<Label> {
-    let label = self.ctx.global(8)?;
-    mn_write!(self.data, ".align", "8");
-    self.data.write_all(label.to_def().as_bytes())?;
-    mn_write!(self.data, ".quad", format!("{value:#X}"));
-    Ok(label)
+  pub(crate) fn global_num(&mut self, value: u64) -> usize {
+    let id = self.ctx.gen_id();
+    self.insts.push(Quad(id, value));
+    id
   }
-  pub(crate) fn global_str(&mut self, value: &str) -> ErrOR<Label> {
-    if let Some(cached_label) = self.ctx.get_cache(value) {
-      return Ok(Label { kind: Global, id: cached_label, size: 8 });
+  pub(crate) fn global_str(&mut self, value: String) -> usize {
+    if let Some(&id) = self.ctx.str_cache.get(&value) {
+      return id;
     }
-    let label = self.ctx.global(8)?;
-    self.ctx.insert_cache(value, label.id);
-    self.data.write_all(label.to_def().as_bytes())?;
-    mn_write!(self.data, ".string", format!("\"{value}\""));
-    Ok(label)
+    let id = self.ctx.gen_id();
+    self.ctx.str_cache.insert(value.clone(), id);
+    self.insts.push(StringZ(id, value));
+    id
   }
-  #[inline]
-  pub fn setup(source: Vec<u8>, out_file: &str) -> ErrOR<Self> {
-    Ok(Self {
-      bss: vec![],
-      builtin: HashMap::new(),
-      globals: HashMap::new(),
-      data: BufWriter::new(File::create(out_file)?),
-      parser: Parser::from(source),
-      text: vec![],
-      ctx: CompileContext::default(),
+  pub(crate) fn import(
+    &mut self, key1: &'static str, key2: &'static str, id: u16,
+  ) -> (usize, usize) {
+    let outer_idx =
+      if let Some(idx) = self.import_table.iter().position(|(outer_key, _)| *outer_key == key1) {
+        idx
+      } else {
+        self.import_table.push((key1, Vec::new()));
+        self.import_table.len() - 1
+      };
+    let inner_idx =
+      if let Some(idx) = self.import_table[outer_idx].1.iter().position(|(id2, _)| *id2 == id) {
+        idx
+      } else {
+        self.import_table[outer_idx].1.push((id, key2));
+        self.import_table[outer_idx].1.len() - 1
+      };
+    (outer_idx, inner_idx)
+  }
+  pub(crate) fn mov_bool(
+    &self, reg: Reg, func: &mut FuncInfo, nth: usize, scope: &mut ScopeInfo,
+  ) -> ErrOR<()> {
+    let boolean = take_arg!(self, func, nth, "Bool", Json::Bool(x) => x).0;
+    match boolean {
+      Bind::Lit(l_bool) => scope.push(MovRbIb(reg, if l_bool { 0xFF } else { 0 })),
+      Bind::Var(label) => {
+        func.sched_free_tmp(&label);
+        scope.push(MovRbMb(reg, label.kind));
+      }
+    }
+    Ok(())
+  }
+  pub(crate) fn mov_int(
+    &self, reg: Reg, func: &mut FuncInfo, nth: usize, scope: &mut ScopeInfo,
+  ) -> ErrOR<()> {
+    let int = take_arg!(self, func, nth, "Int", Json::Int(x) => x).0;
+    match int {
+      #[expect(clippy::cast_sign_loss)]
+      Bind::Lit(l_int) => scope.push(MovQQ(Rq(reg), Iq(l_int as u64))),
+      Bind::Var(label) => {
+        func.sched_free_tmp(&label);
+        scope.push(MovQQ(Rq(reg), Mq(label.kind)));
+      }
+    }
+    Ok(())
+  }
+  pub(crate) fn mov_str(&mut self, reg: Reg, func: &mut FuncInfo, nth: usize) -> ErrOR<Inst> {
+    let string = take_arg!(self, func, nth, "String", Json::String(x) => x).0;
+    Ok(match string {
+      Lit(l_str) => LeaRM(reg, Global { id: self.global_str(l_str) }),
+      Var(Label { kind: kind @ Global { .. }, .. }) => LeaRM(reg, kind),
+      Var(label) => {
+        func.sched_free_tmp(&label);
+        MovRbMb(reg, label.kind)
+      }
     })
   }
+  // fn format(&mut self, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {}
+  #[inline]
+  #[must_use]
+  pub fn setup(source: Vec<u8>) -> Self {
+    Self {
+      builtin: HashMap::new(),
+      ctx: CompileContext::default(),
+      globals: HashMap::new(),
+      parser: Parser::from(source),
+      insts: vec![],
+      sym_table: HashMap::new(),
+      import_table: vec![],
+    }
+  }
 }
-pub(crate) fn get_argument_mem(idx: usize, size: usize) -> ErrOR<String> {
-  const REGS: [&str; 4] = ["rcx", "rdx", "r8", "r9"];
-  Ok(if let Some(&reg) = REGS.get(idx) {
-    reg.to_owned()
-  } else {
-    format!(
-      "{}\tptr\t{}[rsp]",
-      get_prefix(size).ok_or("InternalError: Invalid size")?,
-      8 * (idx - 4)
-    )
-  })
-}
-#[expect(clippy::single_call_fn)]
-pub(crate) fn imp_call(func: &str) -> String {
-  mn!("call", format!("[qword\tptr\t__imp_{func}[rip]]"))
-}
-pub(crate) fn get_prefix(num: usize) -> Option<&'static str> {
+pub(crate) fn get_prefix(num: u32) -> Option<&'static str> {
   match num {
     1 => Some("byte"),
     2 => Some("word"),
@@ -133,4 +133,14 @@ pub(crate) fn get_prefix(num: usize) -> Option<&'static str> {
     8 => Some("qword"),
     _ => None,
   }
+}
+pub(crate) fn align_up(num: usize, align: usize) -> ErrOR<usize> {
+  num.div_ceil(align).checked_mul(align).ok_or("InternalError: Overflow".into())
+}
+pub(crate) fn align_up_32(value: u32, align: u32) -> ErrOR<u32> {
+  value.div_ceil(align).checked_mul(align).ok_or("InternalError: Overflow".into())
+}
+#[expect(clippy::cast_possible_truncation)]
+pub(crate) fn get_time_stamp() -> ErrOR<u32> {
+  Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as u32)
 }

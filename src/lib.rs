@@ -25,6 +25,7 @@ jsonpiler test.json
 # Platform
 Windows only.
 */
+mod assembler;
 mod bind;
 mod builtin;
 mod compile_context;
@@ -33,18 +34,152 @@ mod json;
 mod label;
 mod macros;
 mod parser;
+mod portable_executable;
 mod scope_info;
 mod utility;
 use compile_context::CompileContext;
 use core::error::Error;
 use parser::Parser;
-use std::{
-  collections::{BTreeMap, BTreeSet, HashMap},
-  fs::File,
-  io::BufWriter,
-  vec::IntoIter,
-};
-#[derive(Debug, Copy, Clone)]
+use scope_info::ScopeInfo;
+use std::{collections::HashMap, vec::IntoIter};
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[expect(dead_code)]
+enum Disp {
+  Byte(i8),
+  Dword(i32),
+  Zero,
+}
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[expect(dead_code, clippy::arbitrary_source_item_ordering)]
+enum Reg {
+  Rax = 0,
+  Rcx = 1,
+  Rdx = 2,
+  Rbx = 3,
+  Rsp = 4,
+  Rbp = 5,
+  Rsi = 6,
+  Rdi = 7,
+  R8 = 8,
+  R9 = 9,
+  R10 = 10,
+  R11 = 11,
+  R12 = 12,
+  R13 = 13,
+  R14 = 14,
+  R15 = 15,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[expect(clippy::allow_attributes)]
+enum Memory {
+  #[allow(dead_code)]
+  Base(Reg, Disp),
+  Reg(Reg),
+  RipRel(i32),
+  #[allow(dead_code)]
+  Sib(Sib),
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[expect(dead_code)]
+enum Scale {
+  S1 = 0,
+  S2 = 1,
+  S4 = 2,
+  S8 = 3,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Sib {
+  base: Reg,
+  disp: Disp,
+  index: Reg,
+  scale: Scale,
+}
+#[repr(u8)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash)]
+enum Sect {
+  Bss,
+  Data,
+  Idata,
+  Text,
+}
+struct Assembler {
+  addr_sect: HashMap<usize, Sect>,
+  dlls: Dlls,
+  rva: HashMap<Sect, u32>,
+  sym_addr: HashMap<usize, u32>,
+}
+type Dlls = Vec<(&'static str, Vec<(u16, &'static str)>)>;
+#[expect(dead_code)]
+#[derive(Clone, Debug)]
+enum Inst {
+  AddRId(Reg, u32),
+  AddRR(Reg, Reg),
+  AndRbRb(Reg, Reg),
+  Bss(usize, u32),
+  Byte(usize, u8),
+  Call(usize),
+  CallApi((usize, usize)),
+  Clear(Reg),
+  CmpRIb(Reg, i8),
+  Cqo,
+  IDivR(Reg),
+  IMulRR(Reg, Reg),
+  Jmp(usize),
+  JzJe(usize),
+  Label(usize),
+  LeaRM(Reg, VarKind),
+  MovMId(VarKind, u32),
+  MovMbIb(VarKind, u8),
+  MovMbRb(VarKind, Reg),
+  MovQQ(OpQ, OpQ),
+  MovRbIb(Reg, u8),
+  MovRbMb(Reg, VarKind),
+  MovRdId(Reg, u32),
+  NegR(Reg),
+  NotRb(Reg),
+  OrRbRb(Reg, Reg),
+  Pop(Reg),
+  Push(Reg),
+  Quad(usize, u64),
+  Ret,
+  Shl1R(Reg),
+  StringZ(usize, String),
+  SubRId(Reg, u32),
+  SubRR(Reg, Reg),
+  TestRR(Reg, Reg),
+  TestRbRb(Reg, Reg),
+  TestRdRd(Reg, Reg),
+  XorRR(Reg, Reg),
+  XorRbRb(Reg, Reg),
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpQ {
+  Args(usize),
+  Iq(u64),
+  Mq(VarKind),
+  Rq(Reg),
+}
+/*
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OpD {
+  Id(u32),
+  Md(VarKind),
+  Rd(Reg),
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OpW {
+  Iw(u16),
+  Mw(VarKind),
+  Rw(Reg),
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OpB {
+  Ib(u8),
+  Mb(VarKind),
+  Rb(Reg),
+}
+*/
+#[derive(Copy, Clone)]
 enum Arity {
   Any,
   AtLeast(usize),
@@ -56,18 +191,17 @@ enum Arity {
   #[expect(dead_code)]
   Range(usize, usize),
 }
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct AsmFunc {
-  label: Label,
+  id: usize,
   params: Vec<Json>,
   ret: Box<Json>,
 }
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 enum Bind<T> {
   Lit(T),
   Var(Label),
 }
-#[derive(Debug)]
 struct Builtin {
   arg_len: Arity,
   func: JFunc,
@@ -75,16 +209,15 @@ struct Builtin {
   skip_eval: bool,
 }
 type ErrOR<T> = Result<T, Box<dyn Error>>;
-#[derive(Debug)]
 struct FuncInfo {
   args: IntoIter<WithPos<Json>>,
-  free_list: Vec<Label>,
+  free_list: Vec<(u32, u32)>,
   len: usize,
   name: String,
   pos: Position,
 }
 type JFunc = fn(&mut Jsonpiler, &mut FuncInfo, &mut ScopeInfo) -> ErrOR<Json>;
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 enum Json {
   Array(Bind<Vec<WithPos<Json>>>),
   Bool(Bind<bool>),
@@ -96,46 +229,34 @@ enum Json {
   Object(Bind<Vec<(WithPos<String>, WithPos<Json>)>>),
   String(Bind<String>),
 }
-#[derive(Debug)]
 #[doc(hidden)]
 pub struct Jsonpiler {
-  bss: Vec<(usize, usize)>,
   builtin: HashMap<String, Builtin>,
   ctx: CompileContext,
-  data: BufWriter<File>,
   globals: HashMap<String, Json>,
+  import_table: Dlls,
+  insts: Vec<Inst>,
   parser: Parser,
-  text: Vec<String>,
+  sym_table: HashMap<&'static str, usize>,
 }
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct Label {
-  id: usize,
   kind: VarKind,
-  size: usize,
+  size: u32,
 }
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Copy, Clone, Default)]
 struct Position {
   line: usize,
   offset: usize,
   size: usize,
 }
-#[derive(Debug)]
-struct ScopeInfo {
-  alloc_map: BTreeMap<usize, usize>,
-  args_slots: usize,
-  body: Vec<String>,
-  locals: Vec<HashMap<String, Json>>,
-  reg_used: BTreeSet<String>,
-  scope_align: usize,
-  stack_size: usize,
-}
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum VarKind {
-  Global,
-  Local,
-  Tmp,
+  Global { id: usize },
+  Local { offset: u32 },
+  Tmp { offset: u32 },
 }
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 struct WithPos<T> {
   pos: Position,
   value: T,

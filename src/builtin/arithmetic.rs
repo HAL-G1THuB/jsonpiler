@@ -1,96 +1,111 @@
 use crate::{
   Arity::{AtLeast, Exactly},
   Bind::{Lit, Var},
-  ErrOR, FuncInfo, Json, Jsonpiler, ScopeInfo, built_in, err, include_once, mn, take_arg,
-  write_once,
+  ErrOR, FuncInfo,
+  Inst::*,
+  Json, Jsonpiler,
+  OpQ::{Iq, Mq, Rq},
+  Reg::*,
+  ScopeInfo,
+  VarKind::Global,
+  built_in, err, take_arg,
 };
-use std::io::Write as _;
+use std::collections::hash_map::Entry::{Occupied, Vacant};
 built_in! {self, func, scope, arithmetic;
   abs => {"abs", COMMON, Exactly(1), {
-  scope.body.push(mn!("mov", "rax", self.get_int_str(func, 1)?));
-  scope.body.push(mn!("cqo"));
-  scope.body.push(mn!("xor", "rax", "rdx"));
-  scope.body.push(mn!("sub", "rax", "rdx"));
-  Ok(Json::Int(Var(scope.mov_tmp("rax")?)))}},
+    self.mov_int(Rax, func, 1, scope)?;
+    scope.push(Cqo);
+    scope.push(XorRR(Rax, Rdx));
+    scope.push(SubRR(Rax, Rdx));
+    Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
+  }},
   div => {"/", COMMON, AtLeast(2), {
-    scope.body.push(mn!("mov", "rax", self.get_int_str(func, 1)?));
+    self.mov_int(Rax, func, 1, scope)?;
     for nth in 2..=func.len {
-      let int_str = self.get_nonzero_int_str(scope, func, nth)?;
-      scope.body.push(mn!("cqo"));
-      scope.body.push(mn!("idiv", int_str));
+      self.mov_rcx_nonzero(scope, func, nth)?;
+      scope.push(Cqo);
+      scope.push(IDivR(Rcx));
     }
-    Ok(Json::Int(Var(scope.mov_tmp("rax")?)))
+    Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
   }},
   minus => {"-", COMMON, AtLeast(1), {
-    if func.len != 1 {
-      return self.arithmetic_template(func, scope, "sub");
+    if func.len == 1 {
+      self.mov_int(Rax, func, 1, scope)?;
+      scope.push(NegR(Rax));
+      return Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
     }
-    scope.body.push(mn!("mov", "rax", self.get_int_str(func, 1)?));
-    scope.body.push(mn!("neg", "rax"));
-    Ok(Json::Int(Var(scope.mov_tmp("rax")?)))
+    self.mov_int(Rax, func, 1, scope)?;
+    for nth in 2..=func.len {
+      self.mov_int(Rcx, func, nth, scope)?;
+      scope.push(SubRR(Rax, Rcx));
+    }
+    Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
   }},
   mul => {"*", COMMON, AtLeast(2), {
-    self.arithmetic_template(func, scope, "imul")
+    self.mov_int(Rax, func, 1, scope)?;
+    for nth in 2..=func.len {
+    self.mov_int(Rcx, func, nth, scope)?;
+    scope.push(IMulRR(Rax, Rcx));
+    }
+    Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
   }},
   plus => {"+", COMMON, AtLeast(2), {
-    self.arithmetic_template(func, scope, "add")
+    self.mov_int(Rax, func, 1, scope)?;
+    for nth in 2..=func.len {
+      self.mov_int(Rcx, func, nth, scope)?;
+      scope.push(AddRR(Rax, Rcx));
+    }
+    Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
   }},
   rem => {"%", COMMON, Exactly(2), {
-    scope.body.push(mn!("mov", "rax", self.get_int_str(func, 1)?));
-    let int_str2 = self.get_nonzero_int_str(scope, func, 2)?;
-    scope.body.push(mn!("cqo"));
-    scope.body.push(mn!("idiv", int_str2));
-    Ok(Json::Int(Var(scope.mov_tmp("rdx")?)))
+    self.mov_int(Rax, func, 1, scope)?;
+    self.mov_rcx_nonzero(scope, func, 2)?;
+    scope.push(Cqo);
+    scope.push(IDivR(Rcx));
+    Ok(Json::Int(Var(scope.mov_tmp(Rdx)?)))
   }}
 }
 impl Jsonpiler {
-  fn arithmetic_int_str(
-    &self, scope: &mut ScopeInfo, func: &mut FuncInfo, nth: usize,
-  ) -> ErrOR<String> {
-    let int = take_arg!(self, func, nth, "Int", Json::Int(x) => x).0;
-    Ok(match int {
-      Lit(l_int) => {
-        if i64::from(i32::MIN) < l_int || l_int < i64::from(i32::MAX) {
-          scope.body.push(mn!("mov", "rcx", l_int));
-          "rcx".to_owned()
-        } else {
-          l_int.to_string()
-        }
-      }
-      Var(label) => label.sched_free_2str(func),
-    })
-  }
-  fn arithmetic_template(
-    &mut self, func: &mut FuncInfo, scope: &mut ScopeInfo, mn: &str,
-  ) -> ErrOR<Json> {
-    let mut int_str = self.arithmetic_int_str(scope, func, 1)?;
-    scope.body.push(mn!("mov", "rax", int_str));
-    for nth in 2..=func.len {
-      int_str = self.arithmetic_int_str(scope, func, nth)?;
-      scope.body.push(mn!(mn, "rax", int_str));
-    }
-    Ok(Json::Int(Var(scope.mov_tmp("rax")?)))
-  }
-  fn get_nonzero_int_str(
+  fn mov_rcx_nonzero(
     &mut self, scope: &mut ScopeInfo, func: &mut FuncInfo, nth: usize,
-  ) -> ErrOR<String> {
+  ) -> ErrOR<()> {
     let (int, pos) = take_arg!(self, func, nth, "Int", Json::Int(x) => x);
     match int {
       Lit(l_int) => {
         if l_int == 0 {
           return err!(self, pos, "ZeroDivisionError");
         }
-        scope.body.push(mn!("mov", "rcx", l_int));
-        Ok("rcx".to_owned())
+        #[expect(clippy::cast_sign_loss)]
+        scope.push(MovQQ(Rq(Rcx), Iq(l_int as u64)));
       }
       Var(label) => {
-        let label_str = label.sched_free_2str(func);
-        scope.body.push(mn!("cmp", label_str, "0"));
-        write_once!(self, "err/ZERO_DIVISION_MSG");
-        include_once!(self, self.text, "err/ZERO_DIVISION_ERR");
-        scope.body.push(mn!("jz", ".L__ZERO_DIVISION_ERR"));
-        Ok(label_str)
+        func.sched_free_tmp(&label);
+        scope.push(MovQQ(Rq(Rcx), Mq(label.kind)));
+        scope.push(CmpRIb(Rcx, 0));
+        let zero_division_msg = self.global_str("ZeroDivisionError".to_owned());
+        let message_box = self.import(Jsonpiler::USER32, "MessageBoxA", 0x285);
+        let exit_process = self.import(Jsonpiler::KERNEL32, "ExitProcess", 0x167);
+        let zero_division_err = match self.sym_table.entry("ZERO_DIVISION_ERR") {
+          Occupied(entry) => *entry.get(),
+          Vacant(entry) => {
+            let id = self.ctx.gen_id();
+            self.insts.extend_from_slice(&[
+              Label(id),
+              Clear(Rcx),
+              LeaRM(Rdx, Global { id: zero_division_msg }),
+              Clear(R8),
+              MovRdId(R9, 0x10),
+              CallApi(message_box),
+              MovRdId(Rcx, u32::MAX),
+              CallApi(exit_process),
+            ]);
+            entry.insert(id);
+            id
+          }
+        };
+        scope.push(JzJe(zero_division_err));
       }
     }
+    Ok(())
   }
 }
