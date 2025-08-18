@@ -69,11 +69,12 @@ Browse ready-to-run samples in **`examples/`**:
 
 Minimal example:
 
-````json
+```json
 { "=": ["a", "title"], "message": [{"$": "a"}, "345"], "+": [1, 2, 3] }
 ```
 
-**Execution order**
+### Execution order
+
 - A Jsonpiler program is a single JSON object whose keys are evaluated **sequentially**.
 - `"="` assigns the string `"title"` to the variable `a`.
 - `"message"` prints the value of `a` followed by `"345"`.
@@ -83,7 +84,7 @@ The program’s **final expression value** becomes the process **exit code**. Ru
 
 ```text
 error: process didn't exit successfully: `jsonpiler.exe test.json` (exit code: 6)
-````
+```
 
 This is expected behavior and not an error in Jsonpiler itself.
 
