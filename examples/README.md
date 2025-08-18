@@ -6,6 +6,6 @@
 
 [Scope](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/scope.json)
 
-[Squaring a number](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/square_global.json)
+[Squaring a number](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/square.json)
 
 [Basic Boolean Logic Demo](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/or_and_nand.json)
