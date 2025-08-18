@@ -71,7 +71,7 @@ Minimal example:
 
 ````json
 { "=": ["a", "title"], "message": [{"$": "a"}, "345"], "+": [1, 2, 3] }
-``;
+```
 
 **Execution order**
 - A Jsonpiler program is a single JSON object whose keys are evaluated **sequentially**.

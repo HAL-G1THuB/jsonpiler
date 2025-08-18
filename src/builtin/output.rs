@@ -51,7 +51,6 @@ built_in! {self, func, scope, output;
     Ok(Json::Null)
   }}
 }
-
 impl Jsonpiler {
   fn get_u8to16(&mut self) -> usize {
     let heap = self.sym_table["HEAP"];
