@@ -3,7 +3,7 @@
 ## not
 
 ```json
-{"not": "Bool"} -> "VBool"
+{"not": "Bool"} -> "Bool (Temporary Value)"
 ```
 
 Returns the logical NOT of the given boolean.
@@ -15,7 +15,7 @@ Returns the logical NOT of the given boolean.
 ## and
 
 ```json
-{"and": ["Bool", "Bool", "..."]} -> "VBool"
+{"and": ["Bool", "Bool", "..."]} -> "Bool (Temporary Value)"
 ```
 
 Returns the logical AND of the given booleans.
@@ -27,7 +27,7 @@ Returns the logical AND of the given booleans.
 ## or
 
 ```json
-{"or": ["Bool", "Bool", "..."]} -> "VBool"
+{"or": ["Bool", "Bool", "..."]} -> "Bool (Temporary Value)"
 ```
 
 Returns the logical OR of the given booleans.
@@ -39,11 +39,47 @@ Returns the logical OR of the given booleans.
 ## xor
 
 ```json
-{"xor": ["Bool", "Bool", "..."]} -> "VBool"
+{"xor": ["Bool", "Bool", "..."]} -> "Bool (Temporary Value)"
 ```
 
 Returns the logical OR of the given booleans.
 
 ```json
 {"xor": [true, false]} => true
+```
+
+## ==
+
+```json
+{"==": ["Int", "..."]} -> "Bool (Temporary Value)"
+```
+
+Returns `true` if all arguments are equal, `false` otherwise.
+
+```json
+{"==": [1, 1]} => true
+```
+
+## <
+
+```json
+{"<": ["Int", "..."]} -> "Bool (Temporary Value)"
+```
+
+Returns `true` if the arguments are in strictly increasing order, `false` otherwise.
+
+```json
+{"<": [1, 2]} => true
+```
+
+## <=
+
+```json
+{"<=": ["Int", "Int"]} -> "Bool (Temporary Value)"
+```
+
+Returns `true` if the arguments are in increasing order, `false` otherwise.
+
+```json
+{"<=": [1, 2]} => true
 ```

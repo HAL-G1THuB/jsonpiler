@@ -179,10 +179,13 @@ impl Parser {
               }
             }
             b'/' => bytes.push(b'/'),
-            b'"' | b'\\' | b'b' | b'f' | b'r' | b'n' | b't' => {
-              bytes.push(b'\\');
-              bytes.push(esc);
-            }
+            b'"' => bytes.push(b'"'),
+            b'\\' => bytes.push(b'\\'),
+            b'b' => bytes.push(b'\x08'),
+            b'f' => bytes.push(b'\x0C'),
+            b'r' => bytes.push(b'\r'),
+            b'n' => bytes.push(b'\n'),
+            b't' => bytes.push(b'\t'),
             _ => return parse_err!(self, "Invalid escape sequence."),
           }
         }

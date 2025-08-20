@@ -1,4 +1,5 @@
 mod arithmetic;
+mod compare;
 mod control;
 mod evaluate;
 mod logical;
@@ -18,7 +19,6 @@ use crate::{
   Reg::*,
   ScopeInfo,
   VarKind::Global,
-  VarKind::Local,
   WithPos, err,
 };
 use core::mem::{discriminant, take};
@@ -26,6 +26,7 @@ use std::{fs::File, io::Write as _};
 impl Jsonpiler {
   pub(crate) fn register_all(&mut self) {
     self.arithmetic();
+    self.compare();
     self.control();
     self.evaluate();
     self.logical();
@@ -84,9 +85,12 @@ impl Jsonpiler {
         scope.end(tmp)?;
       }
       Ok(result)
-    } else if let Some(Json::Function(AsmFunc { id, params, ret })) = self.get_var(&name, scope) {
+    } else {
       let args_vec = self
         .eval_args(if let Json::Array(Lit(arr)) = val.value { arr } else { vec![val] }, scope)?;
+      let Some(AsmFunc { id, params, ret }) = self.user_defined.get(&name).cloned() else {
+        return err!(self, key.pos, "Undefined function");
+      };
       let len = args_vec.len();
       let func_info = &FuncInfo { len, name, pos, args: vec![].into_iter(), free_list: vec![] };
       self.parser.validate_args(func_info, Exactly(params.len()))?;
@@ -99,18 +103,16 @@ impl Jsonpiler {
         self.mov_to_args(&jwp, idx, scope)?;
       }
       scope.push(Call(id));
-      match *ret {
+      match ret {
         Json::Int(_) => Ok(Json::Int(Var(scope.mov_tmp(Rax)?))),
         Json::Bool(_) => scope.mov_tmp_bool(Rax),
         Json::Float(_) => Ok(Json::Float(Var(scope.mov_tmp(Rax)?))),
         Json::String(_) => Ok(Json::String(Var(scope.mov_tmp(Rax)?))),
         Json::Null => Ok(Json::Null),
-        Json::Array(_) | Json::Function(_) | Json::Object(_) => {
+        Json::Array(_) | Json::Object(_) => {
           err!(self, key.pos, "Unsupported return type: `{}`", ret.type_name())
         }
       }
-    } else {
-      err!(self, key.pos, "Undefined function")
     }
   }
   fn eval_object(
@@ -125,38 +127,36 @@ impl Jsonpiler {
       object.pop().ok_or_else(|| self.parser.fmt_err("Empty object is not allowed", pos))?;
     self.eval_func(scope, key, val)
   }
-  fn handler(&mut self) -> [Inst; 27] {
+  fn handler(&mut self) -> [Inst; 25] {
     let exit_process = self.import(Jsonpiler::KERNEL32, "ExitProcess", 0x167);
     let format_message = self.import(Jsonpiler::KERNEL32, "FormatMessageW", 0x1B0);
     let get_last_error = self.import(Jsonpiler::KERNEL32, "GetLastError", 0x26A);
     let message_box = self.import(Jsonpiler::USER32, "MessageBoxW", 0x28c);
     let local_free = self.import(Jsonpiler::KERNEL32, "LocalFree", 0x3D8);
-    let win_handler_exit = self.ctx.gen_id();
+    let win_handler_exit = self.gen_id();
     [
-      Label(self.sym_table["WIN_HANDLER"]),
-      MovQQ(Rq(Rbp), Rq(Rsp)),
-      AddRId(Rsp, 0x38),
+      Lbl(self.sym_table["WIN_HANDLER"]),
       CallApi(get_last_error),
       MovQQ(Rq(Rdi), Rq(Rax)),
-      MovRdId(Rcx, 0x1300),
+      MovRId(Rcx, 0x1300),
       Clear(Rdx),
       MovQQ(Rq(R8), Rq(Rdi)),
       Clear(R9),
-      LeaRM(Rax, Local { offset: 8 }),
+      LeaRM(Rax, Global { id: self.sym_table["WIN_HANDLER_MSG"] }),
       MovQQ(Args(0x20), Rq(Rax)),
       MovQQ(Rq(Rax), Iq(0)),
       MovQQ(Args(0x28), Rq(Rax)),
       MovQQ(Args(0x30), Rq(Rax)),
       CallApi(format_message),
       TestRdRd(Rax, Rax),
-      JzJe(win_handler_exit),
+      Jze(win_handler_exit),
       Clear(Rcx),
-      MovQQ(Rq(Rdx), Mq(Local { offset: 8 })),
+      MovQQ(Rq(Rdx), Mq(Global { id: self.sym_table["WIN_HANDLER_MSG"] })),
       Clear(R8),
-      MovRdId(R9, 0x10),
+      MovRId(R9, 0x10),
       CallApi(message_box),
-      Label(win_handler_exit),
-      MovQQ(Rq(Rcx), Mq(Local { offset: 8 })),
+      Lbl(win_handler_exit),
+      MovQQ(Rq(Rcx), Mq(Global { id: self.sym_table["WIN_HANDLER_MSG"] })),
       CallApi(local_free),
       MovQQ(Rq(Rcx), Rq(Rdi)),
       CallApi(exit_process),
@@ -224,7 +224,7 @@ impl Jsonpiler {
             scope.push(MovQQ(Args((idx - 4) * 8), Rq(Rax)));
           }
         }
-        Json::Array(_) | Json::Object(_) | Json::Function(_) => {
+        Json::Array(_) | Json::Object(_) => {
           return err!(
             self,
             jwp.pos,
@@ -244,8 +244,11 @@ impl Jsonpiler {
   #[expect(clippy::cast_sign_loss)]
   pub fn run(&mut self, exe: &str) -> ErrOR<()> {
     let json = self.parser.parse()?;
+    /*
     let msg = self.global_str(include_str!("txt/SEH_HANDLER_MSG.txt").to_owned());
     self.sym_table.insert("SEH_HANDLER_MSG", msg);
+    */
+    self.global_num(0);
     let std_o = self.get_bss_id(8);
     self.sym_table.insert("STDO", std_o);
     let std_e = self.get_bss_id(8);
@@ -256,10 +259,12 @@ impl Jsonpiler {
     self.sym_table.insert("HEAP", heap);
     let win = self.get_bss_id(8);
     self.sym_table.insert("WIN_HANDLER_MSG", win);
-    let win_handler = self.ctx.gen_id();
+    let win_handler = self.gen_id();
     self.sym_table.insert("WIN_HANDLER", win_handler);
     self.register_all();
     let mut scope = ScopeInfo::new();
+    // handler
+    scope.update_stack_args(3);
     let set_console_cp = self.import(Jsonpiler::KERNEL32, "SetConsoleCP", 0x4FB);
     let set_console_output_cp = self.import(Jsonpiler::KERNEL32, "SetConsoleOutputCP", 0x511);
     let get_process_heap = self.import(Jsonpiler::KERNEL32, "GetProcessHeap", 0x2BE);
@@ -269,32 +274,32 @@ impl Jsonpiler {
     let mut insts = vec![
       MovQQ(Rq(Rbp), Rq(Rsp)),
       SubRId(Rsp, size),
-      MovRdId(Rcx, 65001),
+      MovRId(Rcx, 65001),
       CallApi(set_console_cp),
       TestRR(Rax, Rax),
-      JzJe(win_handler),
-      MovRdId(Rcx, 65001),
+      Jze(win_handler),
+      MovRId(Rcx, 65001),
       CallApi(set_console_output_cp),
       TestRR(Rax, Rax),
-      JzJe(win_handler),
-      MovRdId(Rcx, -10i32 as u32),
+      Jze(win_handler),
+      MovRId(Rcx, -10i32 as u32),
       CallApi(get_std_handle),
       CmpRIb(Rax, -1i8),
-      JzJe(win_handler),
+      Jze(win_handler),
       MovQQ(Mq(Global { id: std_i }), Rq(Rax)),
-      MovRdId(Rcx, -11i32 as u32),
+      MovRId(Rcx, -11i32 as u32),
       CallApi(get_std_handle),
       CmpRIb(Rax, -1i8),
-      JzJe(win_handler),
+      Jze(win_handler),
       MovQQ(Mq(Global { id: std_o }), Rq(Rax)),
-      MovRdId(Rcx, -12i32 as u32),
+      MovRId(Rcx, -12i32 as u32),
       CallApi(get_std_handle),
       CmpRIb(Rax, -1i8),
-      JzJe(win_handler),
+      Jze(win_handler),
       MovQQ(Mq(Global { id: std_e }), Rq(Rax)),
       CallApi(get_process_heap),
       TestRR(Rax, Rax),
-      JzJe(win_handler),
+      Jze(win_handler),
       MovQQ(Mq(Global { id: heap }), Rq(Rax)),
     ];
     #[expect(clippy::cast_sign_loss)]

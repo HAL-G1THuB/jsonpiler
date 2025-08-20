@@ -15,27 +15,33 @@ It introduces a new scope and evaluates the expression in order and returns the 
 ## = / global
 
 ```json
-{"=": [{"variable": "LString"}, {"value": "Any"}]} -> "Null"
+{"=": [{"variable": "String (Literal)"}, {"value": "Any"}]} -> "Null"
 ```
 
 ```json
-{"global": [{"variable": "LString"}, {"value": "Any"}]} -> "Null"
+{"global": [{"variable": "String (Literal)"}, {"value": "Any"}]} -> "Null"
 ```
 
 Assigns the given value to the specified variable name.  
 Returns `null` after assignment.
 Assigned to local scope for `=` and to global scope for `global`.
+`=` supports reassignment.
+
 Currently, the following types are **not assignable**:
 
 - Array  
 - Object  
 
-**Reassignment is not yet implemented.**
+Currently, the following types are **not reassignable**:
+
+- Array  
+- Object  
+- Function
 
 ## $
 
 ```json
-{"$": {"variable": "LString"}} -> "VAny"
+{"$": {"variable": "String (Literal)"}} -> "VAny"
 ```
 
 Returns the value bound to the given variable name.

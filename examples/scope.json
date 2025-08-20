@@ -1,6 +1,0 @@
-{
-  "message": ["", "This program will return the number 123, not 100."],
-  "=": ["x", 123],
-  "scope": { "=": ["x", 100] },
-  "$": "x"
-}

@@ -1,18 +1,27 @@
 # Control frow
 
-## lambda
+## define
 
 ```json
-{"lambda": [{"params": "TypeAnnotations"}, {"body": "Sequence"}]} -> "Function"
+{
+  "define": [
+    {"name": "String (Literal)"},
+    {"params": "TypeAnnotations"},
+    {"return_type": "String (Literal)"},
+    {"body": "Sequence"}
+  ]
+} -> "Null"
 ```
 
-Creates a function.  
-The first argument specifies the parameters as an object of type annotations;  
-the remaining arguments form the function body and are evaluated when the function is called.
-`lambda` introduces a new scope.
+Registers a user-defined function.
+The first argument is the name of the function.
+The second argument is the type annotation of the argument.
+The third argument is the type annotation of the return value.
+The fourth argument is the function body and is evaluated when the function is called.
+`define` introduces a new scope.
 
 ```json
-{"lambda": [[], {"+": [4, 6]}, 1]}
+{"define": ["*2", {"n": "Int"}, {"+": [{"$": "n"}, {"$": "n"}]}]}
 ```
 
 **Types that can be assigned to arguments**:
@@ -70,3 +79,21 @@ Regardless of which branch is taken, the overall result is always `null`.
 }
  => null
 ```
+
+## while
+
+```json
+{"while": [{"condition": "Bool"}, {"body": "Sequence"}]} -> "Null"
+```
+
+Executes the `body` repeatedly as long as the `condition` evaluates to `true`.
+Returns `null`.
+
+```json
+{"while": [
+  {"<": [{"$": "i"}, 5]},
+  {"scope": [
+    {"message": ["Loop", {"$": "i"}]},
+    {"=": ["i", {"+": [{"$": "i"}, 1]}]}
+  ]}
+]}

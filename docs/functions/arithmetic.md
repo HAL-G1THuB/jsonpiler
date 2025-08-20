@@ -3,7 +3,7 @@
 ## abs
 
 ```json
-{"abs": "Int"} -> "VInt"
+{"abs": "Int"} -> "Int (Temporary Value)"
 ```
 
 Returns the absolute value of the given integer.
@@ -15,7 +15,7 @@ Returns the absolute value of the given integer.
 ## +
 
 ```json
-{"+": ["Int", "Int", "..."]} -> "VInt"
+{"+": ["Int", "Int", "..."]} -> "Int (Temporary Value)"
 ```
 
 Returns the sum of all operands.
@@ -27,7 +27,7 @@ Returns the sum of all operands.
 ## -
 
 ```json
-{ "-": ["Int", "..."] } -> "VInt"
+{ "-": ["Int", "..."] } -> "Int (Temporary Value)"
 ```
 
 Subtracts all following operands from the first one and returns the result.
@@ -40,7 +40,7 @@ If given one argument, invert the sign.
 ## *
 
 ```json
-{"*": ["Int", "Int", "..."]} -> "VInt"
+{"*": ["Int", "Int", "..."]} -> "Int (Temporary Value)"
 ```
 
 Returns the result of multiplying operands.
@@ -52,7 +52,7 @@ Returns the result of multiplying operands.
 ## /
 
 ```json
-{"/": ["Int", "Int", "..."]} -> "VInt"
+{"/": ["Int", "Int", "..."]} -> "Int (Temporary Value)"
 ```
 
 Returns the result of dividing the first operand by all following operands.
@@ -65,7 +65,7 @@ If the number to divide is zero, an error is generated at runtime or compile tim
 ## %
 
 ```json
-{"%": ["Int", "Int"]} -> "VInt"
+{"%": ["Int", "Int"]} -> "Int (Temporary Value)"
 ```
 
 Returns the result of the remainder operation.

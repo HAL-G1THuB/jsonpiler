@@ -1,0 +1,28 @@
+{
+  "message": [
+    "",
+    {
+      "concat": [
+        "The program sets a, b, and c to false. In a new scope,\n",
+        "it initializes cnt to 0 and runs a loop while cnt < 2.\n",
+        "Each time, it prints \"cnt < 2\" and increments cnt.\n",
+        "After the loop, the final value 2 is returned."
+      ]
+    }
+  ],
+  "=": ["a", false],
+  "=": ["b", false],
+  "=": ["c", false],
+  "scope": {
+    "=": ["cnt", 0],
+    "=": ["x", true],
+    "while": [
+      { "<": [{ "$": "cnt" }, 2] },
+      {
+        "message": ["", "cnt < 2"],
+        "=": ["cnt", { "+": [{ "$": "cnt" }, 1] }]
+      }
+    ],
+    "$": "cnt"
+  }
+}

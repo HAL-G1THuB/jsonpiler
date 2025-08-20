@@ -8,7 +8,7 @@ use crate::{
   VarKind::{Local, Tmp},
   utility::align_up_32,
 };
-use core::iter::{DoubleEndedIterator as _, Iterator, once};
+use core::iter::{DoubleEndedIterator as _, Iterator as _};
 use core::mem::{replace, take};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::vec::IntoIter;
@@ -18,17 +18,15 @@ macro_rules! add {
   };
 }
 macro_rules! sub {
-  ($op1:expr, $op2:expr) => {
-    $op1.checked_sub($op2).ok_or("InternalError: Underflow occurred")
-  };
+  ($op1:expr, $op2:expr) => {{ $op1.checked_sub($op2).ok_or("InternalError: Underflow occurred") }};
 }
 pub(crate) struct ScopeInfo {
   alloc_map: BTreeMap<u32, u32>,
-  args_slots: u32,
   base_stack: u32,
   body: Vec<Inst>,
   locals: Vec<HashMap<String, Json>>,
   reg_used: BTreeSet<Reg>,
+  stack_args: u32,
   stack_size: u32,
 }
 impl ScopeInfo {
@@ -80,11 +78,11 @@ impl ScopeInfo {
     let align = align_up_32(self.stack_size, 16)?;
     let mut scope_body = replace(&mut self.body, tmp.body);
     if align != 0 {
-      self.body.push(SubRId(Rsp, align));
+      self.body.push(SubRId(Rsp, align as u32));
     }
     self.body.append(&mut scope_body);
     if align != 0 {
-      self.body.push(AddRId(Rsp, align));
+      self.body.push(AddRId(Rsp, align as u32));
     }
     self.stack_size = tmp.stack_size;
     self.base_stack = tmp.base_stack;
@@ -114,16 +112,19 @@ impl ScopeInfo {
     self.alloc_map.insert(start, size);
     Ok(())
   }
+  pub(crate) fn get_var_local(&self, var_name: &str) -> Option<Json> {
+    for table in &self.locals {
+      if let Some(val) = table.get(var_name) {
+        return Some(val.clone());
+      }
+    }
+    None
+  }
   pub(crate) fn innermost_scope(&mut self) -> ErrOR<&mut HashMap<String, Json>> {
     Ok(self.locals.last_mut().ok_or("InternalError: Invalid scope.")?)
   }
   pub(crate) fn into_iter_code(self) -> IntoIter<Inst> {
     self.body.into_iter()
-  }
-  pub(crate) fn iter_all_scope<'a>(
-    &'a self, globals: &'a HashMap<String, Json>,
-  ) -> impl Iterator<Item = &'a HashMap<String, Json>> {
-    self.locals.iter().rev().chain(once(globals))
   }
   pub(crate) fn local(&mut self, size: u32) -> ErrOR<Label> {
     Ok(Label { kind: Local { offset: add!(self.alloc(size)?, self.base_stack)? }, size })
@@ -141,7 +142,7 @@ impl ScopeInfo {
   pub(crate) fn new() -> Self {
     Self {
       alloc_map: BTreeMap::new(),
-      args_slots: 0,
+      stack_args: 0,
       body: vec![],
       locals: vec![HashMap::new()],
       reg_used: BTreeSet::new(),
@@ -156,12 +157,12 @@ impl ScopeInfo {
     Ok(u32::try_from((self.reg_used.len() & 1) << 3)?)
   }
   pub(crate) fn resolve_stack_size(&self, align: u32) -> ErrOR<u32> {
-    let args_size = self.args_slots.checked_mul(8).ok_or("Overflow: args_slots * 8")?;
+    let args_size = self.stack_args.checked_mul(8).ok_or("Overflow: args_slots * 8")?;
     let raw = add!(self.stack_size, args_size)?;
     let locals = align_up_32(raw, 16)?;
     let aligned = add!(locals, align)?;
     let shadow_space = 32;
-    Ok(add!(aligned, shadow_space)?)
+    Ok(add!(aligned as u32, shadow_space)?)
   }
   pub(crate) fn take_code(&mut self) -> Vec<Inst> {
     take(&mut self.body)
@@ -172,9 +173,8 @@ impl ScopeInfo {
   pub(crate) fn tmp(&mut self, size: u32) -> ErrOR<Label> {
     Ok(Label { kind: Tmp { offset: add!(self.alloc(size)?, self.base_stack)? }, size })
   }
-  #[expect(dead_code)]
-  pub(crate) fn update_max(&mut self, size: u32) {
-    self.args_slots = self.args_slots.max(size);
+  pub(crate) fn update_stack_args(&mut self, size: u32) {
+    self.stack_args = self.stack_args.max(size);
   }
   pub(crate) fn use_reg(&mut self, reg: Reg) {
     self.reg_used.insert(reg);

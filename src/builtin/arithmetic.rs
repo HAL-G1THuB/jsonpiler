@@ -88,22 +88,23 @@ impl Jsonpiler {
         let zero_division_err = match self.sym_table.entry("ZERO_DIVISION_ERR") {
           Occupied(entry) => *entry.get(),
           Vacant(entry) => {
-            let id = self.ctx.gen_id();
+            let id = self.label_id;
+            self.label_id += 1;
             self.insts.extend_from_slice(&[
-              Label(id),
+              Lbl(id),
               Clear(Rcx),
               LeaRM(Rdx, Global { id: zero_division_msg }),
               Clear(R8),
-              MovRdId(R9, 0x10),
+              MovRId(R9, 0x10),
               CallApi(message_box),
-              MovRdId(Rcx, u32::MAX),
+              MovRId(Rcx, u32::MAX),
               CallApi(exit_process),
             ]);
             entry.insert(id);
             id
           }
         };
-        scope.push(JzJe(zero_division_err));
+        scope.push(Jze(zero_division_err));
       }
     }
     Ok(())

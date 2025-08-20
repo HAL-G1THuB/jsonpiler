@@ -48,10 +48,6 @@ See: [JSON specification](https://www.rfc-editor.org/info/rfc8259)
 }
 ```
 
-### Function Type
-
-- **Function**: Represents a function that can be called with arguments.
-
 ## Evaluation
 
 A Jsonpiler program is represented as a single JSON value.

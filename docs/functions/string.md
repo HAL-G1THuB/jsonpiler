@@ -3,7 +3,7 @@
 ## concat
 
 ```json
-{"concat": ["LString", "LString", "..."]} -> "LString"
+{"concat": ["String (Literal)", "String (Literal)", "..."]} -> "String (Literal)"
 ```
 
 Returns the result of concatenating all string literals.

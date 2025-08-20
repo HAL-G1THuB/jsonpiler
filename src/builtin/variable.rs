@@ -3,93 +3,119 @@ use crate::{
   Bind::{self, Lit, Var},
   ErrOR, FuncInfo,
   Inst::*,
-  Json, Jsonpiler,
+  Json, Jsonpiler, Label,
   OpQ::{Iq, Mq, Rq},
   Reg::*,
   ScopeInfo,
   VarKind::Global,
-  built_in, err, take_arg,
+  built_in, err, get_target_kind, take_arg,
 };
+use core::mem::discriminant;
 impl Jsonpiler {
-  #[expect(clippy::cast_sign_loss)]
+  #[expect(clippy::cast_sign_loss, clippy::too_many_lines)]
   fn assign(&mut self, func: &mut FuncInfo, scope: &mut ScopeInfo, is_global: bool) -> ErrOR<Json> {
     let (variable, pos) = take_arg!(self, func, 1, "String", Json::String(Lit(x)) => x);
     let json2 = func.arg()?;
+    if is_global && self.globals.contains_key(&variable) {
+      return err!(self, pos, "Reassignment is not possible in the global scope.");
+    }
+    let local_label = if is_global { None } else { scope.get_var_local(&variable) };
+    if let Some(json) = &local_label {
+      if discriminant(json) != discriminant(&json2.value) {
+        return Err(
+          self
+            .parser
+            .type_err(1, &format!("Variable `{variable}`"), &json.type_name(), &json2)
+            .into(),
+        );
+      }
+    }
     let value = match json2.value {
-      Json::Function(asm_func) => {
-        if self.builtin.contains_key(&variable) {
-          return err!(self, pos, "Name conflict with a built-in function.");
-        }
-        Json::Function(asm_func)
+      Json::String(Lit(st)) if is_global => {
+        Json::String(Var(Label { kind: Global { id: self.global_str(st) }, size: 8 }))
       }
       Json::String(Lit(st)) => {
-        Json::String(Var(crate::Label { kind: Global { id: self.global_str(st) }, size: 8 }))
+        let kind = get_target_kind!(
+          self, scope, is_global, 8, local_label,
+          Json::String(Var(label )) =>label.kind);
+        scope.push(LeaRM(Rax, Global { id: self.global_str(st) }));
+        scope.push(MovQQ(Mq(kind), Rq(Rax)));
+        Json::String(Var(Label { kind, size: 8 }))
       }
-      Json::String(Var(str_label)) => {
-        let mem = if is_global { Global { id: self.get_bss_id(8) } } else { scope.local(8)?.kind };
-        scope.push(LeaRM(Rax, str_label.kind));
-        scope.push(MovQQ(Mq(mem), Rq(Rax)));
-        Json::String(Var(crate::Label { kind: mem, size: 8 }))
+      Json::String(Var(string)) => {
+        func.sched_free_tmp(&string);
+        let kind = get_target_kind!(
+          self, scope, is_global, 8, local_label,
+          Json::String(Var(label )) =>label.kind);
+        scope.push(LeaRM(Rax, string.kind));
+        scope.push(MovQQ(Mq(kind), Rq(Rax)));
+        Json::String(Var(Label { kind, size: 8 }))
       }
       Json::Null => Json::Null,
       Json::Int(Lit(int)) if is_global => {
-        Json::Int(Var(crate::Label { kind: Global { id: self.global_num(int as u64) }, size: 8 }))
+        Json::Int(Var(Label { kind: Global { id: self.global_num(int as u64) }, size: 8 }))
       }
       Json::Int(int) => {
-        let mem = if is_global { Global { id: self.get_bss_id(8) } } else { scope.local(8)?.kind };
+        if let Var(label) = int {
+          func.sched_free_tmp(&label);
+        }
+        let kind = get_target_kind!(
+          self, scope, is_global, 8, local_label,
+          Json::Int(Var(label )) =>label.kind);
         scope.push(match int {
           Lit(l_int) => MovQQ(Rq(Rax), Iq(l_int as u64)),
           Var(int_label) => MovQQ(Rq(Rax), Mq(int_label.kind)),
         });
-        scope.push(MovQQ(Mq(mem), Rq(Rax)));
-        Json::Int(Var(crate::Label { kind: mem, size: 8 }))
+        scope.push(MovQQ(Mq(kind), Rq(Rax)));
+        Json::Int(Var(Label { kind, size: 8 }))
       }
-      Json::Bool(Lit(boolean)) if is_global => {
-        Json::Bool(Var(crate::Label { kind: Global { id: self.global_bool(boolean) }, size: 1 }))
+      Json::Bool(Lit(l_bool)) if is_global => {
+        Json::Bool(Var(Label { kind: Global { id: self.global_bool(l_bool) }, size: 1 }))
       }
       Json::Bool(boolean) => {
-        let mem = if is_global { Global { id: self.get_bss_id(1) } } else { scope.local(1)?.kind };
+        if let Var(label) = boolean {
+          func.sched_free_tmp(&label);
+        }
+        let kind = get_target_kind!(
+          self, scope, is_global, 1, local_label,
+          Json::Bool(Var(label )) =>label.kind);
         match boolean {
-          Lit(l_bool) => scope.push(MovMbIb(mem, if l_bool { 0xFF } else { 0 })),
+          Lit(l_bool) => scope.push(MovMbIb(kind, if l_bool { 0xFF } else { 0 })),
           Var(bool_label) => {
             scope.push(MovRbMb(Rax, bool_label.kind));
-            scope.push(MovMbRb(mem, Rax));
+            scope.push(MovMbRb(kind, Rax));
           }
         }
-        Json::Bool(Var(crate::Label { kind: mem, size: 1 }))
+        Json::Bool(Var(Label { kind, size: 1 }))
       }
-      Json::Float(Lit(float)) if is_global => Json::Float(Var(crate::Label {
-        kind: Global { id: self.global_num(float.to_bits()) },
-        size: 8,
-      })),
+      Json::Float(Lit(l_float)) if is_global => {
+        Json::Float(Var(Label { kind: Global { id: self.global_num(l_float.to_bits()) }, size: 8 }))
+      }
       Json::Float(float) => {
-        let mem = if is_global { Global { id: self.get_bss_id(8) } } else { scope.local(8)?.kind };
+        if let Var(label) = float {
+          func.sched_free_tmp(&label);
+        }
+        let kind = get_target_kind!(
+          self, scope, is_global, 8, local_label,
+          Json::Float(Var(label )) =>label.kind);
         scope.push(match float {
           Bind::Lit(l_float) => MovQQ(Rq(Rax), Iq(l_float.to_bits())),
           Bind::Var(float_label) => MovQQ(Rq(Rax), Mq(float_label.kind)),
         });
-        scope.push(MovQQ(Mq(mem), Rq(Rax)));
-        Json::Int(Var(crate::Label { kind: mem, size: 8 }))
+        scope.push(MovQQ(Mq(kind), Rq(Rax)));
+        Json::Float(Var(Label { kind, size: 8 }))
       }
       Json::Array(_) | Json::Object(_) => {
         return Err(
-          self
-            .parser
-            .type_err(
-              2,
-              &func.name,
-              "that supports assignment (excluding Array and Object)",
-              &json2,
-            )
-            .into(),
+          self.parser.type_err(2, &func.name, "Types excluding arrays and objects", &json2).into(),
         );
       }
     };
-    if if is_global { &mut self.globals } else { scope.innermost_scope()? }
-      .insert(variable, value)
-      .is_some()
-    {
-      return err!(self, pos, "Reassignment may not be possible in some scope.");
+    #[expect(clippy::else_if_without_else)]
+    if is_global {
+      self.globals.insert(variable, value);
+    } else if local_label.is_none() {
+      scope.innermost_scope()?.insert(variable, value);
     }
     Ok(Json::Null)
   }

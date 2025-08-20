@@ -2,9 +2,7 @@
 #[doc(hidden)]
 macro_rules! extend_bytes {
   ($vec:expr, $($data:expr),+ $(,)?) => {
-    $(
-      $vec.extend_from_slice($data);
-    )+
+    $($vec.extend_from_slice($data);)+
   };
 }
 #[macro_export]
@@ -36,6 +34,22 @@ macro_rules! warn {
 }
 #[macro_export]
 #[doc(hidden)]
+macro_rules! get_target_kind {
+  ($self:expr, $scope:expr, $is_global:expr, $size:expr, $local_label:expr, $pattern:pat => $kind_expr:expr) => {
+    if $is_global {
+      Global { id: $self.get_bss_id($size) }
+    } else if let Some(json) = &$local_label {
+      match json {
+        $pattern => $kind_expr,
+        _ => return Err("InternalError: Unexpected Json variant during reassignment".into()),
+      }
+    } else {
+      $scope.local($size)?.kind
+    }
+  };
+}
+#[macro_export]
+#[doc(hidden)]
 macro_rules! take_arg {
   (
     $self:ident,
@@ -61,9 +75,7 @@ macro_rules! built_in {
   ) => {
     impl Jsonpiler {
       pub(crate) fn $register_fn(&mut self) {
-      $(
-        self.register($key, Jsonpiler::$attrs, Jsonpiler::$name, $arity);
-      )+
+      $(self.register($key, Jsonpiler::$attrs, Jsonpiler::$name, $arity);)+
       }
     }
     #[allow(clippy::allow_attributes, clippy::single_call_fn, clippy::unnecessary_wraps)]

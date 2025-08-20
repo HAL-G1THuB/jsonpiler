@@ -6,8 +6,6 @@ This directory contains detailed documentation for each function available in Js
 
 - `-> T` - Returns a value of type `T`  
 - `=> V` - Evaluates to the value `V`  
-- `L...` - A literal of type `...`  
-- `V...` - A non-literal value of type `...`  
 - `"..."` - Zero or more arguments matching the previous pattern  
 
 ## Functions

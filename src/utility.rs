@@ -1,6 +1,6 @@
 use crate::{
   Bind::{self, Lit, Var},
-  CompileContext, ErrOR, FuncInfo,
+  ErrOR, FuncInfo,
   Inst::{self, *},
   Json, Jsonpiler, Label,
   OpQ::{Iq, Mq, Rq},
@@ -21,35 +21,36 @@ impl Jsonpiler {
   pub(crate) const SPECIAL: (bool, bool) = (false, true);
   pub(crate) const SP_SCOPE: (bool, bool) = (true, true);
   pub(crate) const USER32: &'static str = "user32.dll";
+  // Overflow is unlikely.
+  pub(crate) fn gen_id(&mut self) -> usize {
+    let id = self.label_id;
+    self.label_id += 1;
+    id
+  }
   pub(crate) fn get_bss_id(&mut self, size: u32) -> usize {
-    let id = self.ctx.gen_id();
+    let id = self.gen_id();
     self.insts.push(Bss(id, size));
     id
   }
   pub(crate) fn get_var(&self, var_name: &str, scope: &ScopeInfo) -> Option<Json> {
-    for table in scope.iter_all_scope(&self.globals) {
-      if let Some(val) = table.get(var_name) {
-        return Some(val.clone());
-      }
-    }
-    None
+    scope.get_var_local(var_name).or_else(|| Some(self.globals.get(var_name)?.clone()))
   }
   pub(crate) fn global_bool(&mut self, boolean: bool) -> usize {
-    let id = self.ctx.gen_id();
+    let id = self.gen_id();
     self.insts.push(Byte(id, if boolean { 0xFF } else { 0 }));
     id
   }
   pub(crate) fn global_num(&mut self, value: u64) -> usize {
-    let id = self.ctx.gen_id();
+    let id = self.gen_id();
     self.insts.push(Quad(id, value));
     id
   }
   pub(crate) fn global_str(&mut self, value: String) -> usize {
-    if let Some(&id) = self.ctx.str_cache.get(&value) {
+    if let Some(&id) = self.str_cache.get(&value) {
       return id;
     }
-    let id = self.ctx.gen_id();
-    self.ctx.str_cache.insert(value.clone(), id);
+    let id = self.gen_id();
+    self.str_cache.insert(value.clone(), id);
     self.insts.push(StringZ(id, value));
     id
   }
@@ -116,22 +117,15 @@ impl Jsonpiler {
   pub fn setup(source: Vec<u8>) -> Self {
     Self {
       builtin: HashMap::new(),
-      ctx: CompileContext::default(),
+      str_cache: HashMap::new(),
+      label_id: 0,
       globals: HashMap::new(),
       parser: Parser::from(source),
       insts: vec![],
       sym_table: HashMap::new(),
       import_table: vec![],
+      user_defined: HashMap::new(),
     }
-  }
-}
-pub(crate) fn get_prefix(num: u32) -> Option<&'static str> {
-  match num {
-    1 => Some("byte"),
-    2 => Some("word"),
-    4 => Some("dword"),
-    8 => Some("qword"),
-    _ => None,
   }
 }
 pub(crate) fn align_up(num: usize, align: usize) -> ErrOR<usize> {

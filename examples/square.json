@@ -1,15 +1,10 @@
 {
-  "=": [
-    "square_n",
-    {
-      "lambda": [
-        { "n": "Int" },
-        {
-          "*": [{ "$": "n" }, { "$": "n" }]
-        }
-      ]
-    }
+  "define": [
+    "square",
+    { "n": "Int" },
+    "Int",
+    { "*": [{ "$": "n" }, { "$": "n" }] }
   ],
   "message": ["", "This program returns 4^2 + 5^2 = 41."],
-  "+": [{ "square_n": [4] }, { "square_n": [5] }]
+  "+": [{ "square": [4] }, { "square": [5] }]
 }

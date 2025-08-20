@@ -68,7 +68,28 @@ impl Assembler {
       TestRR(dst, src) => {
         code.extend(Memory::Reg(*dst).encode_romsdi(vec![0x85], *src, true));
       }
-      JzJe(lbl) => {
+      CmpRR(dst, src) => {
+        code.extend(Memory::Reg(*dst).encode_romsdi(vec![0x39], *src, true));
+      }
+      Jg(lbl) => {
+        let rel = self.get_rel(*lbl, code.len(), 6)?;
+        code.push(0x0F);
+        code.push(0x8F);
+        code.extend_from_slice(&rel.to_le_bytes());
+      }
+      Jge(lbl) => {
+        let rel = self.get_rel(*lbl, code.len(), 6)?;
+        code.push(0x0F);
+        code.push(0x8D);
+        code.extend_from_slice(&rel.to_le_bytes());
+      }
+      Jnze(lbl) => {
+        let rel = self.get_rel(*lbl, code.len(), 6)?;
+        code.push(0x0F);
+        code.push(0x85);
+        code.extend_from_slice(&rel.to_le_bytes());
+      }
+      Jze(lbl) => {
         let rel = self.get_rel(*lbl, code.len(), 6)?;
         code.push(0x0F);
         code.push(0x84);
@@ -156,7 +177,7 @@ impl Assembler {
         reg.guard_reg8()?;
         code.extend(self.memory(*mem, code.len(), 2)?.encode_romsdi(vec![0x88], *reg, false));
       }
-      MovRdId(reg, dword) => {
+      MovRId(reg, dword) => {
         code.extend(reg.mini_opcode(0xB8, false));
         code.extend_from_slice(&dword.to_le_bytes());
       }
@@ -185,7 +206,7 @@ impl Assembler {
       Clear(reg) => {
         code.extend_from_slice(&Memory::Reg(*reg).encode_romsdi(vec![0x31], *reg, false));
       }
-      StringZ(_, _) | Bss(_, _) | Byte(_, _) | Label(_) | Quad(_, _) => {}
+      StringZ(_, _) | Bss(_, _) | Byte(_, _) | Lbl(_) | Quad(_, _) => {}
     }
     Ok(())
   }
@@ -229,10 +250,16 @@ impl Assembler {
     Ok(match inst {
       Ret => 1,
       XorRbRb(_, _) | OrRbRb(_, _) | AndRbRb(_, _) | TestRbRb(_, _) | Cqo => 2,
-      Shl1R(_) | TestRR(_, _) | IDivR(_) | XorRR(_, _) | SubRR(_, _) | AddRR(_, _) => 3,
+      CmpRR(_, _)
+      | Shl1R(_)
+      | TestRR(_, _)
+      | IDivR(_)
+      | XorRR(_, _)
+      | SubRR(_, _)
+      | AddRR(_, _) => 3,
       IMulRR(_, _) | CmpRIb(_, _) => 4,
       Jmp(_) | Call(_) => 5,
-      JzJe(_) | CallApi(_) => 6,
+      Jnze(_) | Jg(_) | Jge(_) | Jze(_) | CallApi(_) => 6,
       SubRId(_, _) | AddRId(_, _) => 7,
       TestRdRd(dst, src) => (dst.rex_size() | src.rex_size()) + 1 + 1,
       LeaRM(_, mem) => 2 + mem.size_of_mo_si_di(),
@@ -257,7 +284,7 @@ impl Assembler {
         data.push(*byte);
         0
       }
-      Label(idx) => {
+      Lbl(idx) => {
         self.add_label(Sect::Text, *idx, text);
         0
       }
@@ -268,7 +295,7 @@ impl Assembler {
         0
       }
       Pop(reg) | Push(reg) => reg.rex_size() + 1,
-      MovRdId(reg, _) => reg.rex_size() + 5,
+      MovRId(reg, _) => reg.rex_size() + 5,
       StringZ(idx, string) => {
         self.add_label(Sect::Data, *idx, u32::try_from(data.len())?);
         data.extend_from_slice(string.as_bytes());
@@ -447,11 +474,11 @@ mod tests {
     let sample = &[
       Bss(0, 1),
       Quad(1, 1),
-      Label(2),
+      Lbl(2),
       MovQQ(Rq(Rcx), Iq(0xCAFE_BABE)),
       Call(3),
       CallApi((0, 0)),
-      Label(3),
+      Lbl(3),
       MovQQ(Rq(Rcx), Iq(0xDEAD_BEEF)),
       Ret,
     ];

@@ -20,10 +20,10 @@ Evaluates the given expression and returns the result.
 ## list
 
 ```json
-{"list": [{"expr": "Any"}, "..."]} -> "LArray"
+{"list": [{"expr": "Any"}, "..."]} -> "Array (Literal)"
 ```
 
-The list function returns its evaluated arguments as an LArray.
+The list function returns its evaluated arguments as an Array (Literal).
 
 ```json
 {"list": {"+": [3, 5]}} => [8]

@@ -16,7 +16,6 @@ impl Json {
       | Json::Bool(_)
       | Json::Float(_)
       | Json::Int(_)
-      | Json::Function(_)
       | Json::Null
       | Json::Object(_)
       | Json::String(_) => None,
@@ -26,7 +25,6 @@ impl Json {
     match self {
       Json::Bool(bind) => bind.describe("Bool"),
       Json::Null => "Null".to_owned(),
-      Json::Function(_) => "Function".to_owned(),
       Json::Float(bind) => bind.describe("Float"),
       Json::Object(bind) => bind.describe("Object"),
       Json::Int(bind) => bind.describe("Int"),
@@ -69,17 +67,6 @@ impl fmt::Display for Json {
         Lit(l_st) => f.write_str(&escape_string(l_st)?),
         Var(_) => f.write_str(&bind.describe("String")),
       },
-      Json::Function(asm_func) => {
-        write!(f, "{}(", asm_func.id)?;
-        for (i, item) in asm_func.params.iter().enumerate() {
-          if i > 0 {
-            f.write_str(", ")?;
-          }
-          write!(f, "{item}")?;
-        }
-        write!(f, ") -> ")?;
-        (*asm_func.ret).fmt(f)
-      }
       Json::Object(bind) => match bind {
         Lit(obj) => {
           f.write_str("{")?;

@@ -2,26 +2,35 @@
 
 ## Planned
 
-- Loop implementation
-- More input/output functions
+- More I/O functions
 - More string manipulation functions
 - Support for storing data in the heap area
 - Allow heap release when exiting scope
-- Eliminate assignment ambiguity and build ownership systems
 
 ## Released
 
+### jsonpiler 0.6
+
+#### 0.6.0
+
+- Loop structure implementation: `while`
+- Fixed problem with incorrect display of escape characters caused by assembler inclusion
+- Reassignment to local variables is now available for most types.
+- Added new functions `==`, `<`, and `<=`.
+- Removed `lambda` and added `define` instead, with function registration and recursive calls
+- The `Function` type is obsolete.
+
 ### jsonpiler 0.5
 
-## 0.5.3 ~ 0.5.4
+#### 0.5.3 ~ 0.5.4
 
 - Fixed a critical bug in 0.5.0
 
-### 0.5.1 ~ 0.5.2
+#### 0.5.1 ~ 0.5.2
 
 - Added `.bin binary` in .gitattributes
 
-### 0.5.0
+#### 0.5.0
 
 - Fixed issue where some `mov` instructions with values ≥ 32-bit caused assembler errors.
 - **Implemented assembler and linker inside `jsonpiler`; GNU `as` and `ld` no longer required.**
@@ -30,7 +39,7 @@
 
 ### jsonpiler 0.4
 
-### 0.4.2
+#### 0.4.2
 
 - Added a new function `concat` to concatenate string literals while preserving their literal nature.
 - Split `Object` into three variants:

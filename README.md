@@ -15,14 +15,14 @@ Jsonpiler bundles an assembler and linker purpose-built for its IR and PE output
 
 ## What’s New
 
-### 0.5.4
+### 0.6.0
 
-- Added `.bin binary` in .gitattributes
-- Fixed a critical bug in 0.5.0
-- Fixed an issue where some `mov` instructions using values ≥ 32-bit caused assembler errors.
-- **Built-in assembler and linker**: GNU `as` and `ld` are no longer required.
-- No transient `.s` or `.obj` files are produced during builds.
-- SEH support is **temporarily disabled**.
+- Loop structure implementation: `while`
+- Fixed problem with incorrect display of escape characters caused by assembler inclusion
+- Reassignment to local variables is now available for most types.
+- Added new functions `==`, `<`, and `<=`.
+- Removed `lambda` and added `define` instead, with function registration and recursive calls
+- The `Function` type is obsolete.
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 

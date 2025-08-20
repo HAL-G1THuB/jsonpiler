@@ -26,18 +26,14 @@ jsonpiler test.json
 Windows only.
 */
 mod assembler;
-mod bind;
 mod builtin;
-mod compile_context;
-mod func_info;
 mod json;
-mod label;
 mod macros;
+mod other;
 mod parser;
 mod portable_executable;
 mod scope_info;
 mod utility;
-use compile_context::CompileContext;
 use core::error::Error;
 use parser::Parser;
 use scope_info::ScopeInfo;
@@ -121,20 +117,24 @@ enum Inst {
   CallApi((usize, usize)),
   Clear(Reg),
   CmpRIb(Reg, i8),
+  CmpRR(Reg, Reg),
   Cqo,
   IDivR(Reg),
   IMulRR(Reg, Reg),
+  Jg(usize),
+  Jge(usize),
   Jmp(usize),
-  JzJe(usize),
-  Label(usize),
+  Jnze(usize),
+  Jze(usize),
+  Lbl(usize),
   LeaRM(Reg, VarKind),
   MovMId(VarKind, u32),
   MovMbIb(VarKind, u8),
   MovMbRb(VarKind, Reg),
   MovQQ(OpQ, OpQ),
+  MovRId(Reg, u32),
   MovRbIb(Reg, u8),
   MovRbMb(Reg, VarKind),
-  MovRdId(Reg, u32),
   NegR(Reg),
   NotRb(Reg),
   OrRbRb(Reg, Reg),
@@ -195,7 +195,7 @@ enum Arity {
 struct AsmFunc {
   id: usize,
   params: Vec<Json>,
-  ret: Box<Json>,
+  ret: Json,
 }
 #[derive(Clone)]
 enum Bind<T> {
@@ -222,7 +222,6 @@ enum Json {
   Array(Bind<Vec<WithPos<Json>>>),
   Bool(Bind<bool>),
   Float(Bind<f64>),
-  Function(AsmFunc),
   Int(Bind<i64>),
   #[default]
   Null,
@@ -232,12 +231,14 @@ enum Json {
 #[doc(hidden)]
 pub struct Jsonpiler {
   builtin: HashMap<String, Builtin>,
-  ctx: CompileContext,
   globals: HashMap<String, Json>,
   import_table: Dlls,
   insts: Vec<Inst>,
+  label_id: usize,
   parser: Parser,
+  str_cache: HashMap<String, usize>,
   sym_table: HashMap<&'static str, usize>,
+  user_defined: HashMap<String, AsmFunc>,
 }
 #[derive(Clone, Copy)]
 struct Label {
