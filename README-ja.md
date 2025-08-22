@@ -1,23 +1,25 @@
-# Jsonpiler — JSON構文プログラミング言語
+# Jsonpiler — JSON 構文プログラミング言語
 
 [英語(English)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/README-ja.md)
 
-**Jsonpiler** は **JSON** を文法として使うプログラミング言語のコンパイラ兼実行環境です。
-JSONで書かれたプログラムを **x86\_64 Windows PE** 形式の機械語に変換し、リンクして実行します。
+**Jsonpiler** は **JSON** と **JSPL (Jsonpiler Structured Programming Language)** を文法として使うプログラミング言語のコンパイラ兼実行環境です。
+JSON で書かれたプログラムを **x86_64 Windows PE** 形式の機械語に変換し、リンクして実行します。
 Jsonpiler は、その中間表現（IR）から Windows 用 PE を出力することに特化した **自前実装のアセンブラとリンカ** を内蔵しています。
 
 - GitHub: [https://github.com/HAL-G1THuB/jsonpiler](https://github.com/HAL-G1THuB/jsonpiler)
 - Crates.io: [https://crates.io/crates/jsonpiler](https://crates.io/crates/jsonpiler)
-- AI生成ドキュメント: [![badge](https://deepwiki.com/badge.svg)](https://deepwiki.com/HAL-G1THuB/jsonpiler)
+- AI 生成ドキュメント: [![badge](https://deepwiki.com/badge.svg)](https://deepwiki.com/HAL-G1THuB/jsonpiler)
 
-> 🚨 **Windowsのみ (x64)** — Jsonpiler は 64ビット Windows を対象に、ネイティブ PE 実行ファイルを生成します。
+> 🚨 **Windows のみ (x64)** — Jsonpiler は 64 ビット Windows を対象に、ネイティブ PE 実行ファイルを生成します。
 
 ---
 
 ## 更新情報
 
-### 0.6.0
+### 0.6.1
 
+- JSPL の導入:JSPL (Jsonpiler Structured Programming Language)は、人間にとって書きやすく読みやすい記述を可能にするために導入された、Jsonpiler の新しい構文です。
+- 言語仕様に日本語版を追加。
 - ループ構造の実装: `while`
 - アセンブラの組み込みにより発生したエスケープ文字が正しく表示されない問題の修正
 - ローカル変数への再代入がほとんどの型で使用可能になった。
@@ -33,7 +35,7 @@ Jsonpiler は、その中間表現（IR）から Windows 用 PE を出力する�
 
 外部ツールやライブラリは不要です。
 
-**以下のシステムDLLが `C:\Windows\System32\` に存在する必要があります:**
+**以下のシステム DLL が `C:\Windows\System32\` に存在する必要があります:**
 
 - `kernel32.dll`
 - `user32.dll`
@@ -58,8 +60,30 @@ jsonpiler <input.json> [生成exeへの引数]
 
 ## 言語仕様・関数リファレンス
 
-- **言語仕様 (Markdown)**: [https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md)
+- **言語仕様 (Markdown)**: [https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification-ja.md](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md)
 - **関数リファレンス (Markdown)**: [https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md)
+
+---
+
+## JSPL
+
+Jsonpiler は、新たに導入された**JSPL (Jsonpiler Structured Programming Language)** 構文により、
+従来の厳密な JSON 形式では難しかった人間にとっての可読性と記述性を大幅に向上させました。
+JSPL は、関数定義・条件分岐・関数呼び出し・変数代入などを自然な構文で表現できるよう設計されており、
+すべての JSPL コードは内部的に既存の JSON ベースの中間表現（IR）へと変換されるため、
+Jsonpiler のコンパイル基盤との完全な互換性を保ちながら、
+人にとって書きやすく読みやすい記述が可能になります。
+詳細は上記の言語仕様に記載してあります。
+
+| JSPL-JSON の相違点           | JSON                                | JSPL                                    |
+| ---------------------------- | ----------------------------------- | --------------------------------------- |
+| **波括弧 `{}`**              | 必須                                | トップレベルブロックに限り省略可能      |
+| **関数呼び出し構文**         | `{"sum": [1,2,3]}` のような明示形式 | `sum(1, 2, 3)` の自然な関数形式         |
+| **識別子記法**               | 全て `"文字列"`                     | `"`を必要としない識別子が使える         |
+| **値-識別子-値（三項構文）** | 不可                                | `1 + 10` → `{ "+": [1, 10] }` に変換    |
+| **変数参照構文**             | `{"$": "name"}` のような明示形式    | `$name` で記述可能                      |
+| **コメント**                 | 不可（仕様上）                      | `# comment`で記述可能                   |
+| **制御構文の表現**           | 関数として記述                      | `if(...)`, `define(...)` のような構文糖 |
 
 ---
 
@@ -71,7 +95,7 @@ jsonpiler <input.json> [生成exeへの引数]
 最小例:
 
 ```json
-{ "=": ["a", "title"], "message": [{"$": "a"}, "345"], "+": [1, 2, 3] }
+{ "=": ["a", "title"], "message": [{ "$": "a" }, "345"], "+": [1, 2, 3] }
 ```
 
 ### 実行順序

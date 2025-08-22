@@ -2,7 +2,7 @@ use super::{
   Bind::{Lit, Var},
   Json, Label,
 };
-use core::fmt::{self, Write as _};
+use core::fmt;
 impl Json {
   pub(crate) fn get_label(self) -> Option<Label> {
     match self {
@@ -64,7 +64,7 @@ impl fmt::Display for Json {
         Var(_) => f.write_str(&bind.describe("Float")),
       },
       Json::String(bind) => match bind {
-        Lit(l_st) => f.write_str(&escape_string(l_st)?),
+        Lit(l_st) => f.write_str(l_st),
         Var(_) => f.write_str(&bind.describe("String")),
       },
       Json::Object(bind) => match bind {
@@ -74,7 +74,7 @@ impl fmt::Display for Json {
             if i > 0 {
               f.write_str(", ")?;
             }
-            write!(f, "{}: ", escape_string(&key_val.0.value)?)?;
+            write!(f, "{}: ", &key_val.0.value)?;
             key_val.1.value.fmt(f)?;
           }
           f.write_str("}")
@@ -83,36 +83,4 @@ impl fmt::Display for Json {
       },
     }
   }
-}
-pub(crate) fn escape_string(unescaped: &str) -> Result<String, fmt::Error> {
-  let mut escaped = String::new();
-  escaped.push('"');
-  let mut chars = unescaped.chars().peekable();
-  let mut bytes = Vec::new();
-  while let Some(char) = chars.next() {
-    if char == '\\' {
-      let mut oct_digits = String::new();
-      for _ in 0u8..3u8 {
-        match chars.next() {
-          Some(digit @ '0'..='7') => oct_digits.push(digit),
-          Some(ch) => {
-            escaped.push('\\');
-            escaped.push(ch);
-            break;
-          }
-          None => return Err(fmt::Error),
-        }
-      }
-      let byte = u8::from_str_radix(&oct_digits, 8).map_err(|_| fmt::Error)?;
-      bytes.push(byte);
-    } else {
-      return Err(fmt::Error);
-    }
-  }
-  let utf8_str = str::from_utf8(&bytes).map_err(|_| fmt::Error)?;
-  for ch in utf8_str.chars() {
-    write!(escaped, "\\u{:04X}", u32::from(ch))?;
-  }
-  escaped.push('"');
-  Ok(escaped)
 }

@@ -1,0 +1,6 @@
+define(
+  square, {n: Int}, Int,
+  $n * $n
+)
+message("", "This program returns 4^2 + 5^2 = 41.")
+square(4) + square(5)

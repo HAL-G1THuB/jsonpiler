@@ -1,4 +1,5 @@
 mod err_msg;
+mod jspl;
 use crate::{Bind::Lit, ErrOR, Json, Position, WithPos, parse_err, return_if};
 #[derive(Clone)]
 pub(crate) struct Parser {
@@ -37,14 +38,9 @@ impl Parser {
     self.advance(1)?;
     Ok(byte)
   }
-  pub(crate) fn parse(&mut self) -> ErrOR<WithPos<Json>> {
-    let result = self.parse_value()?;
-    let _: ErrOR<()> = self.skip_ws();
-    if self.pos.offset == self.source.len() {
-      Ok(result)
-    } else {
-      parse_err!(self, "Unexpected trailing characters")
-    }
+  pub(crate) fn parse(&mut self, is_jspl: bool) -> ErrOR<WithPos<Json>> {
+    let value = if is_jspl { self.parse_block(true) } else { self.parse_json() }?;
+    Ok(value)
   }
   fn parse_array(&mut self) -> ErrOR<WithPos<Json>> {
     let mut pos = self.pos;
@@ -58,6 +54,15 @@ impl Parser {
       return_if!(self, b']', pos, Json::Array(Lit(array)));
       self.expect(b',')?;
       self.skip_ws()?;
+    }
+  }
+  pub(crate) fn parse_json(&mut self) -> ErrOR<WithPos<Json>> {
+    let result = self.parse_value()?;
+    let _: ErrOR<()> = self.skip_ws();
+    if self.pos.offset == self.source.len() {
+      Ok(result)
+    } else {
+      parse_err!(self, "Unexpected trailing characters")
     }
   }
   fn parse_keyword(&mut self, keyword: &str, value: Json) -> ErrOR<WithPos<Json>> {

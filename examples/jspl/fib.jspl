@@ -1,0 +1,13 @@
+define(
+  fib, { n: Int }, Int,
+  {
+    y = 0
+    if(
+      [$n <= 1, y = $n],
+      [true, y = +( fib($n - 1), fib($n - 2)) ]
+    )
+    $y
+  }
+)
+# This program computes fib(10) = 55.
+fib(10)

@@ -6,6 +6,10 @@
 {"abs": "Int"} -> "Int (Temporary Value)"
 ```
 
+```text
+abs(int)
+```
+
 Returns the absolute value of the given integer.
 
 ```json
@@ -18,6 +22,11 @@ Returns the absolute value of the given integer.
 {"+": ["Int", "Int", "..."]} -> "Int (Temporary Value)"
 ```
 
+```text
+int + int
++(int, int, int)
+```
+
 Returns the sum of all operands.
 
 ```json
@@ -28,6 +37,11 @@ Returns the sum of all operands.
 
 ```json
 { "-": ["Int", "..."] } -> "Int (Temporary Value)"
+```
+
+```text
+int - int
+-(int, int, int)
 ```
 
 Subtracts all following operands from the first one and returns the result.
@@ -43,6 +57,11 @@ If given one argument, invert the sign.
 {"*": ["Int", "Int", "..."]} -> "Int (Temporary Value)"
 ```
 
+```text
+int * int
+*(int, int, int)
+```
+
 Returns the result of multiplying operands.
 
 ```json
@@ -53,6 +72,11 @@ Returns the result of multiplying operands.
 
 ```json
 {"/": ["Int", "Int", "..."]} -> "Int (Temporary Value)"
+```
+
+```text
+int / int
+/(int, int, int)
 ```
 
 Returns the result of dividing the first operand by all following operands.
@@ -66,6 +90,11 @@ If the number to divide is zero, an error is generated at runtime or compile tim
 
 ```json
 {"%": ["Int", "Int"]} -> "Int (Temporary Value)"
+```
+
+```text
+int % int
+%(int, int)
 ```
 
 Returns the result of the remainder operation.

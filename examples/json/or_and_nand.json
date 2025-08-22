@@ -1,20 +1,13 @@
 {
   "=": ["true", true],
   "=": ["false", false],
-  "message": [
-    "",
-    {
-      "concat": [
-        "This program performs or, and, and nand operations ",
-        "on two arguments: true and false.\n",
-        "If each operation evaluates to true, ",
-        "a message box displaying the name ",
-        "of the operation is shown.\n",
-        "Therefore, message boxes labeled ",
-        "`or` and `nand` will be displayed."
-      ]
-    }
-  ],
+  "'": "This program performs or, and, and nand operations ",
+  "'": "on two arguments: true and false.\n",
+  "'": "If each operation evaluates to true, ",
+  "'": "a message box displaying the name ",
+  "'": "of the operation is shown.\n",
+  "'": "Therefore, message boxes labeled ",
+  "'": "`or` and `nand` will be displayed.",
   "if": [
     [
       {

@@ -21,7 +21,7 @@ See: [JSON specification](https://www.rfc-editor.org/info/rfc8259)
 
 - **Array**: Represents an ordered collection of values.
 
-#### Object
+#### Subtypes of Object
 
 - **HashMap**: Represents a collection of key-value pairs.
 
@@ -88,3 +88,202 @@ resulting in a value between 0 and 255.
 ## Encoding
 
 This program supports UTF-8.
+
+## JSPL Language Specification
+
+### Overview
+
+This language builds upon JSON structure with lightweight syntactic sugar and extensions such as function calls and identifiers. It also allows top-level block syntax (`JSPL`) without requiring surrounding `{}` braces.
+
+### Top-Level Syntax
+
+- In addition to standard JSON (`parse_json`), a more flexible syntax (`parse_block`) is supported.
+- In JSPL syntax, top-level `{}` can be omitted.
+- Function-style calls using identifiers with arguments (e.g., `ident(arg1, arg2)`) are allowed.
+
+---
+
+### Syntax Details
+
+#### Value
+
+A value can be one of the following:
+
+- String: `"abc"`
+- Number: `123`, `-10`, `1.23`, `2e5`
+- Boolean: `true`, `false`
+- Null: `null`
+- Array: `[ val1, val2, ... ]`
+- Object: `{ "key": value, ... }`
+- Special syntaxes:
+
+  - Identifier: `someIdent`
+  - Identifier function: `someFunc(arg1, arg2)`
+  - Plain identifier: `$name` → `{ "$": "name" }`
+  - Triple syntax: `val1 ident val2` → `{ ident: [ val1, val2 ] }`
+
+---
+
+### Number
+
+- Numbers can be integers or floating-point values.
+- A leading `-` is allowed to indicate a negative number.
+- `+` is **not allowed**.
+- Leading `0` in integers is **prohibited** (e.g., `0123` is an error).
+- Floating-point (`123.45`) and exponential notation (`1.23e+10`) are supported.
+
+  - Exponents require `e` or `E` followed by optional `+` or `-` and digits.
+
+#### BNF Syntax for Numbers
+
+```bnf
+number ::= '-'? int ('.' [0-9]+)? ([eE] [+-]? [0-9]+)?
+int    ::= '0' | [1-9][0-9]*
+```
+
+---
+
+### Identifier
+
+- Identifiers can include any printable ASCII character in the range `!` to `~` (0x21–0x7E), **excluding** the following symbols:
+
+  - `(`, `)`, `[`, `]`, `{`, `}`, `,`, `"`
+- The following words are **reserved** and cannot be used as identifiers:
+
+  - `true`, `false`, `null`
+  - Names starting with `$` (e.g., `$name`) have reserved meaning
+
+Internally, it is treated as an abbreviation of String.
+
+---
+
+### String
+
+- UTF-8 strings enclosed in double quotes `"..."`.
+- Supports escape sequences using backslashes:
+
+| Sequence | Meaning                                        |
+| -------- | ---------------------------------------------- |
+| `\"`     | Double quote                                   |
+| `\\`     | Backslash                                      |
+| `\/`     | Forward slash                                  |
+| `\b`     | Backspace                                      |
+| `\f`     | Form feed                                      |
+| `\n`     | Newline                                        |
+| `\r`     | Carriage return                                |
+| `\t`     | Tab                                            |
+| `\uXXXX` | Unicode code point in hex (converted to UTF-8) |
+
+- Unescaped control characters or newlines are **not allowed**.
+
+---
+
+### Array
+
+```json
+[ "item1", 42, { "key": "value" } ]
+```
+
+- A list of values enclosed in square brackets `[]`.
+- Values are separated by commas.
+- Empty arrays like `[]` are allowed.
+
+---
+
+### Object
+
+```text
+key1(value1)
+key2(42)
+```
+
+```text
+{ key1: value1, key2: 42 }
+```
+
+- Keys must be strings (even in JSPL extensions).
+- Empty object `{}` is basically not allowed.
+
+---
+
+### JSPL Extended Syntax
+
+#### Omitted `{}` for Top-Level Blocks
+
+```js
+key: "value"
+list: [1, 2, 3]
+```
+
+→ Equivalent JSON:
+
+```json
+{
+  "key": "value",
+  "list": [1, 2, 3]
+}
+```
+
+### Triple Syntax: Value + Identifier + Value
+
+```js
+1 + 10
+```
+
+→
+
+```json
+{ "+": [1, 10] }
+```
+
+### Identifier Function Syntax
+
+```js
+sum(1, 2, 3)
+```
+
+→
+
+```json
+{ "sum": [1, 2, 3] }
+```
+
+```js
+abs: -1
+```
+
+```json
+{ "abs": -1 }
+```
+
+### `$name` Notation
+
+```js
+$name
+```
+
+→
+
+```json
+{ "$": "name" }
+```
+
+---
+
+#### Comment
+
+```text
+# comment
+```
+
+## Parser Error Rules
+
+- Invalid string escape → Error
+- Strings containing control characters → Error
+- Integers with multiple digits starting with `0` → Error
+- Floating-point number with no digits after `.` → Error
+- Exponent with no digits after `e`/`E` → Error
+- Non-string object keys → Error
+- Unexpected trailing characters at top level → `Unexpected trailing characters`
+
+---

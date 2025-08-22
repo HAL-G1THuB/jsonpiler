@@ -50,7 +50,7 @@ impl Parser {
     let typ = json.value.type_name();
     self.fmt_err(
       &format!(
-        "TypeError: Argument {nth}{suffix} of `{name}` expected type `{expected}`, but got `{typ}`.",
+        "TypeError: {nth}{suffix} argument of `{name}` expected type `{expected}`, but got `{typ}`.",
       ),
       json.pos,
     )

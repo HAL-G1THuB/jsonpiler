@@ -10,19 +10,19 @@ This directory contains detailed documentation for each function available in Js
 
 ## Functions
 
-[Arithmetic operations](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/functions/arithmetic.md)
+[Arithmetic operations](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions/arithmetic.md)
 
-[Variables and Scope](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/functions/variable.md)
+[Variables and Scope](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions/variable.md)
 
-[Boolean Logic](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/functions/logical.md)
+[Boolean Logic](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions/logical.md)
 
-[Control Flow](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/functions/control.md)
+[Control Flow](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions/control.md)
 
-[Output](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/functions/output.md)
+[Output](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions/output.md)
 
-[Evaluation and List](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/functions/eval.md)
+[Evaluation and List](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions/eval.md)
 
-[String](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/functions/string.md)
+[String](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions/string.md)
 
-<!-- [Type Conversion](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/functions/type_conversion.md) -->
-<!-- [Miscellaneous](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/functions/miscellaneous.md) -->
+<!-- [Type Conversion](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions/type_conversion.md) -->
+<!-- [Miscellaneous](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions/miscellaneous.md) -->

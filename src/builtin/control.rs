@@ -1,7 +1,18 @@
 use crate::{
-  built_in, err, take_arg, warn, Arity::{AtLeast, Exactly}, AsmFunc, Bind::{Lit, Var}, ErrOR, FuncInfo, Inst::*, Json, Jsonpiler, OpQ::{Args, Iq, Mq, Rq}, Position, Reg::*, ScopeInfo, VarKind::Global, WithPos, Label
+  Arity::{AtLeast, Exactly},
+  AsmFunc,
+  Bind::{Lit, Var},
+  ErrOR, FuncInfo,
+  Inst::*,
+  Json, Jsonpiler, Label,
+  OpQ::{Args, Iq, Mq, Rq},
+  Position,
+  Reg::*,
+  ScopeInfo,
+  VarKind::Global,
+  WithPos, built_in, err, take_arg, warn,
 };
-use core::mem::{replace, take, discriminant};
+use core::mem::{discriminant, replace, take};
 built_in! {self, func, scope, control;
   define => {"define", SPECIAL, Exactly(4), {
     let old_scope = replace(scope, ScopeInfo::new());
@@ -180,17 +191,16 @@ built_in! {self, func, scope, control;
   }},
 }
 impl Jsonpiler {
-  fn json_from_string(&self, name: &str, pos: Position, local: Label) -> ErrOR<Json>{
+  fn json_from_string(&self, name: &str, pos: Position, local: Label) -> ErrOR<Json> {
     match name {
-        "String" => Ok(Json::String(Var(local))),
-        "Int" => Ok(Json::Int(Var(local))),
-        "Float" => Ok(Json::Float(Var(local))),
-        "Null" => Ok(Json::Null),
-        "Bool" => Ok(Json::Bool(Var(local))),
-        "Object" | "Array" =>
-          err!(self, pos, "Unsupported type as parameter or return value"),
-        _ => err!(self, pos, "Unknown type"),
-      }
+      "String" => Ok(Json::String(Var(local))),
+      "Int" => Ok(Json::Int(Var(local))),
+      "Float" => Ok(Json::Float(Var(local))),
+      "Null" => Ok(Json::Null),
+      "Bool" => Ok(Json::Bool(Var(local))),
+      "Object" | "Array" => err!(self, pos, "Unsupported type as parameter or return value"),
+      _ => err!(self, pos, "Unknown type"),
+    }
   }
   fn mov_from_args(&mut self, jwp: &WithPos<Json>) -> ErrOR<()> {
     {

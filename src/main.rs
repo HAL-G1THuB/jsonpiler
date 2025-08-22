@@ -25,9 +25,14 @@ fn main() -> ExitCode {
     Err(err) => exit!("Failed to read `{input_file}`: {err}"),
   };
   let file = Path::new(input_file);
+  let is_jspl = match file.extension() {
+    Some(ext) if ext == "jspl" => true,
+    Some(ext) if ext == "json" => false,
+    _ => exit!("Input file must be a .json or .jspl file."),
+  };
   let exe = file.with_extension("exe").to_string_lossy().to_string();
   let mut jsonpiler = Jsonpiler::setup(source);
-  if let Err(err) = jsonpiler.run(&exe) {
+  if let Err(err) = jsonpiler.run(&exe, is_jspl) {
     exit!("Compilation error: {err}");
   }
   let cwd = match env::current_dir() {

@@ -13,6 +13,10 @@
 } -> "Null"
 ```
 
+```text
+define(name, params, return_type, body)
+```
+
 Registers a user-defined function.
 The first argument is the name of the function.
 The second argument is the type annotation of the argument.
@@ -47,6 +51,10 @@ The fourth argument is the function body and is evaluated when the function is c
   [{"condition": "Bool"}, {"then": "Sequence"}], "..."
   ]
 } -> "Null"
+```
+
+```text
+if([condition, then], ...)
 ```
 
 Evaluates each condition in order. If a condition evaluates to `true`, the corresponding `then` expression is executed.
@@ -84,6 +92,10 @@ Regardless of which branch is taken, the overall result is always `null`.
 
 ```json
 {"while": [{"condition": "Bool"}, {"body": "Sequence"}]} -> "Null"
+```
+
+```text
+while(condition, body)
 ```
 
 Executes the `body` repeatedly as long as the `condition` evaluates to `true`.

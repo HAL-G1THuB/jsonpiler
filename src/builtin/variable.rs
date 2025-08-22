@@ -111,7 +111,6 @@ impl Jsonpiler {
         );
       }
     };
-    #[expect(clippy::else_if_without_else)]
     if is_global {
       self.globals.insert(variable, value);
     } else if local_label.is_none() {

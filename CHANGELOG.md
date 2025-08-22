@@ -11,6 +11,11 @@
 
 ### jsonpiler 0.6
 
+#### 0.6.1
+
+- Introducing JSPL: JSPL (Jsonpiler Structured Programming Language) is a new syntax for Jsonpiler, introduced to enable human-writable and readable descriptions.
+- Added Japanese version to language specifications.
+
 #### 0.6.0
 
 - Loop structure implementation: `while`

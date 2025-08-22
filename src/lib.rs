@@ -197,7 +197,7 @@ struct AsmFunc {
   params: Vec<Json>,
   ret: Json,
 }
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 enum Bind<T> {
   Lit(T),
   Var(Label),
@@ -217,7 +217,7 @@ struct FuncInfo {
   pos: Position,
 }
 type JFunc = fn(&mut Jsonpiler, &mut FuncInfo, &mut ScopeInfo) -> ErrOR<Json>;
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 enum Json {
   Array(Bind<Vec<WithPos<Json>>>),
   Bool(Bind<bool>),
@@ -240,24 +240,24 @@ pub struct Jsonpiler {
   sym_table: HashMap<&'static str, usize>,
   user_defined: HashMap<String, AsmFunc>,
 }
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct Label {
   kind: VarKind,
   size: u32,
 }
-#[derive(Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default)]
 struct Position {
   line: usize,
   offset: usize,
   size: usize,
 }
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VarKind {
   Global { id: usize },
   Local { offset: u32 },
   Tmp { offset: u32 },
 }
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 struct WithPos<T> {
   pos: Position,
   value: T,

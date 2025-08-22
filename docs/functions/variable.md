@@ -6,6 +6,10 @@
 {"scope": {"expression": "Sequence"}} -> "Any"
 ```
 
+```text
+scope({sequence})
+```
+
 It introduces a new scope and evaluates the expression in order and returns the result.
 
 ```json
@@ -22,26 +26,29 @@ It introduces a new scope and evaluates the expression in order and returns the 
 {"global": [{"variable": "String (Literal)"}, {"value": "Any"}]} -> "Null"
 ```
 
+```text
+variable = value
+global(variable, value)
+```
+
 Assigns the given value to the specified variable name.  
 Returns `null` after assignment.
 Assigned to local scope for `=` and to global scope for `global`.
 `=` supports reassignment.
 
-Currently, the following types are **not assignable**:
+Currently, the following types are **not assignable** and **not reassignable**:
 
 - Array  
 - Object  
-
-Currently, the following types are **not reassignable**:
-
-- Array  
-- Object  
-- Function
 
 ## $
 
 ```json
 {"$": {"variable": "String (Literal)"}} -> "VAny"
+```
+
+```text
+$variable
 ```
 
 Returns the value bound to the given variable name.

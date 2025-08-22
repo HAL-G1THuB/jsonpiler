@@ -6,6 +6,10 @@
 {"'": {"expr": "Any"}} -> {"unevaluated_expr": "Any"}
 ```
 
+```text
+'(expr)
+```
+
 Returns the expression without evaluating it.
 Can also be used as a comment.
 
@@ -15,12 +19,20 @@ Can also be used as a comment.
 {"eval": {"expr": "Any"}} -> {"evaluated_expr": "Any"}
 ```
 
+```text
+eval(expr)
+```
+
 Evaluates the given expression and returns the result.
 
 ## list
 
 ```json
 {"list": [{"expr": "Any"}, "..."]} -> "Array (Literal)"
+```
+
+```text
+[expr, ...]
 ```
 
 The list function returns its evaluated arguments as an Array (Literal).
@@ -33,6 +45,10 @@ The list function returns its evaluated arguments as an Array (Literal).
 
 ```json
 {"value": {"value": "Any"}} -> "Any"
+```
+
+```text
+value
 ```
 
 Returns the given value.

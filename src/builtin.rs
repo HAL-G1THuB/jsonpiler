@@ -242,8 +242,8 @@ impl Jsonpiler {
   }
   #[inline]
   #[expect(clippy::cast_sign_loss)]
-  pub fn run(&mut self, exe: &str) -> ErrOR<()> {
-    let json = self.parser.parse()?;
+  pub fn run(&mut self, exe: &str, is_jspl: bool) -> ErrOR<()> {
+    let json = self.parser.parse(is_jspl)?;
     /*
     let msg = self.global_str(include_str!("txt/SEH_HANDLER_MSG.txt").to_owned());
     self.sym_table.insert("SEH_HANDLER_MSG", msg);
