@@ -54,7 +54,6 @@ macro_rules! take_arg {
   (
     $self:ident,
     $func:expr,
-    $nth:expr,
     $expected:literal,
     $pat:pat => $body:expr
   ) => {{
@@ -62,7 +61,7 @@ macro_rules! take_arg {
     if let $pat = arg.value {
       ($body, arg.pos)
     } else {
-      return Err($self.parser.type_err($nth, &$func.name, $expected, &arg).into());
+      return Err($self.parser.type_err($func.nth, &$func.name, $expected, &arg).into());
     }
   }};
 }

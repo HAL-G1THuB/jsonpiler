@@ -4,7 +4,7 @@ define(
     y = 0
     if(
       [$n <= 1, y = $n],
-      [true, y = +( fib($n - 1), fib($n - 2)) ]
+      [true, y = { fib($n - 1) + fib($n - 2) } ]
     )
     $y
   }

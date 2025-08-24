@@ -23,20 +23,23 @@ impl Parser {
       Ok(())
     }
   }
-  fn expect(&mut self, expected: u8) -> ErrOR<()> {
+  pub(crate) fn consume_if(&mut self, expected: u8) -> ErrOR<bool> {
     if self.peek() == expected {
-      self.advance(1)
+      self.advance(1)?;
+      Ok(true)
+    } else {
+      Ok(false)
+    }
+  }
+  fn expect(&mut self, expected: u8) -> ErrOR<()> {
+    if self.consume_if(expected)? {
+      Ok(())
     } else {
       parse_err!(self, self.pos, "Expected character '{}' not found.", char::from(expected))
     }
   }
   pub(crate) fn from(source: Vec<u8>) -> Self {
     Self { pos: Position { line: 1, offset: 0, size: 0 }, source }
-  }
-  fn next(&mut self) -> ErrOR<u8> {
-    let byte = self.peek();
-    self.advance(1)?;
-    Ok(byte)
   }
   pub(crate) fn parse(&mut self, is_jspl: bool) -> ErrOR<WithPos<Json>> {
     let value = if is_jspl { self.parse_block(true) } else { self.parse_json() }?;
@@ -79,43 +82,35 @@ impl Parser {
   fn parse_number(&mut self) -> ErrOR<WithPos<Json>> {
     let mut pos = self.pos;
     let mut is_float = false;
-    let mut ch = self.next()?;
-    if ch == b'-' {
-      ch = self.next()?;
-    }
-    if ch == b'0' {
-      ch = self.peek();
-      if ch.is_ascii_digit() {
+    let start = self.pos.offset;
+    let is_negative = self.consume_if(b'-')?;
+    if self.consume_if(b'0')? {
+      if self.peek().is_ascii_digit() {
         return parse_err!(self, "Leading zeros are not allowed");
       }
     } else {
       self.skip_digits();
     }
-    if ch == b'.' {
-      self.check_eof()?;
+    if self.consume_if(b'.')? {
       is_float = true;
-      ch = self.peek();
-      if !ch.is_ascii_digit() {
+      if !self.peek().is_ascii_digit() {
         return parse_err!(self, "Expected digit after '.'");
       }
       self.skip_digits();
     }
-    if matches!(ch, b'e' | b'E') {
-      self.check_eof()?;
+    if self.consume_if(b'e')? || self.consume_if(b'E')? {
       is_float = true;
-      ch = self.peek();
-      if matches!(ch, b'+' | b'-') {
-        self.advance(1)?;
-        ch = self.peek();
+      if !self.consume_if(b'+')? {
+        self.consume_if(b'-')?;
       }
-      if !ch.is_ascii_digit() {
+      if !self.peek().is_ascii_digit() {
         return parse_err!(self, "Expected digit after exponent");
       }
       self.skip_digits();
     }
     let end = self.pos.offset;
     pos.extend_to(end);
-    let slice = &self.source[pos.offset..end];
+    let slice = &self.source[start..end];
     let num_str = unsafe { str::from_utf8_unchecked(slice) };
     if is_float {
       num_str.parse::<f64>().map_or_else(
@@ -123,10 +118,34 @@ impl Parser {
         |float| Ok(WithPos { pos, value: Json::Float(Lit(float)) }),
       )
     } else {
-      num_str.parse::<i64>().map_or_else(
-        |_| parse_err!(self, pos, "Invalid integer value: {num_str}"),
-        |int| Ok(WithPos { pos, value: Json::Int(Lit(int)) }),
-      )
+      let digits = if is_negative { &slice[1..] } else { slice };
+      let mut acc: i64 = 0;
+      for &byte in digits {
+        if !byte.is_ascii_digit() {
+          return parse_err!(
+            self,
+            pos,
+            "InternalError: Invalid digit in integer: {}",
+            char::from(byte)
+          );
+        }
+        let digit = i64::from(byte - b'0');
+        if let Some(ok_acc) = acc.checked_mul(10).and_then(|val| val.checked_add(digit)) {
+          acc = ok_acc;
+        } else {
+          return parse_err!(self, pos, "Integer overflow");
+        }
+      }
+      let final_val = if is_negative {
+        if let Some(ok_neg) = acc.checked_neg() {
+          ok_neg
+        } else {
+          return parse_err!(self, pos, "Integer overflow");
+        }
+      } else {
+        acc
+      };
+      Ok(WithPos { pos, value: Json::Int(Lit(final_val)) })
     }
   }
   fn parse_object(&mut self) -> ErrOR<WithPos<Json>> {

@@ -1,5 +1,6 @@
 use crate::{
   Bind::{self, Lit, Var},
+  ConditionCode::E,
   ErrOR, FuncInfo,
   Inst::{self, *},
   Json, Jsonpiler, Label,
@@ -16,11 +17,15 @@ use std::{
 };
 impl Jsonpiler {
   pub(crate) const COMMON: (bool, bool) = (false, false);
+  pub(crate) const CQO: [u8; 2] = [0x48, 0x99];
   pub(crate) const KERNEL32: &'static str = "kernel32.dll";
   pub(crate) const REGS: [Reg; 4] = [Rcx, Rdx, R8, R9];
   pub(crate) const SPECIAL: (bool, bool) = (false, true);
   pub(crate) const SP_SCOPE: (bool, bool) = (true, true);
   pub(crate) const USER32: &'static str = "user32.dll";
+  pub(crate) fn call_api_check_null(&self, api: (usize, usize)) -> [Inst; 3] {
+    [CallApi(api), TestRR(Rax, Rax), Jcc(E, self.sym_table["WIN_HANDLER"])]
+  }
   // Overflow is unlikely.
   pub(crate) fn gen_id(&mut self) -> usize {
     let id = self.label_id;
@@ -54,9 +59,7 @@ impl Jsonpiler {
     self.insts.push(StringZ(id, value));
     id
   }
-  pub(crate) fn import(
-    &mut self, key1: &'static str, key2: &'static str, id: u16,
-  ) -> (usize, usize) {
+  pub(crate) fn import( &mut self, key1: &'static str, key2: &'static str, id: u16,) -> (usize, usize) {
     let outer_idx =
       if let Some(idx) = self.import_table.iter().position(|(outer_key, _)| *outer_key == key1) {
         idx
@@ -73,10 +76,8 @@ impl Jsonpiler {
       };
     (outer_idx, inner_idx)
   }
-  pub(crate) fn mov_bool(
-    &self, reg: Reg, func: &mut FuncInfo, nth: usize, scope: &mut ScopeInfo,
-  ) -> ErrOR<()> {
-    let boolean = take_arg!(self, func, nth, "Bool", Json::Bool(x) => x).0;
+  pub(crate) fn mov_bool(&self, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<()> {
+    let boolean = take_arg!(self, func, "Bool", Json::Bool(x) => x).0;
     match boolean {
       Bind::Lit(l_bool) => scope.push(MovRbIb(reg, if l_bool { 0xFF } else { 0 })),
       Bind::Var(label) => {
@@ -86,30 +87,34 @@ impl Jsonpiler {
     }
     Ok(())
   }
-  pub(crate) fn mov_int(
-    &self, reg: Reg, func: &mut FuncInfo, nth: usize, scope: &mut ScopeInfo,
+  pub(crate) fn mov_int(&self, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<()> {
+    let int = take_arg!(self, func, "Int", Json::Int(x) => x).0;
+    #[expect(clippy::cast_sign_loss)]
+    scope.push(MovQQ(
+      Rq(reg),
+      match int {
+        Bind::Lit(l_int) => Iq(l_int as u64),
+        Bind::Var(label) => {
+          func.sched_free_tmp(&label);
+          Mq(label.kind)
+        }
+      },
+    ));
+    Ok(())
+  }
+  pub(crate) fn mov_str(
+    &mut self, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo,
   ) -> ErrOR<()> {
-    let int = take_arg!(self, func, nth, "Int", Json::Int(x) => x).0;
-    match int {
-      #[expect(clippy::cast_sign_loss)]
-      Bind::Lit(l_int) => scope.push(MovQQ(Rq(reg), Iq(l_int as u64))),
-      Bind::Var(label) => {
+    let string = take_arg!(self, func, "String", Json::String(x) => x).0;
+    match string {
+      Lit(l_str) => scope.push(LeaRM(reg, Global { id: self.global_str(l_str) })),
+      Var(Label { kind: kind @ Global { .. }, .. }) => scope.push(LeaRM(reg, kind)),
+      Var(label) => {
         func.sched_free_tmp(&label);
         scope.push(MovQQ(Rq(reg), Mq(label.kind)));
       }
     }
     Ok(())
-  }
-  pub(crate) fn mov_str(&mut self, reg: Reg, func: &mut FuncInfo, nth: usize) -> ErrOR<Inst> {
-    let string = take_arg!(self, func, nth, "String", Json::String(x) => x).0;
-    Ok(match string {
-      Lit(l_str) => LeaRM(reg, Global { id: self.global_str(l_str) }),
-      Var(Label { kind: kind @ Global { .. }, .. }) => LeaRM(reg, kind),
-      Var(label) => {
-        func.sched_free_tmp(&label);
-        MovRbMb(reg, label.kind)
-      }
-    })
   }
   // fn format(&mut self, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {}
   #[inline]

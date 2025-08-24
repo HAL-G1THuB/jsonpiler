@@ -5,9 +5,10 @@ Jsonpiler bundles an assembler and linker purpose-built for its IR and PE output
 
 [日本語 README](https://github.com/HAL-G1THuB/jsonpiler/blob/main/README-ja.md)
 
-- GitHub: [https://github.com/HAL-G1THuB/jsonpiler](https://github.com/HAL-G1THuB/jsonpiler)
-- Crates.io: [https://crates.io/crates/jsonpiler](https://crates.io/crates/jsonpiler)
-- AI-generated docs: [https://deepwiki.com/HAL-G1THuB/jsonpiler](https://deepwiki.com/HAL-G1THuB/jsonpiler)
+- [GitHub](https://github.com/HAL-G1THuB/jsonpiler)
+- [Crates.io](https://crates.io/crates/jsonpiler)
+- [AI-generated docs: ![badge](https://deepwiki.com/badge.svg)](https://deepwiki.com/HAL-G1THuB/jsonpiler)
+- [VSCode Extensions](https://marketplace.visualstudio.com/items?itemName=H4LVS.jsplsyntax)
 
 > 🚨 **Windows only (x64)** — Jsonpiler targets 64-bit Windows and produces native PE executables.
 
@@ -15,16 +16,13 @@ Jsonpiler bundles an assembler and linker purpose-built for its IR and PE output
 
 ## What’s New
 
-### 0.6.1
+### 0.6.2
 
-- Introducing JSPL: JSPL (Jsonpiler Structured Programming Language) is a new syntax for Jsonpiler, introduced to enable human-writable and readable descriptions.
-- Added Japanese version to language specifications.
-- Loop structure implementation: `while`
-- Fixed problem with incorrect display of escape characters caused by assembler inclusion
-- Reassignment to local variables is now available for most types.
-- Added new functions `==`, `<`, and `<=`.
-- Removed `lambda` and added `define` instead, with function registration and recursive calls
-- The `Function` type is obsolete.
+- Fixed problem with bool values not being passed correctly to user-defined functions
+- Fixed problem with strings stored in local variables not being recognized correctly
+- Set maximum number of arguments for user-defined functions to 16
+- Jsonpiler now returns the correct exe exit code.
+- Add new function: `len`.
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 

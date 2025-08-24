@@ -43,11 +43,11 @@ impl Assembler {
       let address_rva = base_rva + address_offsets[i];
       let name_rva = base_rva + current_offset + dll_name_offsets[i];
       idata.extend_from_slice(&lookup_rva.to_le_bytes());
-      idata.extend_from_slice(&[0; 8]);
+      idata.resize(idata.len() + 8, 0);
       idata.extend_from_slice(&name_rva.to_le_bytes());
       idata.extend_from_slice(&address_rva.to_le_bytes());
     }
-    idata.extend_from_slice(&[0; 20]);
+    idata.resize(idata.len() + 20, 0);
     let mut lookup_address_data = Vec::with_capacity(total_lookup_size);
     for (dll_i, dll) in self.dlls.iter().enumerate() {
       for &offset in &func_name_offsets[dll_i] {
@@ -133,10 +133,10 @@ impl Assembler {
     out.resize(out.len() + 8, 0);
     out.extend_from_slice(&idata_v_address.to_le_bytes());
     out.extend_from_slice(&u32::try_from((self.dlls.len() + 1) * 20)?.to_le_bytes());
-    out.resize(out.len() + 8 * 10, 0);
+    out.resize(out.len() + 80, 0);
     out.extend_from_slice(&self.resolve_address_rva(0, 0)?.to_le_bytes());
     out.extend_from_slice(&u32::try_from(self.resolve_iat_size())?.to_le_bytes());
-    out.resize(out.len() + 8 * 3, 0);
+    out.resize(out.len() + 24, 0);
     extend_bytes!(
       out,
       b".text\0\0\0",

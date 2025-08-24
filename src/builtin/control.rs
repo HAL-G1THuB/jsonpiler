@@ -2,6 +2,7 @@ use crate::{
   Arity::{AtLeast, Exactly},
   AsmFunc,
   Bind::{Lit, Var},
+  ConditionCode::*,
   ErrOR, FuncInfo,
   Inst::*,
   Json, Jsonpiler, Label,
@@ -16,14 +17,17 @@ use core::mem::{discriminant, replace, take};
 built_in! {self, func, scope, control;
   define => {"define", SPECIAL, Exactly(4), {
     let old_scope = replace(scope, ScopeInfo::new());
-    let (name, name_pos) = take_arg!(self, func, 2, "String (Literal)", Json::String(Lit(x)) => x);
+    let (name, name_pos) = take_arg!(self, func, "String (Literal)", Json::String(Lit(x)) => x);
     if self.builtin.contains_key(&name) {
       return err!(self, name_pos, "Name conflict with a built-in function.");
     }
     if self.user_defined.contains_key(&name) {
       return err!(self, name_pos, "Redefinition of user-defined function is not allowed.");
     }
-    let type_annotations = take_arg!(self, func, 2, "TypeAnnotations", Json::Object(Lit(x)) => x).0;
+    let (type_annotations, t_a_pos) = take_arg!(self, func, "TypeAnnotations", Json::Object(Lit(x)) => x);
+    if type_annotations.len() >= 16 {
+      return err!(self, t_a_pos, "Too many arguments: Up to 16 arguments are allowed.");
+    }
     let mut params = vec![];
     for (idx, type_annotation) in type_annotations.into_iter().enumerate() {
       let (WithPos { value: param_name, .. }, param_jwp) = type_annotation;
@@ -36,9 +40,9 @@ built_in! {self, func, scope, control;
       };
       let local = scope.local(if &param_type == "Bool" { 1 } else { 8 })?;
       if let Some(&reg) = Jsonpiler::REGS.get(idx) {
-        scope.push(if &param_type == "Bool" { MovMbRb(local.kind, Rax) }else {MovQQ(Mq(local.kind), Rq(reg))});
+        scope.push(if &param_type == "Bool" { MovMbRb(local.kind, reg) }else {MovQQ(Mq(local.kind), Rq(reg))});
       } else {
-        scope.push(MovQQ(Rq(Rax), Args(8 * (idx - 4))));
+        scope.push(MovQQ(Rq(Rax), Args(8 * idx)));
         scope.push(MovQQ(Mq(local.kind), Rq(Rax)));
       }
       let json_type = self.json_from_string(&param_type, param_jwp.pos, local)?;
@@ -46,12 +50,12 @@ built_in! {self, func, scope, control;
       .insert(param_name, json_type.clone());
     params.push(json_type);
   }
-    let (ret_str, ret_pos) = take_arg!(self, func, 2, "String (Literal)", Json::String(Lit(x)) => x);
+    let (ret_str, ret_pos) = take_arg!(self, func, "String (Literal)", Json::String(Lit(x)) => x);
     let ret = self.json_from_string(&ret_str, ret_pos, scope.local(8)?)?;
     let id = self.gen_id();
     self.user_defined.insert(name.clone(), AsmFunc { id, params, ret: ret.clone() });
     let reg_align = scope.reg_align()?;
-    let (object, object_pos) = take_arg!(self, func, 2, "Sequence", Json::Object(Lit(x)) => x);
+    let (object, object_pos) = take_arg!(self, func, "Sequence", Json::Object(Lit(x)) => x);
     let ret_val = WithPos{value: self.eval_object(object, object_pos, scope)?, pos: object_pos};
     if discriminant(&ret) != discriminant(&ret_val.value){
       return Err(self.parser.type_err(
@@ -76,7 +80,7 @@ built_in! {self, func, scope, control;
     for body in new_scope.into_iter_code() {
       self.insts.push(body);
     }
-    self.mov_from_args(&ret_val)?;
+    self.return_value(&ret_val)?;
     self.insts.push(MovQQ(Rq(Rsp), Rq(Rbp)));
     self.insts.push(Pop(Rbp));
     for reg in regs.iter().rev() {
@@ -90,7 +94,7 @@ built_in! {self, func, scope, control;
     let if_end_label = self.gen_id();
     for idx in 1..=func.len {
       let (mut cond_then_pair, pos) =
-        take_arg!(self, func, idx, "Array[Bool, Any] (Literal)", Json::Array(Lit(x)) => x);
+        take_arg!(self, func, "Array[Bool, Any] (Literal)", Json::Array(Lit(x)) => x);
       if used_true {
         warn!(
           self,
@@ -136,7 +140,7 @@ built_in! {self, func, scope, control;
           scope.push(MovRbMb(Rax, cond_label.kind));
           scope.push(TestRbRb(Rax, Rax));
           let next_label = self.gen_id();
-          scope.push(Jze(next_label));
+          scope.push(Jcc(E, next_label));
           let then_result = self.eval_object(object, pos, scope)?;
           scope.drop_json(then_result)?;
           scope.push(Jmp(if_end_label));
@@ -150,7 +154,7 @@ built_in! {self, func, scope, control;
   f_while => {"while", SP_SCOPE, Exactly(2), {
     let mut cond_jwp = func.arg()?;
     let (body_arg, body_pos) =
-      take_arg!(self, func, 2, "Sequence", Json::Object(Lit(x)) => x);
+      take_arg!(self, func, "Sequence", Json::Object(Lit(x)) => x);
     let while_start = self.gen_id();
     let while_end   = self.gen_id();
     scope.push(Lbl(while_start));
@@ -180,7 +184,7 @@ built_in! {self, func, scope, control;
         func.sched_free_tmp(&cond_label);
         scope.push(MovRbMb(Rax, cond_label.kind));
         scope.push(TestRbRb(Rax, Rax));
-        scope.push(Jze(while_end));
+        scope.push(Jcc(E, while_end));
         let body_result = self.eval_object(body_arg, body_pos, scope)?;
         scope.drop_json(body_result)?;
         scope.push(Jmp(while_start));
@@ -202,7 +206,7 @@ impl Jsonpiler {
       _ => err!(self, pos, "Unknown type"),
     }
   }
-  fn mov_from_args(&mut self, jwp: &WithPos<Json>) -> ErrOR<()> {
+  fn return_value(&mut self, jwp: &WithPos<Json>) -> ErrOR<()> {
     {
       match &jwp.value {
         Json::String(Lit(l_str)) => {

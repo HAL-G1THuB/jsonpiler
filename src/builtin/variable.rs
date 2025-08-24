@@ -14,7 +14,7 @@ use core::mem::discriminant;
 impl Jsonpiler {
   #[expect(clippy::cast_sign_loss, clippy::too_many_lines)]
   fn assign(&mut self, func: &mut FuncInfo, scope: &mut ScopeInfo, is_global: bool) -> ErrOR<Json> {
-    let (variable, pos) = take_arg!(self, func, 1, "String", Json::String(Lit(x)) => x);
+    let (variable, pos) = take_arg!(self, func, "String", Json::String(Lit(x)) => x);
     let json2 = func.arg()?;
     if is_global && self.globals.contains_key(&variable) {
       return err!(self, pos, "Reassignment is not possible in the global scope.");
@@ -127,14 +127,14 @@ built_in! {self, func, scope, variable;
     self.assign(func, scope, false)
   }},
   reference => {"$", COMMON, Exactly(1), {
-    let (var_name, pos) = take_arg!(self, func, 1, "String(Literal)", Json::String(Lit(x)) => x);
+    let (var_name, pos) = take_arg!(self, func, "String(Literal)", Json::String(Lit(x)) => x);
     match self.get_var(&var_name, scope) {
       Some(var) => Ok(var),
       None => err!(self, pos, "Undefined variables: `{var_name}`"),
     }
   }},
   scope => {"scope", SP_SCOPE, Exactly(1), {
-    let (object, object_pos) = take_arg!(self, func, 1, "Sequence", Json::Object(Lit(x)) => x);
+    let (object, object_pos) = take_arg!(self, func, "Sequence", Json::Object(Lit(x)) => x);
     self.eval_object(object, object_pos, scope)
   }}
 }

@@ -82,8 +82,9 @@ Each JSON value is evaluated independently, except in the case of arrays (`[]`) 
 
 ## Exits
 
-The exit code returned by `jsonpiler::functions::run` is wrapped using modulo 256,  
-resulting in a value between 0 and 255.
+If the entire program evaluates to Int, it returns it as an exit code.
+The exit code returned by jsonpiler is a 32-bit signed integer that is the exit code of the generated .exe file.
+If a compilation error occurs or the executable file is not generated, the exit code is 1.
 
 ## Encoding
 
@@ -117,8 +118,8 @@ A value can be one of the following:
 - Object: `{ "key": value, ... }`
 - Special syntaxes:
 
-  - Identifier: `someIdent`
-  - Identifier function: `someFunc(arg1, arg2)`
+  - Identifier: `someIdent` → `"someIdent"`
+  - Identifier function: `someFunc(arg1, arg2)` → `{ "someFunc": [ arg1, arg2 ] }`
   - Plain identifier: `$name` → `{ "$": "name" }`
   - Triple syntax: `val1 ident val2` → `{ ident: [ val1, val2 ] }`
 
@@ -201,8 +202,8 @@ key2(42)
 { key1: value1, key2: 42 }
 ```
 
-- Keys must be strings (even in JSPL extensions).
-- Empty object `{}` is basically not allowed.
+- Keys must be strings or identifiers.
+- An empty object `{}` is generally not acceptable when evaluated as a function sequence.
 
 ---
 

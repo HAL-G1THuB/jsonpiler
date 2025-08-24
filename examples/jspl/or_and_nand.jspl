@@ -1,11 +1,13 @@
 {
-  flag_true = true
-  flag_false = false
   # This program performs or, and, and nand operations
   # on two arguments: true and false.
   # If each operation evaluates to true,
   # a message box displaying the name of the operation is shown.
   # Therefore, message boxes labeled `or` and `nand` will be displayed.
+
+  flag_true = true
+  flag_false = false
+
   if([
     $flag_false or $flag_true,
     message("", "or")

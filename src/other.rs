@@ -1,23 +1,17 @@
 use crate::{
-  Bind::{self, Lit, Var},
+  Bind::{self, Var},
   ErrOR, FuncInfo, Json, Label,
   VarKind::{self, *},
   WithPos,
 };
-use core::fmt::{self, Display};
 impl<T> Bind<T> {
   pub(crate) fn describe(&self, ty: &str) -> String {
-    format!(
-      "{ty} ({})",
-      match self {
-        Lit(_) => "Literal",
-        Var(label) => label.describe(),
-      }
-    )
+    format!("{ty} ({})", if let Var(label) = self { label.describe() } else { "Literal" })
   }
 }
 impl FuncInfo {
   pub(crate) fn arg(&mut self) -> ErrOR<WithPos<Json>> {
+    self.nth += 1;
     self.args.next().ok_or("InternalError: Invalid argument reference".into())
   }
   pub(crate) fn sched_free_tmp(&mut self, label: &Label) {
@@ -32,25 +26,6 @@ impl Label {
       Tmp { .. } => "Temporary value",
       Local { .. } => "Local variable",
       Global { .. } => "Global variable",
-    }
-  }
-}
-impl Display for Label {
-  #[expect(clippy::min_ident_chars)]
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.write_str(match self.size {
-      1 => "byte",
-      2 => "word",
-      4 => "dword",
-      8 => "qword",
-      _ => return Err(fmt::Error),
-    })?;
-    write!(f, "\tptr\t")?;
-    match self.kind {
-      Global { id } => write!(f, ".L{id:#X}[rip]"),
-      Local { offset } | Tmp { offset } => {
-        write!(f, "-{offset:#X}[rbp]")
-      }
     }
   }
 }

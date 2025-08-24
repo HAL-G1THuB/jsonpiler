@@ -1,0 +1,23 @@
+define(
+  int_sqrt, { n: Int }, Int,
+  {
+		result = 0
+    if(
+			[$n <= 1, result = $n],
+			[true,
+        {
+          x = $n
+          y = { { $x + 1 } / 2 }
+          while( $y < $x,
+            {
+              x = $y
+              y = { { $x + { $n / $x } } / 2 }
+            }
+          )
+          result = $x
+        }]
+      )
+		$result
+  }
+)
+int_sqrt(100)

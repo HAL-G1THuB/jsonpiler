@@ -12,50 +12,66 @@ use crate::{
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 built_in! {self, func, scope, output;
   message => {"message", COMMON, Exactly(2), {
-    scope.use_reg(Rdi);
-    scope.use_reg(Rsi);
-    let title = self.mov_str(Rcx, func, 1)?;
-    let msg = self.mov_str(Rcx, func, 2)?;
-    let u8_to_16  = self.get_u8to16();
-    let heap_free = self.import(Jsonpiler::KERNEL32, "HeapFree", 0x357);
-    let message_box = self.import(Jsonpiler::USER32, "MessageBoxW", 0x28c);
-    let heap = Global{id: self.sym_table["HEAP"]};
-    let win_handler = self.sym_table["WIN_HANDLER"];
-    scope.extend(&[
-      msg,
-      Call(u8_to_16),
-      MovQQ(Rq(Rdi), Rq(Rax)),
-      title,
-      Call(u8_to_16),
-      MovQQ(Rq(Rsi), Rq(Rax)),
-      Clear(Rcx),
-      MovQQ(Rq(Rdx), Rq(Rdi)),
-      MovQQ(Rq(R8), Rq(Rsi)),
-      Clear(R9),
-      CallApi(message_box),
-      TestRR(Rax, Rax),
-      Jze(win_handler),
-      MovQQ(Rq(Rcx), Mq(heap)),
-      Clear(Rdx),
-      MovQQ(Rq(R8), Rq(Rdi)),
-      CallApi(heap_free),
-      TestRR(Rax, Rax),
-      Jze(win_handler),
-      MovQQ(Rq(Rcx), Mq(heap)),
-      Clear(Rdx),
-      MovQQ(Rq(R8), Rq(Rsi)),
-      CallApi(heap_free),
-      TestRR(Rax, Rax),
-      Jze(win_handler),
-    ]);
+    self.mov_str(Rcx, func, scope)?;
+    self.mov_str(Rdx, func, scope)?;
+    scope.push(Call(self.get_msg_box()));
     Ok(Json::Null)
   }}
 }
 impl Jsonpiler {
+  fn get_msg_box(&mut self) -> usize {
+    let heap = Global { id: self.sym_table["HEAP"] };
+    let u8_to_16 = self.get_u8to16();
+    let heap_free = self.import(Jsonpiler::KERNEL32, "HeapFree", 0x357);
+    let message_box = self.import(Jsonpiler::USER32, "MessageBoxW", 0x28c);
+    let msg_box_insts = self.call_api_check_null(message_box);
+    let heap_free_insts = self.call_api_check_null(heap_free);
+    match self.sym_table.entry("MSG_BOX") {
+      Occupied(entry) => *entry.get(),
+      Vacant(entry) => {
+        let id = self.label_id;
+        self.label_id += 1;
+        self.insts.extend_from_slice(&[
+          Lbl(id),
+          Push(Rdi),
+          Push(Rsi),
+          Push(Rbp),
+          MovQQ(Rq(Rbp), Rq(Rsp)),
+          SubRId(Rsp, 0x20),
+          MovQQ(Rq(Rsi), Rq(Rdx)),
+          Call(u8_to_16),
+          MovQQ(Rq(Rdi), Rq(Rax)),
+          MovQQ(Rq(Rcx), Rq(Rsi)),
+          Call(u8_to_16),
+          MovQQ(Rq(Rsi), Rq(Rax)),
+          Clear(Rcx),
+          MovQQ(Rq(Rdx), Rq(Rsi)),
+          MovQQ(Rq(R8), Rq(Rdi)),
+          Clear(R9),
+        ]);
+        self.insts.extend_from_slice(&msg_box_insts);
+        self.insts.extend_from_slice(&[
+          MovQQ(Rq(Rcx), Mq(heap)),
+          Clear(Rdx),
+          MovQQ(Rq(R8), Rq(Rdi)),
+        ]);
+        self.insts.extend_from_slice(&heap_free_insts);
+        self.insts.extend_from_slice(&[
+          MovQQ(Rq(Rcx), Mq(heap)),
+          Clear(Rdx),
+          MovQQ(Rq(R8), Rq(Rsi)),
+        ]);
+        self.insts.extend_from_slice(&heap_free_insts);
+        self.insts.extend_from_slice(&[MovQQ(Rq(Rsp), Rq(Rbp)), Pop(Rbp), Pop(Rsi), Pop(Rdi), Ret]);
+        entry.insert(id);
+        id
+      }
+    }
+  }
   fn get_u8to16(&mut self) -> usize {
     let heap = self.sym_table["HEAP"];
-    let win_handler = self.sym_table["WIN_HANDLER"];
     let multi_byte_to_wide_char = self.import(Jsonpiler::KERNEL32, "MultiByteToWideChar", 0x3F8);
+    let mb_t_wc = self.call_api_check_null(multi_byte_to_wide_char);
     let heap_alloc = self.import(Jsonpiler::KERNEL32, "HeapAlloc", 0x353);
     match self.sym_table.entry("U8TO16") {
       Occupied(entry) => *entry.get(),
@@ -78,9 +94,9 @@ impl Jsonpiler {
           Clear(Rax),
           MovQQ(Args(0x20), Rq(Rax)),
           MovQQ(Args(0x28), Rq(Rax)),
-          CallApi(multi_byte_to_wide_char),
-          TestRR(Rax, Rax),
-          Jze(win_handler),
+        ]);
+        self.insts.extend_from_slice(&mb_t_wc);
+        self.insts.extend_from_slice(&[
           Shl1R(Rax),
           MovQQ(Rq(Rsi), Rq(Rax)),
           MovQQ(Rq(Rcx), Mq(Global { id: heap })),
@@ -94,9 +110,9 @@ impl Jsonpiler {
           MovRId(R9, u32::MAX),
           MovQQ(Args(0x20), Rq(Rbx)),
           MovQQ(Args(0x28), Rq(Rsi)),
-          CallApi(multi_byte_to_wide_char),
-          TestRR(Rax, Rax),
-          Jze(win_handler),
+        ]);
+        self.insts.extend_from_slice(&mb_t_wc);
+        self.insts.extend_from_slice(&[
           MovQQ(Rq(Rax), Rq(Rbx)),
           MovQQ(Rq(Rsp), Rq(Rbp)),
           Pop(Rbp),

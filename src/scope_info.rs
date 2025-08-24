@@ -176,6 +176,7 @@ impl ScopeInfo {
   pub(crate) fn update_stack_args(&mut self, size: u32) {
     self.stack_args = self.stack_args.max(size);
   }
+  #[expect(dead_code)]
   pub(crate) fn use_reg(&mut self, reg: Reg) {
     self.reg_used.insert(reg);
   }

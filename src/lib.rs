@@ -38,6 +38,7 @@ use core::error::Error;
 use parser::Parser;
 use scope_info::ScopeInfo;
 use std::{collections::HashMap, vec::IntoIter};
+type BuiltinPtr = fn(&mut Jsonpiler, &mut FuncInfo, &mut ScopeInfo) -> ErrOR<Json>;
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[expect(dead_code)]
 enum Disp {
@@ -104,8 +105,29 @@ struct Assembler {
   rva: HashMap<Sect, u32>,
   sym_addr: HashMap<usize, u32>,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+#[non_exhaustive]
+#[expect(clippy::arbitrary_source_item_ordering, clippy::min_ident_chars)]
+pub enum ConditionCode {
+  O = 0,
+  No = 1,
+  B = 2,
+  Ae = 3,
+  E = 4,
+  Ne = 5,
+  Be = 6,
+  A = 7,
+  S = 8,
+  Ns = 9,
+  P = 10,
+  Np = 11,
+  L = 12,
+  Ge = 13,
+  Le = 14,
+  G = 15,
+}
 type Dlls = Vec<(&'static str, Vec<(u16, &'static str)>)>;
-#[expect(dead_code)]
 #[derive(Clone, Debug)]
 enum Inst {
   AddRId(Reg, u32),
@@ -118,16 +140,16 @@ enum Inst {
   Clear(Reg),
   CmpRIb(Reg, i8),
   CmpRR(Reg, Reg),
-  Cqo,
+  Custom(Vec<u8>),
+  DecQ(Reg),
   IDivR(Reg),
   IMulRR(Reg, Reg),
-  Jg(usize),
-  Jge(usize),
+  Jcc(ConditionCode, usize),
   Jmp(usize),
-  Jnze(usize),
-  Jze(usize),
+  JmpSh(usize),
   Lbl(usize),
   LeaRM(Reg, VarKind),
+  #[expect(dead_code)]
   MovMId(VarKind, u32),
   MovMbIb(VarKind, u8),
   MovMbRb(VarKind, Reg),
@@ -204,7 +226,7 @@ enum Bind<T> {
 }
 struct Builtin {
   arg_len: Arity,
-  func: JFunc,
+  func: BuiltinPtr,
   scoped: bool,
   skip_eval: bool,
 }
@@ -214,9 +236,9 @@ struct FuncInfo {
   free_list: Vec<(u32, u32)>,
   len: usize,
   name: String,
+  nth: usize,
   pos: Position,
 }
-type JFunc = fn(&mut Jsonpiler, &mut FuncInfo, &mut ScopeInfo) -> ErrOR<Json>;
 #[derive(Debug, Clone, Default)]
 enum Json {
   Array(Bind<Vec<WithPos<Json>>>),

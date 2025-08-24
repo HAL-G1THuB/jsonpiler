@@ -26,13 +26,12 @@ impl Assembler {
     let mut data = vec![];
     let mut bss: u32 = 0;
     #[cfg(debug_assertions)]
-    let mut _validate_vec = Vec::new();
+    let mut validate_vec = Vec::new();
     for inst in insts.clone() {
       let inst_len = self.inst_size(inst, &mut bss, &mut data, text)?;
       text += inst_len;
-      #[expect(clippy::used_underscore_binding)]
       #[cfg(debug_assertions)]
-      _validate_vec.push(inst_len);
+      validate_vec.push(inst_len);
     }
     self.rva.insert(Sect::Text, 0x1000);
     self.rva.insert(Sect::Data, 0x1000 + align_up_32(text, 0x1000)?);
@@ -41,16 +40,20 @@ impl Assembler {
     self.rva.insert(Sect::Idata, self.rva[&Sect::Bss] + align_up_32(bss, 0x1000)?);
     let idata = self.build_idata_section(self.rva[&Sect::Idata])?;
     let mut code = Vec::new();
-    for (_idx, inst) in insts.enumerate() {
-      let _code_len = code.len();
+    #[cfg(not(debug_assertions))]
+    for inst in insts {
       self.encode_inst(inst, &mut code)?;
-      #[cfg(debug_assertions)]
-      #[expect(clippy::print_stdout, clippy::use_debug, clippy::used_underscore_binding)]
-      if code.len() - _code_len != _validate_vec[_idx].try_into()? {
+    }
+    #[cfg(debug_assertions)]
+    for (idx, inst) in insts.enumerate() {
+      let code_len = code.len();
+      self.encode_inst(inst, &mut code)?;
+      #[expect(clippy::print_stdout, clippy::use_debug)]
+      if code.len() - code_len != validate_vec[idx].try_into()? {
         println!(
           "InternalError!!! actual: {} != prediction: {} {inst:?}",
-          code.len() - _code_len,
-          _validate_vec[_idx]
+          code.len() - code_len,
+          validate_vec[idx]
         );
       }
     }
@@ -60,67 +63,58 @@ impl Assembler {
   fn encode_inst(&self, inst: &Inst, code: &mut Vec<u8>) -> ErrOR<()> {
     match inst {
       Shl1R(reg) => {
-        code.extend(Memory::Reg(*reg).encode_romsdi(vec![0xD1], Rsp, true));
+        code.extend(Memory::Reg(*reg).encode_romsd(vec![0xD1], Rsp, true));
+      }
+      Jcc(cc, lbl) => {
+        let rel = self.get_rel(*lbl, code.len(), 6)?;
+        code.push(0x0F);
+        code.push(0x80 + *cc as u8);
+        code.extend_from_slice(&rel.to_le_bytes());
+      }
+      #[expect(clippy::cast_sign_loss)]
+      JmpSh(lbl) => {
+        let rel = self.get_rel(*lbl, code.len(), 2)?;
+        code.push(0xEB);
+        code.push(i8::try_from(rel).map_err(|_| "InternalError: Failed short jump")? as u8);
+      }
+      DecQ(reg) => {
+        code.extend(Memory::Reg(*reg).encode_romsd(vec![0xFF], Rcx, true));
       }
       TestRdRd(dst, src) => {
-        code.extend(Memory::Reg(*dst).encode_romsdi(vec![0x85], *src, false));
+        code.extend(Memory::Reg(*dst).encode_romsd(vec![0x85], *src, false));
       }
       TestRR(dst, src) => {
-        code.extend(Memory::Reg(*dst).encode_romsdi(vec![0x85], *src, true));
+        code.extend(Memory::Reg(*dst).encode_romsd(vec![0x85], *src, true));
       }
       CmpRR(dst, src) => {
-        code.extend(Memory::Reg(*dst).encode_romsdi(vec![0x39], *src, true));
-      }
-      Jg(lbl) => {
-        let rel = self.get_rel(*lbl, code.len(), 6)?;
-        code.push(0x0F);
-        code.push(0x8F);
-        code.extend_from_slice(&rel.to_le_bytes());
-      }
-      Jge(lbl) => {
-        let rel = self.get_rel(*lbl, code.len(), 6)?;
-        code.push(0x0F);
-        code.push(0x8D);
-        code.extend_from_slice(&rel.to_le_bytes());
-      }
-      Jnze(lbl) => {
-        let rel = self.get_rel(*lbl, code.len(), 6)?;
-        code.push(0x0F);
-        code.push(0x85);
-        code.extend_from_slice(&rel.to_le_bytes());
-      }
-      Jze(lbl) => {
-        let rel = self.get_rel(*lbl, code.len(), 6)?;
-        code.push(0x0F);
-        code.push(0x84);
-        code.extend_from_slice(&rel.to_le_bytes());
+        code.extend(Memory::Reg(*dst).encode_romsd(vec![0x39], *src, true));
       }
       XorRbRb(dst, src) => {
         dst.guard_reg8()?;
         src.guard_reg8()?;
-        code.extend(Memory::Reg(*dst).encode_romsdi(vec![0x30], *src, false));
+        code.extend(Memory::Reg(*dst).encode_romsd(vec![0x30], *src, false));
       }
       OrRbRb(dst, src) => {
         dst.guard_reg8()?;
         src.guard_reg8()?;
-        code.extend(Memory::Reg(*dst).encode_romsdi(vec![0x08], *src, false));
+        code.extend(Memory::Reg(*dst).encode_romsd(vec![0x08], *src, false));
       }
       AndRbRb(dst, src) => {
         dst.guard_reg8()?;
         src.guard_reg8()?;
-        code.extend(Memory::Reg(*dst).encode_romsdi(vec![0x20], *src, false));
+        code.extend(Memory::Reg(*dst).encode_romsd(vec![0x20], *src, false));
       }
       XorRR(dst, src) => {
-        code.extend(Memory::Reg(*dst).encode_romsdi(vec![0x31], *src, true));
+        code.extend(Memory::Reg(*dst).encode_romsd(vec![0x31], *src, true));
       }
       AddRR(dst, src) => {
-        code.extend(Memory::Reg(*dst).encode_romsdi(vec![0x01], *src, true));
+        code.extend(Memory::Reg(*dst).encode_romsd(vec![0x01], *src, true));
       }
       SubRR(dst, src) => {
-        code.extend(Memory::Reg(*dst).encode_romsdi(vec![0x29], *src, true));
+        code.extend(Memory::Reg(*dst).encode_romsd(vec![0x29], *src, true));
       }
       IMulRR(dst, src) => {
-        code.extend(Memory::Reg(*src).encode_romsdi(vec![0x0F, 0xAF], *dst, true));
+        code.extend(Memory::Reg(*src).encode_romsd(vec![0x0F, 0xAF], *dst, true));
       }
       Call(lbl) => {
         let rel = self.get_rel(*lbl, code.len(), 5)?;
@@ -131,15 +125,12 @@ impl Assembler {
         let cur_rva = self.rva[&Sect::Text] + u32::try_from(code.len())?;
         let func_address_rva = self.resolve_address_rva(*dll, *func)?;
         let rip_rel_disp = i32::try_from(func_address_rva)? - i32::try_from(cur_rva)? - 6i32;
-        code.extend_from_slice(&Memory::RipRel(rip_rel_disp).encode_romsdi(vec![0xFF], Rdx, false));
+        code.extend_from_slice(&Memory::RipRel(rip_rel_disp).encode_romsd(vec![0xFF], Rdx, false));
       }
-      Cqo => {
-        code.push(0x48);
-        code.push(0x99);
-      }
+      Custom(bytes) => code.extend(bytes),
       #[expect(clippy::cast_sign_loss)]
       CmpRIb(reg, imm) => {
-        code.extend_from_slice(&Memory::Reg(*reg).encode_romsdi(vec![0x83], Rdi, true));
+        code.extend_from_slice(&Memory::Reg(*reg).encode_romsd(vec![0x83], Rdi, true));
         code.push(*imm as u8);
       }
       Jmp(lbl) => {
@@ -150,18 +141,18 @@ impl Assembler {
       TestRbRb(dst, src) => {
         dst.guard_reg8()?;
         src.guard_reg8()?;
-        code.extend(Memory::Reg(*dst).encode_romsdi(vec![0x84], *src, false));
+        code.extend(Memory::Reg(*dst).encode_romsd(vec![0x84], *src, false));
       }
       LeaRM(reg, mem) => {
-        code.extend(self.memory(*mem, code.len(), 2)?.encode_romsdi(vec![0x8D], *reg, true));
+        code.extend(self.memory(*mem, code.len(), 2)?.encode_romsd(vec![0x8D], *reg, true));
       }
       MovQQ(op1, op2) => self.encode_mov_q_q(code, op1, op2)?,
       MovMbIb(mem, byte) => {
-        code.extend(self.memory(*mem, code.len(), 6)?.encode_romsdi(vec![0xC6], Rax, false));
+        code.extend(self.memory(*mem, code.len(), 6)?.encode_romsd(vec![0xC6], Rax, false));
         code.push(*byte);
       }
       MovMId(dst, dword) => {
-        code.extend(self.memory(*dst, code.len(), 6)?.encode_romsdi(vec![0xC7], Rax, false));
+        code.extend(self.memory(*dst, code.len(), 6)?.encode_romsd(vec![0xC7], Rax, false));
         code.extend_from_slice(&dword.to_le_bytes());
       }
       MovRbIb(reg, byte) => {
@@ -171,11 +162,11 @@ impl Assembler {
       }
       MovRbMb(reg, mem) => {
         reg.guard_reg8()?;
-        code.extend(self.memory(*mem, code.len(), 2)?.encode_romsdi(vec![0x8A], *reg, false));
+        code.extend(self.memory(*mem, code.len(), 2)?.encode_romsd(vec![0x8A], *reg, false));
       }
       MovMbRb(mem, reg) => {
         reg.guard_reg8()?;
-        code.extend(self.memory(*mem, code.len(), 2)?.encode_romsdi(vec![0x88], *reg, false));
+        code.extend(self.memory(*mem, code.len(), 2)?.encode_romsd(vec![0x88], *reg, false));
       }
       MovRId(reg, dword) => {
         code.extend(reg.mini_opcode(0xB8, false));
@@ -183,52 +174,51 @@ impl Assembler {
       }
       NegR(reg) => {
         reg.guard_reg8()?;
-        code.extend(Memory::Reg(*reg).encode_romsdi(vec![0xF7], Rbx, false));
+        code.extend(Memory::Reg(*reg).encode_romsd(vec![0xF7], Rbx, false));
       }
       NotRb(reg) => {
         reg.guard_reg8()?;
-        code.extend(Memory::Reg(*reg).encode_romsdi(vec![0xF6], Rdx, false));
+        code.extend(Memory::Reg(*reg).encode_romsd(vec![0xF6], Rdx, false));
       }
       Pop(reg) => code.extend(reg.mini_opcode(0x58, false)),
       Push(reg) => code.extend(reg.mini_opcode(0x50, false)),
       Ret => code.push(0xC3),
       IDivR(reg) => {
-        code.extend(Memory::Reg(*reg).encode_romsdi(vec![0xF7], Rdi, true));
+        code.extend(Memory::Reg(*reg).encode_romsd(vec![0xF7], Rdi, true));
       }
       SubRId(reg, imm) => {
-        code.extend_from_slice(&Memory::Reg(*reg).encode_romsdi(vec![0x81], Rbp, true));
+        code.extend_from_slice(&Memory::Reg(*reg).encode_romsd(vec![0x81], Rbp, true));
         code.extend_from_slice(&imm.to_le_bytes());
       }
       AddRId(reg, imm) => {
-        code.extend_from_slice(&Memory::Reg(*reg).encode_romsdi(vec![0x81], Rax, true));
+        code.extend_from_slice(&Memory::Reg(*reg).encode_romsd(vec![0x81], Rax, true));
         code.extend_from_slice(&imm.to_le_bytes());
       }
       Clear(reg) => {
-        code.extend_from_slice(&Memory::Reg(*reg).encode_romsdi(vec![0x31], *reg, false));
+        code.extend_from_slice(&Memory::Reg(*reg).encode_romsd(vec![0x31], *reg, false));
       }
       StringZ(_, _) | Bss(_, _) | Byte(_, _) | Lbl(_) | Quad(_, _) => {}
     }
     Ok(())
   }
-  #[expect(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
   fn encode_mov_q_q(&self, code: &mut Vec<u8>, op1: &OpQ, op2: &OpQ) -> ErrOR<()> {
     match (op1, op2) {
       (Rq(dst), Args(offset)) => {
-        let mem = Memory::Base(Rsp, Disp::Dword(*offset as i32));
-        code.extend(mem.encode_romsdi(vec![0x8B], *dst, true));
+        let mem = Memory::Base(Rsp, Disp::Byte(i8::try_from(*offset)?));
+        code.extend(mem.encode_romsd(vec![0x8B], *dst, true));
       }
       (Args(offset), Rq(src)) => {
-        let mem = Memory::Base(Rsp, Disp::Dword(*offset as i32));
-        code.extend(mem.encode_romsdi(vec![0x89], *src, true));
+        let mem = Memory::Base(Rsp, Disp::Byte(i8::try_from(*offset)?));
+        code.extend(mem.encode_romsd(vec![0x89], *src, true));
       }
       (Rq(dst), Rq(src)) => {
-        code.extend(Memory::Reg(*dst).encode_romsdi(vec![0x89], *src, true));
+        code.extend(Memory::Reg(*dst).encode_romsd(vec![0x89], *src, true));
       }
       (Rq(dst), Mq(src)) => {
-        code.extend(self.memory(*src, code.len(), 2)?.encode_romsdi(vec![0x8B], *dst, true));
+        code.extend(self.memory(*src, code.len(), 2)?.encode_romsd(vec![0x8B], *dst, true));
       }
       (Mq(dst), Rq(src)) => {
-        code.extend(self.memory(*dst, code.len(), 2)?.encode_romsdi(vec![0x89], *src, true));
+        code.extend(self.memory(*dst, code.len(), 2)?.encode_romsd(vec![0x89], *src, true));
       }
       (Rq(dst), Iq(imm)) => {
         code.extend(dst.mini_opcode(0xB8, true));
@@ -248,9 +238,11 @@ impl Assembler {
   }
   fn inst_size(&mut self, inst: &Inst, bss: &mut u32, data: &mut Vec<u8>, text: u32) -> ErrOR<u32> {
     Ok(match inst {
+      Custom(bytes) => u32::try_from(bytes.len())?,
       Ret => 1,
-      XorRbRb(_, _) | OrRbRb(_, _) | AndRbRb(_, _) | TestRbRb(_, _) | Cqo => 2,
-      CmpRR(_, _)
+      JmpSh(_) | XorRbRb(_, _) | OrRbRb(_, _) | AndRbRb(_, _) | TestRbRb(_, _) => 2,
+      DecQ(_)
+      | CmpRR(_, _)
       | Shl1R(_)
       | TestRR(_, _)
       | IDivR(_)
@@ -259,7 +251,7 @@ impl Assembler {
       | AddRR(_, _) => 3,
       IMulRR(_, _) | CmpRIb(_, _) => 4,
       Jmp(_) | Call(_) => 5,
-      Jnze(_) | Jg(_) | Jge(_) | Jze(_) | CallApi(_) => 6,
+      Jcc(_, _) | CallApi(_) => 6,
       SubRId(_, _) | AddRId(_, _) => 7,
       TestRdRd(dst, src) => (dst.rex_size() | src.rex_size()) + 1 + 1,
       LeaRM(_, mem) => 2 + mem.size_of_mo_si_di(),
@@ -269,7 +261,7 @@ impl Assembler {
       MovQQ(op1, op2) => match (op1, op2) {
         (Rq(_), Rq(_)) => 3,
         (Rq(_), Mq(mem)) | (Mq(mem), Rq(_)) => 2 + mem.size_of_mo_si_di(),
-        (Rq(_), Args(_)) | (Args(_), Rq(_)) => 8,
+        (Rq(_), Args(_)) | (Args(_), Rq(_)) => 5,
         (Rq(_), Iq(_)) => 10,
         _ => return Err("InternalError: Unsupported operand types: MovQQ(?, ?)".into()),
       },
@@ -336,8 +328,8 @@ impl Assembler {
 }
 impl Reg {
   fn guard_reg8(self) -> ErrOR<()> {
-    if self > Rbx {
-      Err("InternalError: 8-bit registers other than al, cl ,dl and bl are not implemented".into())
+    if Rdi >= self && self >= Rsp {
+      Err("InternalError: 8-bit registers spl, bpl ,sil and dil are not implemented".into())
     } else {
       Ok(())
     }
@@ -361,7 +353,7 @@ impl Reg {
   }
 }
 impl Memory {
-  pub(crate) fn encode_romsdi(&self, mut opcode: Vec<u8>, reg: Reg, rex_w: bool) -> Vec<u8> {
+  pub(crate) fn encode_romsd(&self, mut opcode: Vec<u8>, reg: Reg, rex_w: bool) -> Vec<u8> {
     let (reg_bits, rex_r) = reg.reg_field();
     let mut rex_x = false;
     let mut rex_b = false;
@@ -494,24 +486,24 @@ mod tests {
   }
   #[test]
   fn encode_inst_reg_no_rex() {
-    let result = Memory::Reg(Rcx).encode_romsdi(vec![0x89], Rax, false);
+    let result = Memory::Reg(Rcx).encode_romsd(vec![0x89], Rax, false);
     assert_eq!(result, vec![0x89, 0b1100_0001]);
   }
   #[test]
   fn encode_inst_reg_with_rex() {
-    let result = Memory::Reg(R9).encode_romsdi(vec![0x89], R8, true);
+    let result = Memory::Reg(R9).encode_romsd(vec![0x89], R8, true);
     assert_eq!(result, vec![0x4D, 0x89, 0b1100_0001]);
   }
   #[test]
   fn encode_inst_riprel() {
-    let result = Memory::RipRel(0x1234).encode_romsdi(vec![], Rcx, false);
+    let result = Memory::RipRel(0x1234).encode_romsd(vec![], Rcx, false);
     assert_eq!(result, vec![0x0D, 0x34, 0x12, 0x00, 0x00]);
   }
   #[test]
   fn encode_inst_sib_mem0_disp8() {
     use crate::Scale;
     let sib = Sib { scale: Scale::S1, index: Rax, base: Rbp, disp: Disp::Byte(0x12) };
-    let result = Memory::Sib(sib).encode_romsdi(vec![], Rdx, false);
+    let result = Memory::Sib(sib).encode_romsd(vec![], Rdx, false);
     assert_eq!(result, vec![0b01_010_100, 0b00_000_101, 0x12]);
   }
 }

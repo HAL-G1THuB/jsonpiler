@@ -1,0 +1,20 @@
+define(
+  gcd, { a: Int b: Int }, Int,
+  {
+    while(
+      not: $b == 0,
+      {
+        temp = $b
+        b = { $a % $b }
+        a = $temp
+      }
+    )
+    $a
+  }
+)
+define(
+  lcm, { a: Int b: Int }, Int,
+  { $a * $b } / gcd($a, $b)
+)
+# This program computes lcm(12, 18) = 36.
+lcm(12, 18)

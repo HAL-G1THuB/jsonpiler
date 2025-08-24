@@ -2,6 +2,7 @@ use crate::{Bind::Lit, ErrOR, Json, Parser, WithPos, parse_err};
 impl Parser {
   pub(crate) fn parse_block(&mut self, is_top_level: bool) -> ErrOR<WithPos<Json>> {
     let mut pos = self.pos;
+    let mut exist_non_call = false;
     let mut entries = vec![];
     if !is_top_level {
       self.expect(b'{')?;
@@ -12,19 +13,25 @@ impl Parser {
       }
       if !is_top_level {
         self.skip_ws_and_comment()?;
+        if self.consume_if(b'}')? {
+          break;
+        }
       }
-      if !is_top_level && self.peek() == b'}' {
-        break;
+      let val = self.try_three_tokens()?;
+      if exist_non_call {
+        return parse_err!(
+          self,
+          val.pos,
+          "Except at the end of a sequence of function calls, values that are not function calls are not allowed."
+        );
       }
-      match self.try_three_tokens()? {
+      match val {
         WithPos { value: Json::Object(Lit(vec)), .. } => entries.extend(vec),
         value => {
+          exist_non_call = true;
           entries.push((WithPos { pos: value.pos, value: "value".to_owned() }, value));
         }
       }
-    }
-    if !is_top_level {
-      self.expect(b'}')?;
     }
     pos.extend_to(self.pos.offset);
     Ok(WithPos { pos, value: Json::Object(Lit(entries)) })
@@ -34,8 +41,7 @@ impl Parser {
     self.expect(b'(')?;
     self.skip_ws_and_comment()?;
     let mut args = vec![];
-    if self.peek() == b')' {
-      self.advance(1)?;
+    if self.consume_if(b')')? {
       pos.extend_to(self.pos.offset);
       return Ok(WithPos { pos, value: Json::Array(Lit(args)) });
     }
@@ -43,8 +49,7 @@ impl Parser {
       self.skip_ws_and_comment()?;
       args.push(self.try_three_tokens()?);
       self.skip_ws_and_comment()?;
-      if self.peek() == b')' {
-        self.advance(1)?;
+      if self.consume_if(b')')? {
         break;
       }
       self.expect(b',')?;
@@ -55,30 +60,27 @@ impl Parser {
   }
   fn parse_ident(&mut self) -> ErrOR<WithPos<String>> {
     let mut pos = self.pos;
-    let start = self.pos.offset;
-    let mut end = start;
-    while end < self.source.len() {
-      let byte = self.source[end];
+    while self.pos.offset < self.source.len() {
+      let byte = self.peek();
       if !(0x21..=0x7E).contains(&byte) {
         break;
       }
       match byte {
         b'(' | b')' | b'[' | b']' | b'{' | b'}' | b',' | b'"' | b':' => break,
-        _ => end += 1,
+        _ => self.pos.offset += 1,
       }
     }
-    if start == end {
-      return parse_err!(self, pos, "Expected identifier.");
+    if pos.offset == self.pos.offset {
+      return parse_err!(self, pos, "Expected identifier. found {}", char::from(self.peek()));
     }
-    self.pos.offset = end;
-    pos.extend_to(end);
-    let ident = String::from_utf8(self.source[start..end].to_vec())
+    pos.extend_to(self.pos.offset);
+    let ident = String::from_utf8(self.source[pos.offset..self.pos.offset].to_vec())
       .map_err(|_| "Invalid UTF-8 in identifier.".to_owned())?;
     Ok(WithPos { pos, value: ident })
   }
   fn parse_ident_expect_string(&mut self) -> ErrOR<WithPos<String>> {
     let ident = self.parse_ident()?;
-    if !ident.value.is_empty() && ident.value.chars().nth(0) == Some('$') {
+    if ident.value.chars().nth(0) == Some('$') {
       parse_err!(self, ident.pos, "Invalid identifier")
     } else {
       match ident.value.as_str() {
@@ -89,7 +91,7 @@ impl Parser {
   }
   fn skip_space(&mut self) -> bool {
     while self.pos.offset < self.source.len() {
-      let byte = self.source[self.pos.offset];
+      let byte = self.peek();
       match byte {
         b' ' | b'\t' => {
           if self.advance(1).is_err() {
@@ -105,23 +107,20 @@ impl Parser {
   }
   fn skip_ws_and_comment(&mut self) -> ErrOR<()> {
     while self.pos.offset < self.source.len() {
-      let mut byte = self.source[self.pos.offset];
-      if byte == b'#' {
+      if self.consume_if(b'#')? {
         while self.pos.offset < self.source.len() {
-          byte = self.source[self.pos.offset];
-          if byte == b'\n' {
+          if self.consume_if(b'\n')? {
             self.pos.line += 1;
             break;
           }
           self.advance(1)?;
         }
-        self.advance(1)?;
         continue;
       }
-      if !byte.is_ascii_whitespace() {
+      if !self.peek().is_ascii_whitespace() {
         return Ok(());
       }
-      if byte == b'\n' {
+      if self.peek() == b'\n' {
         self.pos.line += 1;
       }
       self.advance(1)?;
@@ -129,17 +128,17 @@ impl Parser {
     self.check_eof()
   }
   fn try_parse_ident(&mut self) -> Option<WithPos<String>> {
-    let saved = self.pos;
+    let pos = self.pos;
     self.skip_ws_and_comment().ok()?;
     if let Ok(res) = self.parse_ident_expect_string() {
       Some(res)
     } else {
-      self.pos = saved;
+      self.pos = pos;
       None
     }
   }
   fn try_parse_value(&mut self) -> ErrOR<WithPos<Json>> {
-    let mut saved = self.pos;
+    let mut pos = self.pos;
     match self.peek() {
       b'"' => self.parse_string(),
       b'0'..=b'9' => self.parse_number(),
@@ -153,24 +152,19 @@ impl Parser {
           self.skip_ws_and_comment()?;
           list.push(self.try_three_tokens()?);
           self.skip_ws_and_comment()?;
-          if self.peek() == b',' {
-            self.advance(1)?;
-          } else {
+          if !self.consume_if(b',')? {
             break;
           }
         }
         self.skip_ws_and_comment()?;
         self.expect(b']')?;
-        saved.extend_to(self.pos.offset);
-        Ok(WithPos { pos: saved, value: Json::Array(Lit(list)) })
+        pos.extend_to(self.pos.offset);
+        Ok(WithPos { pos, value: Json::Array(Lit(list)) })
       }
-      b'{' => {
-        let val = self.parse_block(false)?;
-        Ok(val)
-      }
+      b'{' => Ok(self.parse_block(false)?),
       _ => {
         let ident = self.parse_ident()?;
-        if !ident.value.is_empty() && ident.value.chars().nth(0) == Some('$') {
+        if ident.value.chars().nth(0) == Some('$') {
           #[expect(clippy::string_slice)]
           Ok(WithPos {
             pos: ident.pos,
@@ -185,20 +179,22 @@ impl Parser {
             if self.peek() == b'(' {
               let args = self.parse_call()?;
               return Ok(WithPos { pos: ident.pos, value: Json::Object(Lit(vec![(ident, args)])) });
-            } else if self.skip_ws_and_comment().is_ok() && self.peek() == b':' {
-              self.advance(1)?;
+            } else if self.consume_if(b':')? {
               self.skip_ws_and_comment()?;
-              let args = self.try_parse_value()?;
+              let args = self.try_three_tokens()?;
               return Ok(WithPos { pos: ident.pos, value: Json::Object(Lit(vec![(ident, args)])) });
             }
           }
           self.pos = before_jspl_skip_ws;
-          match ident.value.as_str() {
-            "true" => Ok(WithPos { pos: ident.pos, value: Json::Bool(Lit(true)) }),
-            "false" => Ok(WithPos { pos: ident.pos, value: Json::Bool(Lit(false)) }),
-            "null" => Ok(WithPos { pos: ident.pos, value: Json::Null }),
-            _ => Ok(WithPos { pos: ident.pos, value: Json::String(Lit(ident.value)) }),
-          }
+          Ok(WithPos {
+            pos: ident.pos,
+            value: match ident.value.as_str() {
+              "true" => Json::Bool(Lit(true)),
+              "false" => Json::Bool(Lit(false)),
+              "null" => Json::Null,
+              _ => Json::String(Lit(ident.value)),
+            },
+          })
         }
       }
     }

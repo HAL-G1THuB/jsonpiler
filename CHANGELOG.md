@@ -2,6 +2,7 @@
 
 ## Planned
 
+- More Float-enabled functions
 - More I/O functions
 - More string manipulation functions
 - Support for storing data in the heap area
@@ -10,6 +11,14 @@
 ## Released
 
 ### jsonpiler 0.6
+
+### 0.6.2
+
+- Fixed problem with bool values not being passed correctly to user-defined functions
+- Fixed problem with strings stored in local variables not being recognized correctly
+- Set maximum number of arguments for user-defined functions to 16
+- Jsonpiler now returns the correct exe exit code.
+- Add new function: `len`.
 
 #### 0.6.1
 
@@ -65,7 +74,7 @@
 - Split the documentation of built-in functions into several files because they became bloated.
 - The timing of releasing a temporary value passed as an argument of a function not bound to a variable is now fixed at the end of the function. (Exception: the last temporary value of the body of `if` is released.)
 - The argument format of `if`, `scope`, and `lambda` has been changed.
-- A new function `value` has been added. This function returns the given evaluated value as-is and is used to add a literal to the end of an Object's instruction sequence.
+- A new function `value` has been added. This function is used to add a literal to the end of an Object's instruction sequence.
 
 #### 0.4.0
 
@@ -171,7 +180,7 @@
 
 #### 0.1.7
 
-- The main function now returns `ExitCode` instead of `!`.
+- ~~The main function now returns `ExitCode` instead of `!`.~~
 - Implemented temporary register storage with automatic save and restore.
 - Internal functions are now included in the binary only when needed.
 

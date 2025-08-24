@@ -17,12 +17,15 @@
 define(name, params, return_type, body)
 ```
 
-Registers a user-defined function.
-The first argument is the name of the function.
-The second argument is the type annotation of the argument.
-The third argument is the type annotation of the return value.
-The fourth argument is the function body and is evaluated when the function is called.
-`define` introduces a new scope.
+Registers a user-defined function with the following parameters:
+
+- The first argument specifies the function’s name.
+- The second argument provides the type annotation for the function’s parameter.
+- The third argument specifies the return type annotation.
+- The fourth argument is the function body, which is evaluated when the function is called.
+
+Up to 16 arguments can be defined for a single function.
+The `define` keyword also introduces a new scope.
 
 ```json
 {"define": ["*2", {"n": "Int"}, {"+": [{"$": "n"}, {"$": "n"}]}]}

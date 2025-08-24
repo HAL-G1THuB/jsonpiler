@@ -11,9 +11,11 @@ use crate::{
   Arity::Exactly,
   AsmFunc, Assembler,
   Bind::{Lit, Var},
-  Builtin, ErrOR, FuncInfo,
+  Builtin, BuiltinPtr,
+  ConditionCode::*,
+  ErrOR, FuncInfo,
   Inst::{self, *},
-  JFunc, Json, Jsonpiler,
+  Json, Jsonpiler,
   OpQ::{Args, Iq, Mq, Rq},
   Position,
   Reg::*,
@@ -75,7 +77,7 @@ impl Jsonpiler {
       let len = args_vec.len();
       let args = args_vec.into_iter();
       let free_list = vec![];
-      let mut func_info = FuncInfo { args, free_list, len, name, pos };
+      let mut func_info = FuncInfo { args, free_list, len, name, pos, nth: 0 };
       self.parser.validate_args(&func_info, arg_len)?;
       let result = func(self, &mut func_info, scope)?;
       for label in func_info.free_list {
@@ -91,16 +93,19 @@ impl Jsonpiler {
       let Some(AsmFunc { id, params, ret }) = self.user_defined.get(&name).cloned() else {
         return err!(self, key.pos, "Undefined function");
       };
+      if params.len() >= 16 {
+        return err!(self, key.pos, "Too many arguments: Up to 16 arguments are allowed.");
+      }
       let len = args_vec.len();
-      let func_info = &FuncInfo { len, name, pos, args: vec![].into_iter(), free_list: vec![] };
-      self.parser.validate_args(func_info, Exactly(params.len()))?;
-      for (idx, jwp) in args_vec.into_iter().enumerate() {
-        if discriminant(&jwp.value) != discriminant(&params[idx]) {
-          return Err(
-            self.parser.type_err(idx + 1, &func_info.name, &params[idx].type_name(), &jwp).into(),
-          );
+      let mut func =
+        FuncInfo { len, name, pos, args: args_vec.into_iter(), free_list: vec![], nth: 0 };
+      self.parser.validate_args(&func, Exactly(params.len()))?;
+      for param in &params {
+        let jwp = func.arg()?;
+        if discriminant(&jwp.value) != discriminant(param) {
+          return Err(self.parser.type_err(func.nth, &func.name, &param.type_name(), &jwp).into());
         }
-        self.mov_to_args(&jwp, idx, scope)?;
+        self.mov_to_args(&jwp, func.nth - 1, scope)?;
       }
       scope.push(Call(id));
       match ret {
@@ -127,6 +132,16 @@ impl Jsonpiler {
       object.pop().ok_or_else(|| self.parser.fmt_err("Empty object is not allowed", pos))?;
     self.eval_func(scope, key, val)
   }
+  #[expect(clippy::cast_sign_loss)]
+  fn get_std_any(&mut self, get_std_handle: (usize, usize), std_any: i32, id: usize) -> [Inst; 5] {
+    [
+      MovRId(Rcx, std_any as u32),
+      CallApi(get_std_handle),
+      CmpRIb(Rax, -1i8),
+      Jcc(E, self.sym_table["WIN_HANDLER"]),
+      MovQQ(Mq(Global { id }), Rq(Rax)),
+    ]
+  }
   fn handler(&mut self) -> [Inst; 25] {
     let exit_process = self.import(Jsonpiler::KERNEL32, "ExitProcess", 0x167);
     let format_message = self.import(Jsonpiler::KERNEL32, "FormatMessageW", 0x1B0);
@@ -149,7 +164,7 @@ impl Jsonpiler {
       MovQQ(Args(0x30), Rq(Rax)),
       CallApi(format_message),
       TestRdRd(Rax, Rax),
-      Jze(win_handler_exit),
+      Jcc(E, win_handler_exit),
       Clear(Rcx),
       MovQQ(Rq(Rdx), Mq(Global { id: self.sym_table["WIN_HANDLER_MSG"] })),
       Clear(R8),
@@ -163,85 +178,42 @@ impl Jsonpiler {
     ]
   }
   fn mov_to_args(&mut self, jwp: &WithPos<Json>, idx: usize, scope: &mut ScopeInfo) -> ErrOR<()> {
-    {
-      match &jwp.value {
-        Json::String(string) => match string {
-          Lit(l_str) => {
-            if let Some(&reg) = Jsonpiler::REGS.get(idx) {
-              scope.push(LeaRM(reg, Global { id: self.global_str(l_str.to_owned()) }));
-            } else {
-              scope.push(LeaRM(Rax, Global { id: self.global_str(l_str.to_owned()) }));
-              scope.push(MovQQ(Args((idx - 4) * 8), Rq(Rax)));
-            }
-          }
-          Var(str_label) => {
-            if let Some(&reg) = Jsonpiler::REGS.get(idx) {
-              scope.push(LeaRM(reg, str_label.kind));
-            } else {
-              scope.push(LeaRM(Rax, str_label.kind));
-              scope.push(MovQQ(Args((idx - 4) * 8), Rq(Rax)));
-            }
-          }
+    let reg = *Jsonpiler::REGS.get(idx).unwrap_or(&Rax);
+    match &jwp.value {
+      Json::String(string) => scope.push(LeaRM(
+        reg,
+        match string {
+          Lit(l_str) => Global { id: self.global_str(l_str.to_owned()) },
+          Var(str_label) => str_label.kind,
         },
-        Json::Float(Var(label)) | Json::Bool(Var(label)) | Json::Int(Var(label)) => {
-          if let Some(&reg) = Jsonpiler::REGS.get(idx) {
-            scope.push(MovQQ(Rq(reg), Mq(label.kind)));
-          } else {
-            scope.push(MovQQ(Rq(Rax), Mq(label.kind)));
-            scope.push(MovQQ(Args((idx - 4) * 8), Rq(Rax)));
-          }
-        }
-        Json::Null => {
-          if let Some(&reg) = Jsonpiler::REGS.get(idx) {
-            scope.push(Clear(reg));
-          } else {
-            scope.push(Clear(Rax));
-            scope.push(MovQQ(Args((idx - 4) * 8), Rq(Rax)));
-          }
-        }
-        #[expect(clippy::cast_sign_loss)]
-        Json::Int(Lit(l_int)) => {
-          if let Some(&reg) = Jsonpiler::REGS.get(idx) {
-            scope.push(MovQQ(Rq(reg), Iq(*l_int as u64)));
-          } else {
-            scope.push(MovQQ(Rq(Rax), Iq(*l_int as u64)));
-            scope.push(MovQQ(Args((idx - 4) * 8), Rq(Rax)));
-          }
-        }
-        Json::Bool(Lit(l_bool)) => {
-          if let Some(&reg) = Jsonpiler::REGS.get(idx) {
-            scope.push(MovRbIb(reg, if *l_bool { 0xFF } else { 0 }));
-          } else {
-            scope.push(MovRbIb(Rax, if *l_bool { 0xFF } else { 0 }));
-            scope.push(MovQQ(Args((idx - 4) * 8), Rq(Rax)));
-          }
-        }
-        Json::Float(Lit(l_float)) => {
-          if let Some(&reg) = Jsonpiler::REGS.get(idx) {
-            scope.push(MovQQ(Rq(reg), Iq(l_float.to_bits())));
-          } else {
-            scope.push(MovQQ(Rq(Rax), Iq(l_float.to_bits())));
-            scope.push(MovQQ(Args((idx - 4) * 8), Rq(Rax)));
-          }
-        }
-        Json::Array(_) | Json::Object(_) => {
-          return err!(
-            self,
-            jwp.pos,
-            "This type cannot be accepted as an argument of an user-defined function."
-          );
-        }
+      )),
+      Json::Float(Var(label)) | Json::Bool(Var(label)) | Json::Int(Var(label)) => {
+        scope.push(MovQQ(Rq(reg), Mq(label.kind)));
       }
+      Json::Null => scope.push(Clear(reg)),
+      #[expect(clippy::cast_sign_loss)]
+      Json::Int(Lit(l_int)) => scope.push(MovQQ(Rq(reg), Iq(*l_int as u64))),
+      Json::Bool(Lit(l_bool)) => scope.push(MovRbIb(reg, if *l_bool { 0xFF } else { 0 })),
+      Json::Float(Lit(l_float)) => scope.push(MovQQ(Rq(reg), Iq(l_float.to_bits()))),
+      Json::Array(_) | Json::Object(_) => {
+        return err!(
+          self,
+          jwp.pos,
+          "This type cannot be accepted as an argument of an user-defined function."
+        );
+      }
+    }
+    if reg == Rax {
+      scope.push(MovQQ(Args(idx * 8), Rq(Rax)));
     }
     Ok(())
   }
   pub(crate) fn register(
-    &mut self, name: &str, (scoped, skip_eval): (bool, bool), func: JFunc, arg_len: Arity,
+    &mut self, name: &str, (scoped, skip_eval): (bool, bool), func: BuiltinPtr, arg_len: Arity,
   ) {
     self.builtin.insert(name.to_owned(), Builtin { arg_len, func, scoped, skip_eval });
   }
   #[inline]
-  #[expect(clippy::cast_sign_loss)]
   pub fn run(&mut self, exe: &str, is_jspl: bool) -> ErrOR<()> {
     let json = self.parser.parse(is_jspl)?;
     /*
@@ -271,43 +243,25 @@ impl Jsonpiler {
     let get_std_handle = self.import(Jsonpiler::KERNEL32, "GetStdHandle", 0x2DC);
     let result = self.eval(json, &mut scope)?;
     let size = scope.resolve_stack_size(8)?;
-    let mut insts = vec![
-      MovQQ(Rq(Rbp), Rq(Rsp)),
-      SubRId(Rsp, size),
-      MovRId(Rcx, 65001),
-      CallApi(set_console_cp),
-      TestRR(Rax, Rax),
-      Jze(win_handler),
-      MovRId(Rcx, 65001),
-      CallApi(set_console_output_cp),
-      TestRR(Rax, Rax),
-      Jze(win_handler),
-      MovRId(Rcx, -10i32 as u32),
-      CallApi(get_std_handle),
-      CmpRIb(Rax, -1i8),
-      Jze(win_handler),
-      MovQQ(Mq(Global { id: std_i }), Rq(Rax)),
-      MovRId(Rcx, -11i32 as u32),
-      CallApi(get_std_handle),
-      CmpRIb(Rax, -1i8),
-      Jze(win_handler),
-      MovQQ(Mq(Global { id: std_o }), Rq(Rax)),
-      MovRId(Rcx, -12i32 as u32),
-      CallApi(get_std_handle),
-      CmpRIb(Rax, -1i8),
-      Jze(win_handler),
-      MovQQ(Mq(Global { id: std_e }), Rq(Rax)),
-      CallApi(get_process_heap),
-      TestRR(Rax, Rax),
-      Jze(win_handler),
-      MovQQ(Mq(Global { id: heap }), Rq(Rax)),
-    ];
+    let mut insts = vec![MovQQ(Rq(Rbp), Rq(Rsp)), SubRId(Rsp, size)];
+    insts.push(MovRId(Rcx, 65001));
+    insts.extend_from_slice(&self.call_api_check_null(set_console_cp));
+    insts.push(MovRId(Rcx, 65001));
+    insts.extend_from_slice(&self.call_api_check_null(set_console_output_cp));
+    insts.extend_from_slice(&self.get_std_any(get_std_handle, -10, std_i));
+    insts.extend_from_slice(&self.get_std_any(get_std_handle, -11, std_o));
+    insts.extend_from_slice(&self.get_std_any(get_std_handle, -12, std_e));
+    insts.extend_from_slice(&self.call_api_check_null(get_process_heap));
+    insts.push(MovQQ(Mq(Global { id: heap }), Rq(Rax)));
     #[expect(clippy::cast_sign_loss)]
     if let Json::Int(int) = result {
-      match int {
-        Lit(l_int) => scope.push(MovQQ(Rq(Rcx), Iq(l_int as u64))),
-        Var(label) => scope.push(MovQQ(Rq(Rcx), Mq(label.kind))),
-      }
+      scope.push(MovQQ(
+        Rq(Rcx),
+        match int {
+          Lit(l_int) => Iq(l_int as u64),
+          Var(label) => Mq(label.kind),
+        },
+      ));
     } else {
       scope.push(Clear(Rcx));
     }

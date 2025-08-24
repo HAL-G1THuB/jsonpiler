@@ -6,9 +6,10 @@
 JSON で書かれたプログラムを **x86_64 Windows PE** 形式の機械語に変換し、リンクして実行します。
 Jsonpiler は、その中間表現（IR）から Windows 用 PE を出力することに特化した **自前実装のアセンブラとリンカ** を内蔵しています。
 
-- GitHub: [https://github.com/HAL-G1THuB/jsonpiler](https://github.com/HAL-G1THuB/jsonpiler)
-- Crates.io: [https://crates.io/crates/jsonpiler](https://crates.io/crates/jsonpiler)
-- AI 生成ドキュメント: [![badge](https://deepwiki.com/badge.svg)](https://deepwiki.com/HAL-G1THuB/jsonpiler)
+- [GitHub](https://github.com/HAL-G1THuB/jsonpiler)
+- [Crates.io](https://crates.io/crates/jsonpiler)
+- [AI 生成ドキュメント: ![badge](https://deepwiki.com/badge.svg)](https://deepwiki.com/HAL-G1THuB/jsonpiler)
+- [VSCode拡張機能](https://marketplace.visualstudio.com/items?itemName=H4LVS.jsplsyntax)
 
 > 🚨 **Windows のみ (x64)** — Jsonpiler は 64 ビット Windows を対象に、ネイティブ PE 実行ファイルを生成します。
 
@@ -16,16 +17,13 @@ Jsonpiler は、その中間表現（IR）から Windows 用 PE を出力する�
 
 ## 更新情報
 
-### 0.6.1
+### 0.6.2
 
-- JSPL の導入:JSPL (Jsonpiler Structured Programming Language)は、人間にとって書きやすく読みやすい記述を可能にするために導入された、Jsonpiler の新しい構文です。
-- 言語仕様に日本語版を追加。
-- ループ構造の実装: `while`
-- アセンブラの組み込みにより発生したエスケープ文字が正しく表示されない問題の修正
-- ローカル変数への再代入がほとんどの型で使用可能になった。
-- 新しい関数 `==`, `<`, `<=` を追加。
-- `lambda`を廃止し、代わりに関数の登録や、再帰呼び出しを備えた`define`を追加
-- `Function`型の廃止。
+- ユーザー定義関数にbool値が正しく渡されていない問題を修正
+- ローカル変数に格納された文字列が正しく認識されない問題を修正
+- ユーザー定義関数の最大引数を16に設定
+- Jsonpilerが正しいexeの終了コードを返すようになった。
+- 新しい関数を追加: `len`
 
 詳細は **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG-ja.md)** を参照してください。
 
