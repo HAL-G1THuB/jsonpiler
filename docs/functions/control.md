@@ -68,21 +68,21 @@ Regardless of which branch is taken, the overall result is always `null`.
     [{"==": [1, 1]},
       {"message": [
           "1 == 1✨",
-          "Placing `true` in the first condition acts as the `then` branch."
+          "`then` branch."
         ]
       }
     ],
     [{"==": [1, 2]},
       {"message": [
           "1 == 2🤔",
-          "Placing `true` in this condition acts as the `else if` branch."
+          "`else if` branch."
         ]
       }
     ],
     [true,
       {"message": [
           "1 == ?🤣",
-          "Placing `true` in the condition here acts as the `else` branch."
+          "`else` branch."
         ]
       }
     ]
@@ -105,10 +105,13 @@ Executes the `body` repeatedly as long as the `condition` evaluates to `true`.
 Returns `null`.
 
 ```json
-{"while": [
+{
+  "=": ["i", 0],
+  "while": [
   {"<": [{"$": "i"}, 5]},
   {"scope": [
     {"message": ["Loop", {"$": "i"}]},
     {"=": ["i", {"+": [{"$": "i"}, 1]}]}
   ]}
 ]}
+```

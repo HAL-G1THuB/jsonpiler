@@ -17,13 +17,12 @@ Jsonpiler は、その中間表現（IR）から Windows 用 PE を出力する�
 
 ## 更新情報
 
-### 0.6.2
+### 0.6.3
 
-- ユーザー定義関数にbool値が正しく渡されていない問題を修正
-- ローカル変数に格納された文字列が正しく認識されない問題を修正
-- ユーザー定義関数の最大引数を16に設定
-- Jsonpilerが正しいexeの終了コードを返すようになった。
-- 新しい関数を追加: `len`
+- 四則演算`+`, `-`, `*`, `/`がFloat型をサポート
+- Float型を整数に切り捨てる関数を追加: `Int`
+- I/O関数を追加: `print`
+- global関数のエラーを修正
 
 詳細は **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG-ja.md)** を参照してください。
 

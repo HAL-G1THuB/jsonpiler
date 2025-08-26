@@ -18,7 +18,7 @@ built_in! {self, func, _scope, string;
   }},
   len =>{"len", COMMON, Exactly(1), {
     const CLD_REPNE_SCASB: [u8; 3] = [0xFC, 0xF2, 0xAE];
-    self.mov_str(Rsi, func, _scope)?;
+    self.take_str(Rsi, func, _scope)?;
     _scope.extend(&[
       MovQQ(Rq(Rdi), Rq(Rsi)),
       Clear(Rcx),

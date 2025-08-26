@@ -60,7 +60,7 @@ impl Assembler {
     self.build_pe(&code, &data, bss, &idata)
   }
   #[expect(clippy::too_many_lines)]
-  fn encode_inst(&self, inst: &Inst, code: &mut Vec<u8>) -> ErrOR<()> {
+  fn encode_inst(&mut self, inst: &Inst, code: &mut Vec<u8>) -> ErrOR<()> {
     match inst {
       Shl1R(reg) => {
         code.extend(Memory::Reg(*reg).encode_romsd(vec![0xD1], Rsp, true));
@@ -82,6 +82,35 @@ impl Assembler {
       }
       TestRdRd(dst, src) => {
         code.extend(Memory::Reg(*dst).encode_romsd(vec![0x85], *src, false));
+      }
+      AddSd(xmm, xmm2) => {
+        code.extend(Memory::Reg(*xmm2).encode_romsd(vec![0xF2, 0x0F, 0x58], *xmm, false));
+      }
+      SubSd(xmm, xmm2) => {
+        code.extend(Memory::Reg(*xmm2).encode_romsd(vec![0xF2, 0x0F, 0x5C], *xmm, false));
+      }
+      MulSd(xmm, xmm2) => {
+        code.extend(Memory::Reg(*xmm2).encode_romsd(vec![0xF2, 0x0F, 0x59], *xmm, false));
+      }
+      DivSd(xmm, xmm2) => {
+        code.extend(Memory::Reg(*xmm2).encode_romsd(vec![0xF2, 0x0F, 0x5E], *xmm, false));
+      }
+      MovSdMX(mem, xmm) => {
+        let size = self.inst_size(inst, &mut 0, &mut vec![], 0)?;
+        let memory = self.memory(*mem, code.len(), size)?;
+        code.extend(memory.encode_romsd(vec![0xF2, 0x0F, 0x11], *xmm, false));
+      }
+      MovSdXM(xmm, mem) => {
+        let size = self.inst_size(inst, &mut 0, &mut vec![], 0)?;
+        code.extend(self.memory(*mem, code.len(), size)?.encode_romsd(
+          vec![0xF2, 0x0F, 0x10],
+          *xmm,
+          false,
+        ));
+      }
+      CvtTSd2Si(reg, xmm) => {
+        code.push(0xF2);
+        code.extend(Memory::Reg(*xmm).encode_romsd(vec![0x0F, 0x2C], *reg, true));
       }
       TestRR(dst, src) => {
         code.extend(Memory::Reg(*dst).encode_romsd(vec![0x85], *src, true));
@@ -144,15 +173,21 @@ impl Assembler {
         code.extend(Memory::Reg(*dst).encode_romsd(vec![0x84], *src, false));
       }
       LeaRM(reg, mem) => {
-        code.extend(self.memory(*mem, code.len(), 2)?.encode_romsd(vec![0x8D], *reg, true));
+        let size = self.inst_size(inst, &mut 0, &mut vec![], 0)?;
+        let memory = self.memory(*mem, code.len(), size)?;
+        code.extend(memory.encode_romsd(vec![0x8D], *reg, true));
       }
       MovQQ(op1, op2) => self.encode_mov_q_q(code, op1, op2)?,
       MovMbIb(mem, byte) => {
-        code.extend(self.memory(*mem, code.len(), 6)?.encode_romsd(vec![0xC6], Rax, false));
+        let size = self.inst_size(inst, &mut 0, &mut vec![], 0)?;
+        let memory = self.memory(*mem, code.len(), size)?;
+        code.extend(memory.encode_romsd(vec![0xC6], Rax, false));
         code.push(*byte);
       }
       MovMId(dst, dword) => {
-        code.extend(self.memory(*dst, code.len(), 6)?.encode_romsd(vec![0xC7], Rax, false));
+        let size = self.inst_size(inst, &mut 0, &mut vec![], 0)?;
+        let memory = self.memory(*dst, code.len(), size)?;
+        code.extend(memory.encode_romsd(vec![0xC7], Rax, false));
         code.extend_from_slice(&dword.to_le_bytes());
       }
       MovRbIb(reg, byte) => {
@@ -162,11 +197,14 @@ impl Assembler {
       }
       MovRbMb(reg, mem) => {
         reg.guard_reg8()?;
-        code.extend(self.memory(*mem, code.len(), 2)?.encode_romsd(vec![0x8A], *reg, false));
+        let size = self.inst_size(inst, &mut 0, &mut vec![], 0)?;
+        let memory = self.memory(*mem, code.len(), size)?;
+        code.extend(memory.encode_romsd(vec![0x8A], *reg, false));
       }
       MovMbRb(mem, reg) => {
         reg.guard_reg8()?;
-        code.extend(self.memory(*mem, code.len(), 2)?.encode_romsd(vec![0x88], *reg, false));
+        let size = self.inst_size(inst, &mut 0, &mut vec![], 0)?;
+        code.extend(self.memory(*mem, code.len(), size)?.encode_romsd(vec![0x88], *reg, false));
       }
       MovRId(reg, dword) => {
         code.extend(reg.mini_opcode(0xB8, false));
@@ -197,7 +235,7 @@ impl Assembler {
       Clear(reg) => {
         code.extend_from_slice(&Memory::Reg(*reg).encode_romsd(vec![0x31], *reg, false));
       }
-      StringZ(_, _) | Bss(_, _) | Byte(_, _) | Lbl(_) | Quad(_, _) => {}
+      StringZ(..) | Bss(..) | Byte(..) | Lbl(_) | Quad(..) => {}
     }
     Ok(())
   }
@@ -215,10 +253,10 @@ impl Assembler {
         code.extend(Memory::Reg(*dst).encode_romsd(vec![0x89], *src, true));
       }
       (Rq(dst), Mq(src)) => {
-        code.extend(self.memory(*src, code.len(), 2)?.encode_romsd(vec![0x8B], *dst, true));
+        code.extend(self.memory(*src, code.len(), 3)?.encode_romsd(vec![0x8B], *dst, true));
       }
       (Mq(dst), Rq(src)) => {
-        code.extend(self.memory(*dst, code.len(), 2)?.encode_romsd(vec![0x89], *src, true));
+        code.extend(self.memory(*dst, code.len(), 3)?.encode_romsd(vec![0x89], *src, true));
       }
       (Rq(dst), Iq(imm)) => {
         code.extend(dst.mini_opcode(0xB8, true));
@@ -240,20 +278,18 @@ impl Assembler {
     Ok(match inst {
       Custom(bytes) => u32::try_from(bytes.len())?,
       Ret => 1,
-      JmpSh(_) | XorRbRb(_, _) | OrRbRb(_, _) | AndRbRb(_, _) | TestRbRb(_, _) => 2,
-      DecQ(_)
-      | CmpRR(_, _)
-      | Shl1R(_)
-      | TestRR(_, _)
-      | IDivR(_)
-      | XorRR(_, _)
-      | SubRR(_, _)
-      | AddRR(_, _) => 3,
-      IMulRR(_, _) | CmpRIb(_, _) => 4,
-      Jmp(_) | Call(_) => 5,
-      Jcc(_, _) | CallApi(_) => 6,
-      SubRId(_, _) | AddRId(_, _) => 7,
+      JmpSh(_) | XorRbRb(..) | OrRbRb(..) | AndRbRb(..) | TestRbRb(..) => 2,
+      DecQ(_) | CmpRR(..) | Shl1R(_) | TestRR(..) | IDivR(_) | XorRR(..) | SubRR(..)
+      | AddRR(..) => 3,
+      IMulRR(..) | CmpRIb(..) => 4,
+      CvtTSd2Si(..) | Jmp(_) | Call(_) => 5,
+      Jcc(..) | CallApi(_) => 6,
+      SubRId(..) | AddRId(..) => 7,
       TestRdRd(dst, src) => (dst.rex_size() | src.rex_size()) + 1 + 1,
+      AddSd(xmm, xmm2) | SubSd(xmm, xmm2) | MulSd(xmm, xmm2) | DivSd(xmm, xmm2) => {
+        4 + (xmm.rex_size() | xmm2.rex_size())
+      }
+      MovSdXM(xmm, mem) | MovSdMX(mem, xmm) => 3 + xmm.rex_size() + mem.size_of_mo_si_di(),
       LeaRM(_, mem) => 2 + mem.size_of_mo_si_di(),
       NotRb(reg) | NegR(reg) | Clear(reg) | MovRbIb(reg, _) => reg.rex_size() + 2,
       MovMbIb(mem, _) => 1 + mem.size_of_mo_si_di() + 1,
@@ -297,11 +333,9 @@ impl Assembler {
     })
   }
   #[expect(clippy::cast_possible_wrap)]
-  pub(crate) fn memory(
-    &self, lbl: VarKind, code_len: usize, inst_len_without_sib_disp: u32,
-  ) -> ErrOR<Memory> {
+  pub(crate) fn memory(&self, lbl: VarKind, code_len: usize, len_inst: u32) -> ErrOR<Memory> {
     Ok(match lbl {
-      Global { id } => Memory::RipRel(self.get_rel(id, code_len, inst_len_without_sib_disp + 5)?),
+      Global { id } => Memory::RipRel(self.get_rel(id, code_len, len_inst)?),
       Local { offset } | Tmp { offset } => Memory::Base(Rbp, crate::Disp::Dword(-(offset as i32))),
     })
   }

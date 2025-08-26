@@ -108,8 +108,8 @@ struct Assembler {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 #[non_exhaustive]
-#[expect(clippy::arbitrary_source_item_ordering, clippy::min_ident_chars)]
-pub enum ConditionCode {
+#[expect(clippy::arbitrary_source_item_ordering, clippy::min_ident_chars, dead_code)]
+enum ConditionCode {
   O = 0,
   No = 1,
   B = 2,
@@ -132,6 +132,7 @@ type Dlls = Vec<(&'static str, Vec<(u16, &'static str)>)>;
 enum Inst {
   AddRId(Reg, u32),
   AddRR(Reg, Reg),
+  AddSd(Reg, Reg),
   AndRbRb(Reg, Reg),
   Bss(usize, u32),
   Byte(usize, u8),
@@ -141,7 +142,9 @@ enum Inst {
   CmpRIb(Reg, i8),
   CmpRR(Reg, Reg),
   Custom(Vec<u8>),
+  CvtTSd2Si(Reg, Reg),
   DecQ(Reg),
+  DivSd(Reg, Reg),
   IDivR(Reg),
   IMulRR(Reg, Reg),
   Jcc(ConditionCode, usize),
@@ -157,6 +160,9 @@ enum Inst {
   MovRId(Reg, u32),
   MovRbIb(Reg, u8),
   MovRbMb(Reg, VarKind),
+  MovSdMX(VarKind, Reg),
+  MovSdXM(Reg, VarKind),
+  MulSd(Reg, Reg),
   NegR(Reg),
   NotRb(Reg),
   OrRbRb(Reg, Reg),
@@ -168,6 +174,7 @@ enum Inst {
   StringZ(usize, String),
   SubRId(Reg, u32),
   SubRR(Reg, Reg),
+  SubSd(Reg, Reg),
   TestRR(Reg, Reg),
   TestRbRb(Reg, Reg),
   TestRdRd(Reg, Reg),

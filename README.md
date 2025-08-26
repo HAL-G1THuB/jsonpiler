@@ -16,6 +16,13 @@ Jsonpiler bundles an assembler and linker purpose-built for its IR and PE output
 
 ## What’s New
 
+### 0.6.3
+
+- Four arithmetic operations `+`, `-`, `*`, `/` now support Float type
+- Added function to truncate Float to integer: `Int`.
+- Added I/O function: `print`.
+- Fixed an error in `global` function.
+
 ### 0.6.2
 
 - Fixed problem with bool values not being passed correctly to user-defined functions

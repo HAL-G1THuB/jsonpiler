@@ -59,7 +59,9 @@ impl Jsonpiler {
     self.insts.push(StringZ(id, value));
     id
   }
-  pub(crate) fn import( &mut self, key1: &'static str, key2: &'static str, id: u16,) -> (usize, usize) {
+  pub(crate) fn import(
+    &mut self, key1: &'static str, key2: &'static str, id: u16,
+  ) -> (usize, usize) {
     let outer_idx =
       if let Some(idx) = self.import_table.iter().position(|(outer_key, _)| *outer_key == key1) {
         idx
@@ -76,36 +78,9 @@ impl Jsonpiler {
       };
     (outer_idx, inner_idx)
   }
-  pub(crate) fn mov_bool(&self, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<()> {
-    let boolean = take_arg!(self, func, "Bool", Json::Bool(x) => x).0;
-    match boolean {
-      Bind::Lit(l_bool) => scope.push(MovRbIb(reg, if l_bool { 0xFF } else { 0 })),
-      Bind::Var(label) => {
-        func.sched_free_tmp(&label);
-        scope.push(MovRbMb(reg, label.kind));
-      }
-    }
-    Ok(())
-  }
-  pub(crate) fn mov_int(&self, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<()> {
-    let int = take_arg!(self, func, "Int", Json::Int(x) => x).0;
-    #[expect(clippy::cast_sign_loss)]
-    scope.push(MovQQ(
-      Rq(reg),
-      match int {
-        Bind::Lit(l_int) => Iq(l_int as u64),
-        Bind::Var(label) => {
-          func.sched_free_tmp(&label);
-          Mq(label.kind)
-        }
-      },
-    ));
-    Ok(())
-  }
   pub(crate) fn mov_str(
-    &mut self, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo,
-  ) -> ErrOR<()> {
-    let string = take_arg!(self, func, "String", Json::String(x) => x).0;
+    &mut self, string: Bind<String>, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo,
+  ) {
     match string {
       Lit(l_str) => scope.push(LeaRM(reg, Global { id: self.global_str(l_str) })),
       Var(Label { kind: kind @ Global { .. }, .. }) => scope.push(LeaRM(reg, kind)),
@@ -114,7 +89,6 @@ impl Jsonpiler {
         scope.push(MovQQ(Rq(reg), Mq(label.kind)));
       }
     }
-    Ok(())
   }
   // fn format(&mut self, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {}
   #[inline]
@@ -132,6 +106,31 @@ impl Jsonpiler {
       user_defined: HashMap::new(),
     }
   }
+  pub(crate) fn take_bool(
+    &self, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo,
+  ) -> ErrOR<()> {
+    let boolean = take_arg!(self, func, "Bool", Json::Bool(x) => x).0;
+    mov_bool(&boolean, reg, func, scope);
+    Ok(())
+  }
+  pub(crate) fn take_float(
+    &self, xmm: Reg, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo,
+  ) -> ErrOR<()> {
+    let float = take_arg!(self, func, "Float", Json::Float(x) => x).0;
+    mov_float(&float, xmm, reg, func, scope)
+  }
+  pub(crate) fn take_int(&self, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<()> {
+    let int = take_arg!(self, func, "Int", Json::Int(x) => x).0;
+    mov_int(&int, reg, func, scope);
+    Ok(())
+  }
+  pub(crate) fn take_str(
+    &mut self, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo,
+  ) -> ErrOR<()> {
+    let string = take_arg!(self, func, "String", Json::String(x) => x).0;
+    self.mov_str(string, reg, func, scope);
+    Ok(())
+  }
 }
 pub(crate) fn align_up(num: usize, align: usize) -> ErrOR<usize> {
   num.div_ceil(align).checked_mul(align).ok_or("InternalError: Overflow".into())
@@ -142,4 +141,45 @@ pub(crate) fn align_up_32(value: u32, align: u32) -> ErrOR<u32> {
 #[expect(clippy::cast_possible_truncation)]
 pub(crate) fn get_time_stamp() -> ErrOR<u32> {
   Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as u32)
+}
+pub(crate) fn mov_bool(boolean: &Bind<bool>, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo) {
+  match boolean {
+    Bind::Lit(l_bool) => scope.push(MovRbIb(reg, if *l_bool { 0xFF } else { 0 })),
+    Bind::Var(label) => {
+      func.sched_free_tmp(label);
+      scope.push(MovRbMb(reg, label.kind));
+    }
+  }
+}
+pub(crate) fn mov_float(
+  float: &Bind<f64>, xmm: Reg, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo,
+) -> ErrOR<()> {
+  let addr = match float {
+    Bind::Lit(l_float) => {
+      scope.push(MovQQ(Rq(reg), Iq(l_float.to_bits())));
+      let addr = scope.tmp(8)?;
+      func.sched_free_tmp(&addr);
+      scope.push(MovQQ(Mq(addr.kind), Rq(reg)));
+      addr.kind
+    }
+    Bind::Var(label) => {
+      func.sched_free_tmp(label);
+      label.kind
+    }
+  };
+  scope.push(MovSdXM(xmm, addr));
+  Ok(())
+}
+pub(crate) fn mov_int(int: &Bind<i64>, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo) {
+  #[expect(clippy::cast_sign_loss)]
+  scope.push(MovQQ(
+    Rq(reg),
+    match int {
+      Bind::Lit(l_int) => Iq(*l_int as u64),
+      Bind::Var(label) => {
+        func.sched_free_tmp(label);
+        Mq(label.kind)
+      }
+    },
+  ));
 }

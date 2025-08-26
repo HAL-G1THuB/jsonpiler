@@ -149,6 +149,7 @@ impl Jsonpiler {
     let message_box = self.import(Jsonpiler::USER32, "MessageBoxW", 0x28c);
     let local_free = self.import(Jsonpiler::KERNEL32, "LocalFree", 0x3D8);
     let win_handler_exit = self.gen_id();
+    let msg = Global { id: self.sym_table["WIN_HANDLER_MSG"] };
     [
       Lbl(self.sym_table["WIN_HANDLER"]),
       CallApi(get_last_error),
@@ -157,7 +158,7 @@ impl Jsonpiler {
       Clear(Rdx),
       MovQQ(Rq(R8), Rq(Rdi)),
       Clear(R9),
-      LeaRM(Rax, Global { id: self.sym_table["WIN_HANDLER_MSG"] }),
+      LeaRM(Rax, msg),
       MovQQ(Args(0x20), Rq(Rax)),
       MovQQ(Rq(Rax), Iq(0)),
       MovQQ(Args(0x28), Rq(Rax)),
@@ -166,12 +167,12 @@ impl Jsonpiler {
       TestRdRd(Rax, Rax),
       Jcc(E, win_handler_exit),
       Clear(Rcx),
-      MovQQ(Rq(Rdx), Mq(Global { id: self.sym_table["WIN_HANDLER_MSG"] })),
+      MovQQ(Rq(Rdx), Mq(msg)),
       Clear(R8),
       MovRId(R9, 0x10),
       CallApi(message_box),
       Lbl(win_handler_exit),
-      MovQQ(Rq(Rcx), Mq(Global { id: self.sym_table["WIN_HANDLER_MSG"] })),
+      MovQQ(Rq(Rcx), Mq(msg)),
       CallApi(local_free),
       MovQQ(Rq(Rcx), Rq(Rdi)),
       CallApi(exit_process),

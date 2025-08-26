@@ -1,0 +1,65 @@
+define(
+  mandel, { cr: Float ci: Float }, Int,
+  {
+    zr = 0.0
+    zi = 0.0
+    i = 0
+    while(
+      and( $i < 50, { Int( { $zr * $zr } + { $zi * $zi } ) < 4 } ),
+      {
+        tmp = { { { $zr * $zr } - { $zi * $zi } } + $cr}
+        zi = { { { 2.0 * $zr } * $zi }  + $ci }
+        zr = $tmp
+        i = { $i + 1 }
+      }
+    )
+    $i
+  }
+)
+define(
+  render_row, { y: Float }, Null,
+  {
+    x = -80.0
+    while(
+      Int($x) < 20,
+      {
+        fx = {$x * 0.03}
+        fy = {$y * 0.06}
+        iter = mandel($fx, $fy)
+        str = ""
+        if(
+        [$iter == 50, str = "#"],
+        [45 < $iter, str = "@"],
+        [40 < $iter, str = "%"],
+        [35 < $iter, str = "&"],
+        [30 < $iter, str = "$"],
+        [25 < $iter, str = "*"],
+        [20 < $iter, str = "+"],
+        [15 < $iter, str = "="],
+        [10 < $iter, str = "-"],
+        [5  < $iter,  str = "."],
+        [true,       str = " "]
+        )
+        print($str)
+        x = {$x + 1.0}
+      }
+    )
+    print("\n")
+  }
+)
+
+define(
+  main, {}, Null,
+  {
+    y = -20.0
+    while(
+      Int($y) < 20,
+      {
+        render_row($y)
+        y = {$y + 1.0}
+      }
+    )
+  }
+)
+
+main()

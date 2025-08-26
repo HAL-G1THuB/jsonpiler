@@ -12,9 +12,48 @@ use crate::{
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 built_in! {self, func, scope, output;
   message => {"message", COMMON, Exactly(2), {
-    self.mov_str(Rcx, func, scope)?;
-    self.mov_str(Rdx, func, scope)?;
+    self.take_str(Rcx, func, scope)?;
+    self.take_str(Rdx, func, scope)?;
     scope.push(Call(self.get_msg_box()));
+    Ok(Json::Null)
+  }},
+  print => {"print", COMMON, Exactly(1), {
+    const CLD_REPNE_SCASB: [u8; 3] = [0xFC, 0xF2, 0xAE];
+    scope.update_stack_args(1);
+    let heap = Global { id: self.sym_table["HEAP"] };
+    let std_o = Global { id: self.sym_table["STDO"] };
+    let u8_to_16 = self.get_u8to16();
+    let heap_free = self.import(Jsonpiler::KERNEL32, "HeapFree", 0x357);
+    let write_console_w = self.import(Jsonpiler::KERNEL32, "WriteConsoleW", 0x627);
+    let tmp = scope.tmp(8)?;
+    let tmp2 = scope.tmp(8)?;
+    self.take_str(Rsi, func, scope)?;
+    scope.extend(&[
+      MovQQ(Mq(tmp.kind), Rq(Rsi)),
+      MovQQ(Rq(Rdi), Mq(tmp.kind)),
+      Clear(Rcx),
+      DecQ(Rcx),
+      Clear(Rax),
+      Custom(CLD_REPNE_SCASB.to_vec()),
+      SubRR(Rdi, Rsi),
+      DecQ(Rdi),
+      MovQQ(Mq(tmp2.kind), Rq(Rdi)),
+      MovQQ(Rq(Rcx), Mq(tmp.kind)),
+      Call(u8_to_16),
+      MovQQ(Mq(tmp.kind), Rq(Rax)),
+      MovQQ(Rq(Rcx), Mq(std_o)),
+      MovQQ(Rq(Rdx), Mq(tmp.kind)),
+      MovQQ(Rq(R8), Mq(tmp2.kind)),
+      Clear(R9),
+      MovQQ(Args(0x20), Rq(R9)),
+    ]);
+    scope.extend(&self.call_api_check_null(write_console_w));
+    scope.extend(&[
+      MovQQ(Rq(Rcx), Mq(heap)),
+      Clear(Rdx),
+      MovQQ(Rq(R8), Mq(tmp.kind)),
+    ]);
+    scope.extend(&self.call_api_check_null(heap_free));
     Ok(Json::Null)
   }}
 }

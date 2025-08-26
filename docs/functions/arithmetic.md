@@ -19,7 +19,7 @@ Returns the absolute value of the given integer.
 ## +
 
 ```json
-{"+": ["Int", "Int", "..."]} -> "Int (Temporary Value)"
+{"+": ["Float or Int", "Float or Int", "..."]} -> "Float or Int (Temporary Value)"
 ```
 
 ```text
@@ -36,7 +36,7 @@ Returns the sum of all operands.
 ## -
 
 ```json
-{ "-": ["Int", "..."] } -> "Int (Temporary Value)"
+{ "-": ["Float or Int", "..."] } -> "Float or Int (Temporary Value)"
 ```
 
 ```text
@@ -54,7 +54,7 @@ If given one argument, invert the sign.
 ## *
 
 ```json
-{"*": ["Int", "Int", "..."]} -> "Int (Temporary Value)"
+{"*": ["Float or Int", "Float or Int", "..."]} -> "Float or Int (Temporary Value)"
 ```
 
 ```text
@@ -71,7 +71,7 @@ Returns the result of multiplying operands.
 ## /
 
 ```json
-{"/": ["Int", "Int", "..."]} -> "Int (Temporary Value)"
+{"/": ["Float or Int", "Float or Int", "..."]} -> "Float or Int (Temporary Value)"
 ```
 
 ```text
@@ -101,4 +101,20 @@ Returns the result of the remainder operation.
 
 ```json
 {"%": [30, 7]} => 2
+```
+
+## Int
+
+```json
+{"Int": "Float or Int"} -> "Float or Int (Temporary Value)"
+```
+
+```text
+Int(float)
+```
+
+Returns the integer part of the given float.
+
+```json
+{"Int": 1.5} => 1
 ```
