@@ -156,6 +156,9 @@ impl ScopeInfo {
   pub(crate) fn reg_align(&mut self) -> ErrOR<u32> {
     Ok(u32::try_from((self.reg_used.len() & 1) << 3)?)
   }
+  pub(crate) fn reg_size(&mut self) -> usize {
+    self.reg_used.len()
+  }
   pub(crate) fn resolve_stack_size(&self, align: u32) -> ErrOR<u32> {
     let args_size = self.stack_args.checked_mul(8).ok_or("Overflow: args_slots * 8")?;
     let raw = add!(self.stack_size, args_size)?;

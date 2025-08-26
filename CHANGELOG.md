@@ -12,6 +12,10 @@
 
 ### jsonpiler 0.6
 
+#### 0.6.4
+
+- Fixed a problem in which the fifth and later arguments of user-defined functions were not recognized correctly.
+
 #### 0.6.3
 
 - Four arithmetic operations `+`, `-`, `*`, `/` now support Float type

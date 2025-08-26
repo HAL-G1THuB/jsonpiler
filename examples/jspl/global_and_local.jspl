@@ -1,0 +1,24 @@
+define(
+  param_type_test, { a: Null b: Int c: Bool d: String e: Float }, Int,
+  {
+    if(
+      [ $c,
+        while( 0 < $b,
+          {
+            message("", $d)
+            b = { $b - 1 }
+          }
+        )
+      ]
+    )
+    Int($e)
+  }
+)
+
+x = param_type_test(null, 1, true, "test", 6.9)
+g_a global null
+g_b global 7
+g_c global false
+g_e global 999.999
+{Int($g_e) + $g_b} - $x
+# this program returns 1000.

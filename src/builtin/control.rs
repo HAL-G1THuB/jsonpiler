@@ -29,7 +29,8 @@ built_in! {self, func, scope, control;
       return err!(self, t_a_pos, "Too many arguments: Up to 16 arguments are allowed.");
     }
     let mut params = vec![];
-    for (idx, type_annotation) in type_annotations.into_iter().enumerate() {
+    let mut args = vec![];
+    for type_annotation in type_annotations {
       let (WithPos { value: param_name, .. }, param_jwp) = type_annotation;
       let Json::String(Lit(param_type)) = param_jwp.value else {
         return err!(
@@ -39,17 +40,12 @@ built_in! {self, func, scope, control;
         );
       };
       let local = scope.local(if &param_type == "Bool" { 1 } else { 8 })?;
-      if let Some(&reg) = Jsonpiler::REGS.get(idx) {
-        scope.push(if &param_type == "Bool" { MovMbRb(local.kind, reg) }else {MovQQ(Mq(local.kind), Rq(reg))});
-      } else {
-        scope.push(MovQQ(Rq(Rax), Args(8 * idx)));
-        scope.push(MovQQ(Mq(local.kind), Rq(Rax)));
-      }
       let json_type = self.json_from_string(&param_type, param_jwp.pos, local)?;
       scope.innermost_scope()?
       .insert(param_name, json_type.clone());
-    params.push(json_type);
-  }
+      args.push(local);
+      params.push(json_type);
+    }
     let (ret_str, ret_pos) = take_arg!(self, func, "String (Literal)", Json::String(Lit(x)) => x);
     let ret = self.json_from_string(&ret_str, ret_pos, scope.local(8)?)?;
     let id = self.gen_id();
@@ -63,8 +59,7 @@ built_in! {self, func, scope, control;
             &format!("Return value of function `{name}`"),
             &ret.type_name(),
             &ret_val,
-          )
-          .into()
+          ).into()
           );
     }
     self.insts.push(Lbl(id));
@@ -76,6 +71,14 @@ built_in! {self, func, scope, control;
     self.insts.push(Push(Rbp));
     self.insts.push(MovQQ(Rq(Rbp), Rq(Rsp)));
     self.insts.push(SubRId(Rsp, size));
+    for (idx, local) in args.into_iter().enumerate() {
+      if let Some(&reg) = Jsonpiler::REGS.get(idx) {
+        self.insts.push(if local.size == 1 { MovMbRb(local.kind, reg) } else {MovQQ(Mq(local.kind), Rq(reg))});
+      } else {
+        self.insts.push(MovQQ(Rq(Rax), Args(8 * idx + usize::try_from(size)? + (scope.reg_size() + 2) * 8)));
+        self.insts.push(MovQQ(Mq(local.kind), Rq(Rax)));
+      }
+  }
     let new_scope =  replace(scope, old_scope);
     for body in new_scope.into_iter_code() {
       self.insts.push(body);

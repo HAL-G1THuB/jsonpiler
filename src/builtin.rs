@@ -96,6 +96,7 @@ impl Jsonpiler {
       if params.len() >= 16 {
         return err!(self, key.pos, "Too many arguments: Up to 16 arguments are allowed.");
       }
+      scope.update_stack_args(u32::try_from(params.len())?.saturating_sub(4));
       let len = args_vec.len();
       let mut func =
         FuncInfo { len, name, pos, args: args_vec.into_iter(), free_list: vec![], nth: 0 };

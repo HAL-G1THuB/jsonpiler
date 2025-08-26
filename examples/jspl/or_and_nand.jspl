@@ -18,6 +18,6 @@
   ])
   if([
     not($flag_false and $flag_true),
-    message("", "and")
+    message("", "nand")
   ])
 }

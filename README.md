@@ -16,20 +16,13 @@ Jsonpiler bundles an assembler and linker purpose-built for its IR and PE output
 
 ## What’s New
 
-### 0.6.3
+### 0.6.4
 
+- Fixed a problem in which the fifth and later arguments of user-defined functions were not recognized correctly.
 - Four arithmetic operations `+`, `-`, `*`, `/` now support Float type
 - Added function to truncate Float to integer: `Int`.
 - Added I/O function: `print`.
 - Fixed an error in `global` function.
-
-### 0.6.2
-
-- Fixed problem with bool values not being passed correctly to user-defined functions
-- Fixed problem with strings stored in local variables not being recognized correctly
-- Set maximum number of arguments for user-defined functions to 16
-- Jsonpiler now returns the correct exe exit code.
-- Add new function: `len`.
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 

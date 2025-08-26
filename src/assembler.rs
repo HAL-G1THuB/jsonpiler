@@ -239,24 +239,26 @@ impl Assembler {
     }
     Ok(())
   }
-  fn encode_mov_q_q(&self, code: &mut Vec<u8>, op1: &OpQ, op2: &OpQ) -> ErrOR<()> {
+  fn encode_mov_q_q(&mut self, code: &mut Vec<u8>, op1: &OpQ, op2: &OpQ) -> ErrOR<()> {
     match (op1, op2) {
       (Rq(dst), Args(offset)) => {
-        let mem = Memory::Base(Rsp, Disp::Byte(i8::try_from(*offset)?));
+        let mem = Memory::Base(Rsp, Disp::Dword(i32::try_from(*offset)?));
         code.extend(mem.encode_romsd(vec![0x8B], *dst, true));
       }
       (Args(offset), Rq(src)) => {
-        let mem = Memory::Base(Rsp, Disp::Byte(i8::try_from(*offset)?));
+        let mem = Memory::Base(Rsp, Disp::Dword(i32::try_from(*offset)?));
         code.extend(mem.encode_romsd(vec![0x89], *src, true));
       }
       (Rq(dst), Rq(src)) => {
         code.extend(Memory::Reg(*dst).encode_romsd(vec![0x89], *src, true));
       }
       (Rq(dst), Mq(src)) => {
-        code.extend(self.memory(*src, code.len(), 3)?.encode_romsd(vec![0x8B], *dst, true));
+        let size = self.inst_size(&MovQQ(Rq(*dst), Mq(*src)), &mut 0, &mut vec![], 0)?;
+        code.extend(self.memory(*src, code.len(), size)?.encode_romsd(vec![0x8B], *dst, true));
       }
       (Mq(dst), Rq(src)) => {
-        code.extend(self.memory(*dst, code.len(), 3)?.encode_romsd(vec![0x89], *src, true));
+        let size = self.inst_size(&MovQQ(Mq(*dst), Rq(*src)), &mut 0, &mut vec![], 0)?;
+        code.extend(self.memory(*dst, code.len(), size)?.encode_romsd(vec![0x89], *src, true));
       }
       (Rq(dst), Iq(imm)) => {
         code.extend(dst.mini_opcode(0xB8, true));
@@ -297,7 +299,7 @@ impl Assembler {
       MovQQ(op1, op2) => match (op1, op2) {
         (Rq(_), Rq(_)) => 3,
         (Rq(_), Mq(mem)) | (Mq(mem), Rq(_)) => 2 + mem.size_of_mo_si_di(),
-        (Rq(_), Args(_)) | (Args(_), Rq(_)) => 5,
+        (Rq(_), Args(_)) | (Args(_), Rq(_)) => 8,
         (Rq(_), Iq(_)) => 10,
         _ => return Err("InternalError: Unsupported operand types: MovQQ(?, ?)".into()),
       },

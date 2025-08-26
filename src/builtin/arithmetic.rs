@@ -21,6 +21,27 @@ built_in! {self, func, scope, arithmetic;
     scope.push(SubRR(Rax, Rdx));
     Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
   }},
+  add => {"+", COMMON, AtLeast(2), {
+    let arg = func.arg()?;
+    if let Json::Int(int) = arg.value {
+      mov_int(&int, Rax, func, scope);
+      for _ in 1..func.len {
+        self.take_int(Rcx, func, scope)?;
+        scope.push(AddRR(Rax, Rcx));
+      }
+      Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
+    } else if let Json::Float(float) = arg.value {
+      mov_float(&float, Rax, Rax, func, scope)?;
+      for _ in 1..func.len {
+        self.take_float(Rcx, Rax, func, scope)?;
+        scope.push(AddSd(Rax, Rcx));
+      };
+      let tmp = scope.tmp(8)?;
+      scope.push(MovSdMX(tmp.kind, Rax));
+      Ok(Json::Float(Var(tmp)))
+    } else {
+      Err(self.parser.type_err(1, &func.name, "Int` or `Float", &arg).into())
+  }}},
   div => {"/", COMMON, AtLeast(2), {
     let arg = func.arg()?;
     if let Json::Int(int) = arg.value {
@@ -94,27 +115,6 @@ built_in! {self, func, scope, arithmetic;
       for _ in 1..func.len {
         self.take_float(Rcx, Rax, func, scope)?;
         scope.push(MulSd(Rax, Rcx));
-      };
-      let tmp = scope.tmp(8)?;
-      scope.push(MovSdMX(tmp.kind, Rax));
-      Ok(Json::Float(Var(tmp)))
-    } else {
-      Err(self.parser.type_err(1, &func.name, "Int` or `Float", &arg).into())
-  }}},
-  plus => {"+", COMMON, AtLeast(2), {
-    let arg = func.arg()?;
-    if let Json::Int(int) = arg.value {
-      mov_int(&int, Rax, func, scope);
-      for _ in 1..func.len {
-        self.take_int(Rcx, func, scope)?;
-        scope.push(AddRR(Rax, Rcx));
-      }
-      Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
-    } else if let Json::Float(float) = arg.value {
-      mov_float(&float, Rax, Rax, func, scope)?;
-      for _ in 1..func.len {
-        self.take_float(Rcx, Rax, func, scope)?;
-        scope.push(AddSd(Rax, Rcx));
       };
       let tmp = scope.tmp(8)?;
       scope.push(MovSdMX(tmp.kind, Rax));
