@@ -1,12 +1,28 @@
 # Boolean logic
 
+## assert
+
+```json
+{"assert": ["Bool", "String"]} -> "Null"
+```
+
+```jspl
+assert(bool)
+```
+
+If the given boolean is `false`, an error is generated at runtime.
+
+```json
+{"assert": [false, "Assertion failed"]} ... message("", "Assertion failed") and terminate
+```
+
 ## not
 
 ```json
 {"not": "Bool"} -> "Bool (Temporary Value)"
 ```
 
-```text
+```jspl
 not(bool)
 ```
 
@@ -22,7 +38,7 @@ Returns the logical NOT of the given boolean.
 {"and": ["Bool", "Bool", "..."]} -> "Bool (Temporary Value)"
 ```
 
-```text
+```jspl
 bool and bool
 ```
 
@@ -38,7 +54,7 @@ Returns the logical AND of the given booleans.
 {"or": ["Bool", "Bool", "..."]} -> "Bool (Temporary Value)"
 ```
 
-```text
+```jspl
 bool or bool
 ```
 
@@ -54,7 +70,7 @@ Returns the logical OR of the given booleans.
 {"xor": ["Bool", "Bool", "..."]} -> "Bool (Temporary Value)"
 ```
 
-```text
+```jspl
 bool xor bool
 ```
 
@@ -62,52 +78,4 @@ Returns the logical OR of the given booleans.
 
 ```json
 {"xor": [true, false]} => true
-```
-
-## ==
-
-```json
-{"==": ["Int", "..."]} -> "Bool (Temporary Value)"
-```
-
-```text
-bool == bool
-```
-
-Returns `true` if all arguments are equal, `false` otherwise.
-
-```json
-{"==": [1, 1]} => true
-```
-
-## <
-
-```json
-{"<": ["Int", "..."]} -> "Bool (Temporary Value)"
-```
-
-```text
-int < int
-```
-
-Returns `true` if the arguments are in strictly increasing order, `false` otherwise.
-
-```json
-{"<": [1, 2]} => true
-```
-
-## <=
-
-```json
-{"<=": ["Int", "Int"]} -> "Bool (Temporary Value)"
-```
-
-```text
-int <= int
-```
-
-Returns `true` if the arguments are in increasing order, `false` otherwise.
-
-```json
-{"<=": [1, 2]} => true
 ```

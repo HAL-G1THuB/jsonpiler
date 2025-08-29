@@ -6,7 +6,7 @@
 {"message": [{"title": "String"}, {"text": "String"}]} -> "Null"
 ```
 
-```text
+```jspl
 message("title", "text")
 ```
 
@@ -19,12 +19,12 @@ The first argument is the title; the second is the body text.
 {"print": ["String", "..."]} -> "Null"
 ```
 
-```text
+```jspl
 print(string, ...)
 ```
 
-Prints the given string to the console.
-Currently redirects and pipes are not supported.
+Prints the specified string to the console.
+Redirects and pipes are supported.
 
 ```json
 {"print": ["Hello, World!"]} => null

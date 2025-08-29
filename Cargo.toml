@@ -1,6 +1,6 @@
 [package]
 name = "jsonpiler"
-version = "0.6.4"
+version = "0.6.5"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
 license = "Apache-2.0"

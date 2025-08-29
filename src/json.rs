@@ -4,14 +4,14 @@ use super::{
 };
 use core::fmt;
 impl Json {
-  pub(crate) fn get_label(self) -> Option<Label> {
+  pub(crate) fn get_label(&self) -> Option<Label> {
     match self {
       Json::Int(Var(label))
       | Json::Float(Var(label))
       | Json::String(Var(label))
       | Json::Bool(Var(label))
       | Json::Array(Var(label))
-      | Json::Object(Var(label)) => Some(label),
+      | Json::Object(Var(label)) => Some(*label),
       Json::Array(_)
       | Json::Bool(_)
       | Json::Float(_)

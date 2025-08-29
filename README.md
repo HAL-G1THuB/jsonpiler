@@ -16,13 +16,15 @@ Jsonpiler bundles an assembler and linker purpose-built for its IR and PE output
 
 ## What’s New
 
-### 0.6.4
+### 0.6.5
 
-- Fixed a problem in which the fifth and later arguments of user-defined functions were not recognized correctly.
-- Four arithmetic operations `+`, `-`, `*`, `/` now support Float type
-- Added function to truncate Float to integer: `Int`.
-- Added I/O function: `print`.
-- Fixed an error in `global` function.
+- Added new functions: `assert`, `random`, `>`, `>`, `! =`!
+- Added module system: `include`.
+- Int type now correctly handles the minimum value (0xffffffffffffffffffffffffffffffffffff).
+- Changed format of error messages.
+- Fixed problem with `Float` type not being correctly sign-reversed when passed to the `-` function.
+- The `abs` function now supports the `Float` type.
+- The `print` function now supports pipe and redirection.
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 
@@ -47,7 +49,7 @@ These are present on standard Windows installations.
 cargo install jsonpiler
 
 # Compile and execute a JSON program
-jsonpiler <input.json> [args passed to the produced .exe]
+jsonpiler <input.json | input.jspl> [args passed to the produced .exe]
 ```
 
 - `<input.json>` must be UTF-8 encoded.
@@ -59,30 +61,6 @@ jsonpiler <input.json> [args passed to the produced .exe]
 
 - **Language Spec (Markdown):** [https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md)
 - **Function Reference (Markdown):** [https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md)
-
----
-
-## JSPL
-
-With the introduction of JSPL (Jsonpiler Structured Programming Language),
-Jsonpiler significantly improves human readability and writability,
-which were challenging under the strict JSON-based syntax.
-JSPL is designed to express function definitions,conditionals,
-function calls, and variable assignments in a natural and intuitive form.
-All JSPL code is internally transformed into the same JSON-based intermediate representation (IR),
-ensuring full compatibility with the existing Jsonpiler compilation infrastructure
-while making programs easier to write and understand.
-For more details, see the language specification above.
-
-| Differences from JSON         | JSON                                  | JSPL                                          |
-| ----------------------------- | ------------------------------------- | --------------------------------------------- |
-| **Curly braces `{}`**         | Required                              | Optional for top-level blocks                 |
-| **Function call syntax**      | Explicit form like `{"sum": [1,2,3]}` | Natural syntax like `sum(1, 2, 3)`            |
-| **Identifier notation**       | All keys must be quoted `"string"`    | Unquoted identifiers are allowed              |
-| **Ternary-style syntax**      | Not supported                         | `1 + 10` → expanded to `{ "+": [1, 10] }`     |
-| **Variable reference syntax** | Explicit form like `{"$": "name"}`    | Can be written as `$name`                     |
-| **Comments**                  | Not allowed (by spec)                 | Supported via `# comment`                     |
-| **Control structures**        | Written as functions                  | Syntactic sugar like `if(...)`, `define(...)` |
 
 ---
 
@@ -111,6 +89,35 @@ error: process didn't exit successfully: `jsonpiler.exe test.json` (exit code: 6
 ```
 
 This is expected behavior and not an error in Jsonpiler itself.
+
+---
+
+## JSPL
+
+Jsonpiler can compile its own language, **JSPL (Jsonpiler Structured Programming Language)**.
+JSPL is designed to express function definitions,conditionals,
+function calls, and variable assignments in a natural and intuitive form.
+All JSPL code is internally transformed into the same JSON-based intermediate representation (IR),
+ensuring full compatibility with the existing Jsonpiler compilation infrastructure
+while making programs easier to write and understand.
+For more details, see the language specification above.
+Example of the above sample code written in JSPL:
+
+```jspl
+a = "title"
+message($a, "345")
++(1, 2, 3)
+```
+
+| Differences from JSON         | JSON                                  | JSPL                                          |
+| ----------------------------- | ------------------------------------- | --------------------------------------------- |
+| **Curly braces `{}`**         | Required                              | Optional for top-level blocks                 |
+| **Function call syntax**      | Explicit form like `{"sum": [1,2,3]}` | Natural syntax like `sum(1, 2, 3)`            |
+| **Identifier notation**       | All keys must be quoted `"string"`    | Unquoted identifiers are allowed              |
+| **Ternary-style syntax**      | Not supported                         | `1 + 10` → expanded to `{ "+": [1, 10] }`     |
+| **Variable reference syntax** | Explicit form like `{"$": "name"}`    | Can be written as `$name`                     |
+| **Comments**                  | Not allowed (by spec)                 | Supported via `# comment`                     |
+| **Control structures**        | Written as functions                  | Syntactic sugar like `if(...)`, `define(...)` |
 
 ---
 

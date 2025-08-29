@@ -3,39 +3,7 @@ use crate::{
   ErrOR, FuncInfo, Json, Parser, Position, WithPos,
 };
 impl Parser {
-  #[must_use]
-  // No risk of overflow
-  pub(crate) fn fmt_err(&self, err: &str, pos: Position) -> String {
-    let gen_err = |msg: &str| -> String {
-      format!("{err}\nError occurred on line: {}\nError position:\n{msg}", pos.line)
-    };
-    if self.source.is_empty() {
-      return gen_err("\n^");
-    }
-    let len = self.source.len();
-    let index = pos.offset.min(len);
-    let start = (0..index).rfind(|&i| self.source[i] == b'\n').map_or(0, |st| st + 1);
-    let end = (index..len).find(|&i| self.source[i] == b'\n').unwrap_or(len);
-    let line = &self.source[start..end];
-    let line_str = String::from_utf8_lossy(line);
-    let caret_start = index - start;
-    let caret_len = pos.size.max(1).min(end - index);
-    let ws = " ".repeat(caret_start);
-    let carets = "^".repeat(caret_len);
-    gen_err(&format!("{line_str}\n{ws}{carets}"))
-  }
-  pub(crate) fn fmt_require(&self, text: &str, count_desc: &str, func: &FuncInfo) -> String {
-    let plural = if func.len == 1 { "" } else { "s" };
-    let be = if func.len == 1 { "is" } else { "are" };
-    self.fmt_err(
-      &format!(
-        "ArityError: `{}` requires {text} {count_desc}, but {} argument{plural} {be} supplied.",
-        func.name, func.len
-      ),
-      func.pos,
-    )
-  }
-  pub(crate) fn type_err(
+  pub(crate) fn args_type_error(
     &self, nth: usize, name: &str, expected: &str, json: &WithPos<Json>,
   ) -> String {
     let suffix = match nth % 100 {
@@ -52,6 +20,48 @@ impl Parser {
       &format!(
         "TypeError: {nth}{suffix} argument of `{name}` expected type `{expected}`, but got `{typ}`.",
       ),
+      json.pos,
+    )
+  }
+  #[must_use]
+  // No risk of overflow
+  pub(crate) fn fmt_err(&self, err: &str, pos: Position) -> String {
+    let gen_err = |column: usize, msg: &str| -> String {
+      format!(
+        "{err}\nError at {} line: {} column: {column}\nError position:\n{msg}",
+        self.file, pos.line
+      )
+    };
+    if self.source.is_empty() {
+      return gen_err(0, "\n^");
+    }
+    let len = self.source.len();
+    let index = pos.offset.min(len);
+    let start = (0..index).rfind(|i| self.source[*i] == b'\n').map_or(0, |st| st + 1);
+    let end = (index..len).find(|i| self.source[*i] == b'\n').unwrap_or(len);
+    let line = &self.source[start..end];
+    let line_str = String::from_utf8_lossy(line);
+    let caret_start = index - start;
+    let caret_len = pos.size.max(1).min(end - index);
+    let ws = " ".repeat(caret_start);
+    let carets = "^".repeat(caret_len);
+    gen_err(pos.offset - start, &format!("{line_str}\n{ws}{carets}"))
+  }
+  pub(crate) fn fmt_require(&self, text: &str, count_desc: &str, func: &FuncInfo) -> String {
+    let plural = if func.len == 1 { "" } else { "s" };
+    let be = if func.len == 1 { "is" } else { "are" };
+    self.fmt_err(
+      &format!(
+        "ArityError: `{}` requires {text} {count_desc}, but {} argument{plural} {be} supplied.",
+        func.name, func.len
+      ),
+      func.pos,
+    )
+  }
+  pub(crate) fn type_error(&self, name: &str, expected: &str, json: &WithPos<Json>) -> String {
+    let typ = json.value.type_name();
+    self.fmt_err(
+      &format!("TypeError: `{name}` expected type `{expected}`, but got `{typ}`.",),
       json.pos,
     )
   }

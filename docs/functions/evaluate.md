@@ -6,7 +6,7 @@
 {"'": {"expr": "Any"}} -> {"unevaluated_expr": "Any"}
 ```
 
-```text
+```jspl
 '(expr)
 ```
 
@@ -19,7 +19,7 @@ Can also be used as a comment.
 {"eval": {"expr": "Any"}} -> {"evaluated_expr": "Any"}
 ```
 
-```text
+```jspl
 eval(expr)
 ```
 
@@ -31,7 +31,7 @@ Evaluates the given expression and returns the result.
 {"list": [{"expr": "Any"}, "..."]} -> "Array (Literal)"
 ```
 
-```text
+```jspl
 [expr, ...]
 ```
 
@@ -47,7 +47,7 @@ The list function returns its evaluated arguments as an Array (Literal).
 {"value": {"value": "Any"}} -> "Any"
 ```
 
-```text
+```jspl
 value
 ```
 

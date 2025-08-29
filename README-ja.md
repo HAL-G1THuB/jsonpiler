@@ -17,13 +17,15 @@ Jsonpiler は、その中間表現（IR）から Windows 用 PE を出力する�
 
 ## 更新情報
 
-### 0.6.4
+### 0.6.5
 
-- ユーザー定義関数の第五引数以降が正しく認識されない問題を修正
-- 四則演算`+`, `-`, `*`, `/`がFloat型をサポート
-- Float型を整数に切り捨てる関数を追加: `Int`
-- I/O関数を追加: `print`
-- global関数のエラーを修正
+- 新しい関数を追加: `assert`, `random`, `>`, `>`, `!=`
+- モジュールシステムを追加: `include`
+- Int型が最小値(0xffffffffffffffff)を正しく扱えるようにしました。
+- エラーメッセージのフォーマットを変更。
+- `Float`型が`-`関数に渡されたとき正しく符号反転されない問題を修正。
+- `abs`関数が`Float`型に対応。
+- `print`関数がパイプ、リダイレクトに対応。
 
 詳細は **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG-ja.md)** を参照してください。
 
@@ -48,7 +50,7 @@ Jsonpiler は、その中間表現（IR）から Windows 用 PE を出力する�
 cargo install jsonpiler
 
 # JSON プログラムをコンパイルして実行
-jsonpiler <input.json> [生成exeへの引数]
+jsonpiler <input.json | input.jspl> [生成exeへの引数]
 ```
 
 - `<input.json>` は UTF-8 である必要があります。
@@ -60,28 +62,6 @@ jsonpiler <input.json> [生成exeへの引数]
 
 - **言語仕様 (Markdown)**: [https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification-ja.md](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md)
 - **関数リファレンス (Markdown)**: [https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md)
-
----
-
-## JSPL
-
-Jsonpiler は、新たに導入された**JSPL (Jsonpiler Structured Programming Language)** 構文により、
-従来の厳密な JSON 形式では難しかった人間にとっての可読性と記述性を大幅に向上させました。
-JSPL は、関数定義・条件分岐・関数呼び出し・変数代入などを自然な構文で表現できるよう設計されており、
-すべての JSPL コードは内部的に既存の JSON ベースの中間表現（IR）へと変換されるため、
-Jsonpiler のコンパイル基盤との完全な互換性を保ちながら、
-人にとって書きやすく読みやすい記述が可能になります。
-詳細は上記の言語仕様に記載してあります。
-
-| JSPL-JSON の相違点           | JSON                                | JSPL                                    |
-| ---------------------------- | ----------------------------------- | --------------------------------------- |
-| **波括弧 `{}`**              | 必須                                | トップレベルブロックに限り省略可能      |
-| **関数呼び出し構文**         | `{"sum": [1,2,3]}` のような明示形式 | `sum(1, 2, 3)` の自然な関数形式         |
-| **識別子記法**               | 全て `"文字列"`                     | `"`を必要としない識別子が使える         |
-| **値-識別子-値（三項構文）** | 不可                                | `1 + 10` → `{ "+": [1, 10] }` に変換    |
-| **変数参照構文**             | `{"$": "name"}` のような明示形式    | `$name` で記述可能                      |
-| **コメント**                 | 不可（仕様上）                      | `# comment`で記述可能                   |
-| **制御構文の表現**           | 関数として記述                      | `if(...)`, `define(...)` のような構文糖 |
 
 ---
 
@@ -110,6 +90,34 @@ error: process didn't exit successfully: `jsonpiler.exe test.json` (exit code: 6
 ```
 
 これは Jsonpiler のエラーではなく、想定された動作です。
+
+## JSPL
+
+Jsonpiler は、独自言語である**JSPL (Jsonpiler Structured Programming Language)** をコンパイルできます。
+JSPL は、関数定義・条件分岐・関数呼び出し・変数代入などを自然な構文で表現できるよう設計されており、
+すべての JSPL コードは内部的に既存の JSON ベースの中間表現（IR）へと変換されるため、
+Jsonpiler のコンパイル基盤との完全な互換性を保ちながら、
+人にとって書きやすく読みやすい記述が可能になります。
+詳細は上記の言語仕様に記載してあります。
+上記のサンプルコードをJSPLで記述した例:
+
+```json
+a = "title"
+message($a, "345")
++(1, 2, 3)
+```
+
+| JSPL-JSON の相違点           | JSON                                | JSPL                                    |
+| ---------------------------- | ----------------------------------- | --------------------------------------- |
+| **波括弧 `{}`**              | 必須                                | トップレベルブロックに限り省略可能      |
+| **関数呼び出し構文**         | `{"sum": [1,2,3]}` のような明示形式 | `sum(1, 2, 3)` の自然な関数形式         |
+| **識別子記法**               | 全て `"文字列"`                     | `"`を必要としない識別子が使える         |
+| **値-識別子-値（三項構文）** | 不可                                | `1 + 10` → `{ "+": [1, 10] }` に変換    |
+| **変数参照構文**             | `{"$": "name"}` のような明示形式    | `$name` で記述可能                      |
+| **コメント**                 | 不可（仕様上）                      | `# comment`で記述可能                   |
+| **制御構文の表現**           | 関数として記述                      | `if(...)`, `define(...)` のような構文糖 |
+
+---
 
 ---
 

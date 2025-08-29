@@ -12,6 +12,16 @@
 
 ### jsonpiler 0.6
 
+### 0.6.5
+
+- Added new functions: `assert`, `random`, `>`, `>`, `! =`!
+- Added module system: `include`.
+- Int type now correctly handles the minimum value (0xffffffffffffffffffffffffffffffffffff).
+- Changed format of error messages.
+- Fixed problem with `Float` type not being correctly sign-reversed when passed to the `-` function.
+- The `abs` function now supports the `Float` type.
+- The `print` function now supports pipe and redirection.
+
 #### 0.6.4
 
 - Fixed a problem in which the fifth and later arguments of user-defined functions were not recognized correctly.

@@ -6,11 +6,12 @@
 {"abs": "Int"} -> "Int (Temporary Value)"
 ```
 
-```text
+```jspl
 abs(int)
 ```
 
 Returns the absolute value of the given integer.
+If the given integer is `0x8000000000000000` (the smallest 64-bit signed integer), the result is `0x8000000000000000` itself due to the nature of two's complement representation.
 
 ```json
 {"abs": -5} => 5
@@ -22,7 +23,7 @@ Returns the absolute value of the given integer.
 {"+": ["Float or Int", "Float or Int", "..."]} -> "Float or Int (Temporary Value)"
 ```
 
-```text
+```jspl
 int + int
 +(int, int, int)
 ```
@@ -39,7 +40,7 @@ Returns the sum of all operands.
 { "-": ["Float or Int", "..."] } -> "Float or Int (Temporary Value)"
 ```
 
-```text
+```jspl
 int - int
 -(int, int, int)
 ```
@@ -57,7 +58,7 @@ If given one argument, invert the sign.
 {"*": ["Float or Int", "Float or Int", "..."]} -> "Float or Int (Temporary Value)"
 ```
 
-```text
+```jspl
 int * int
 *(int, int, int)
 ```
@@ -74,7 +75,7 @@ Returns the result of multiplying operands.
 {"/": ["Float or Int", "Float or Int", "..."]} -> "Float or Int (Temporary Value)"
 ```
 
-```text
+```jspl
 int / int
 /(int, int, int)
 ```
@@ -92,7 +93,7 @@ If the number to divide is zero, an error is generated at runtime or compile tim
 {"%": ["Int", "Int"]} -> "Int (Temporary Value)"
 ```
 
-```text
+```jspl
 int % int
 %(int, int)
 ```
@@ -109,7 +110,7 @@ Returns the result of the remainder operation.
 {"Int": "Float or Int"} -> "Float or Int (Temporary Value)"
 ```
 
-```text
+```jspl
 Int(float)
 ```
 
@@ -117,4 +118,21 @@ Returns the integer part of the given float.
 
 ```json
 {"Int": 1.5} => 1
+```
+
+## random
+
+```json
+{"random": []} -> "Int (Temporary Value)"
+```
+
+```jspl
+random()
+```
+
+Returns a pseudo-random 64-bit integer.
+Not suitable for cryptography.
+
+```json
+{"random": []} => 1234567890
 ```

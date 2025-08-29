@@ -13,7 +13,7 @@
 } -> "Null"
 ```
 
-```text
+```jspl
 define(name, params, return_type, body)
 ```
 
@@ -56,7 +56,7 @@ The `define` keyword also introduces a new scope.
 } -> "Null"
 ```
 
-```text
+```jspl
 if([condition, then], ...)
 ```
 
@@ -97,7 +97,7 @@ Regardless of which branch is taken, the overall result is always `null`.
 {"while": [{"condition": "Bool"}, {"body": "Sequence"}]} -> "Null"
 ```
 
-```text
+```jspl
 while(condition, body)
 ```
 
@@ -114,4 +114,27 @@ Returns `null`.
     {"=": ["i", {"+": [{"$": "i"}, 1]}]}
   ]}
 ]}
+```
+
+## include
+
+```json
+{"include": [{"path": "String (Literal)"}, {"functions": "String (Literal)"}, "..."]} -> "Null"
+```
+
+```jspl
+include("path/to/file.jspl", fib)
+```
+
+Executes the specified file and includes the specified function in the namespace.
+The path is relative to the current file.
+This function does not affect existing variables.
+If the same file is included more than once, no new code is generated,
+and functions can be included from existing code.
+including a function from a different file with the same name causes a redefinition error.
+An error occurs if the file does not contain the specified function.
+
+```json
+{"include": "my_library.jspl", "my_func"}
+{"my_func": ["arg"]}
 ```

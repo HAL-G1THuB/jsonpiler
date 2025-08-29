@@ -6,7 +6,7 @@
 {"concat": ["String (Literal)", "String (Literal)", "..."]} -> "String (Literal)"
 ```
 
-```text
+```jspl
 concat(string, string...)
 ```
 
@@ -22,7 +22,7 @@ Returns the result of concatenating all string literals.
 {"len": "String (Literal)"} -> "String (Literal)"
 ```
 
-```text
+```jspl
 len(string)
 ```
 

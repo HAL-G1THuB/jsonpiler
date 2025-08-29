@@ -25,28 +25,49 @@ macro_rules! parse_err {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! err {
-  ($self:ident, $pos:expr, $($arg:tt)*) => {Err($self.parser.fmt_err(&format!($($arg)*), $pos).into())};
+  ($self:ident, $pos:expr, $($arg:tt)*) => {Err($self.parser[$pos.file].fmt_err(&format!($($arg)*), $pos).into())};
 }
 #[macro_export]
 #[doc(hidden)]
 macro_rules! warn {
-  ($self:ident, $pos:expr, $($arg:tt)*) => {println!("Warning: {}", $self.parser.fmt_err(&format!($($arg)*), $pos))};
+  ($self:ident, $pos:expr, $($arg:tt)*) => {println!("Warning: {}", $self.parser[$pos.file].fmt_err(&format!($($arg)*), $pos))};
 }
 #[macro_export]
 #[doc(hidden)]
 macro_rules! get_target_kind {
   ($self:expr, $scope:expr, $is_global:expr, $size:expr, $local_label:expr, $pattern:pat => $kind_expr:expr) => {
     if $is_global {
-      Global { id: $self.get_bss_id($size) }
+      Global { id: $self.get_bss_id($size), disp: 0i32 }
     } else if let Some(json) = &$local_label {
       match json {
         $pattern => $kind_expr,
         _ => return Err("InternalError: Unexpected Json variant during reassignment".into()),
       }
     } else {
-      $scope.local($size)?.kind
+      $scope.local($size, $size)?.kind
     }
   };
+}
+#[macro_export]
+#[doc(hidden)]
+macro_rules! unwrap_arg {
+  (
+    $self:ident,
+    $arg:expr,
+    $func:expr,
+    $expected:literal,
+    $pat:pat => $body:expr
+  ) => {{
+    if let $pat = $arg.value {
+      $crate::WithPos { value: $body, pos: $arg.pos }
+    } else {
+      return Err(
+        $self.parser[$arg.pos.file]
+          .args_type_error($func.nth, &$func.name, $expected, &$arg)
+          .into(),
+      );
+    }
+  }};
 }
 #[macro_export]
 #[doc(hidden)]
@@ -59,9 +80,11 @@ macro_rules! take_arg {
   ) => {{
     let arg = $func.arg()?;
     if let $pat = arg.value {
-      ($body, arg.pos)
+      $crate::WithPos { value: $body, pos: arg.pos }
     } else {
-      return Err($self.parser.type_err($func.nth, &$func.name, $expected, &arg).into());
+      return Err(
+        $self.parser[arg.pos.file].args_type_error($func.nth, &$func.name, $expected, &arg).into(),
+      );
     }
   }};
 }

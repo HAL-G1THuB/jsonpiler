@@ -12,56 +12,54 @@ use crate::{
 };
 use core::mem::discriminant;
 impl Jsonpiler {
-  #[expect(clippy::cast_sign_loss, clippy::too_many_lines)]
+  #[expect(clippy::cast_sign_loss)]
   fn assign(&mut self, func: &mut FuncInfo, scope: &mut ScopeInfo, is_global: bool) -> ErrOR<Json> {
-    let (variable, pos) = take_arg!(self, func, "String", Json::String(Lit(x)) => x);
+    let variable = take_arg!(self, func, "String", Json::String(Lit(x)) => x);
     let json2 = func.arg()?;
-    if is_global && self.globals.contains_key(&variable) {
-      return err!(self, pos, "Reassignment is not possible in the global scope.");
+    if is_global && self.globals.contains_key(&variable.value) {
+      return err!(self, variable.pos, "Reassignment is not possible in the global scope.");
     }
-    let local_label = if is_global { None } else { scope.get_var_local(&variable) };
+    let local_label = if is_global { None } else { scope.get_var_local(&variable.value) };
     if let Some(json) = &local_label {
       if discriminant(json) != discriminant(&json2.value) {
         return Err(
-          self
-            .parser
-            .type_err(1, &format!("Variable `{variable}`"), &json.type_name(), &json2)
+          self.parser[json2.pos.file]
+            .args_type_error(
+              1,
+              &format!("Variable `{}`", variable.value),
+              &json.type_name(),
+              &json2,
+            )
             .into(),
         );
       }
     }
     let value = match json2.value {
-      Json::String(Lit(st)) if is_global => {
-        Json::String(Var(Label { kind: Global { id: self.global_str(st) }, size: 8 }))
-      }
-      Json::String(Lit(st)) => {
+      Json::String(string) => {
         let kind = get_target_kind!(
           self, scope, is_global, 8, local_label,
-          Json::String(Var(label )) =>label.kind);
-        scope.push(LeaRM(Rax, Global { id: self.global_str(st) }));
-        scope.push(MovQQ(Mq(kind), Rq(Rax)));
-        Json::String(Var(Label { kind, size: 8 }))
-      }
-      Json::String(Var(string)) => {
-        func.sched_free_tmp(&string);
-        let kind = get_target_kind!(
-          self, scope, is_global, 8, local_label,
-          Json::String(Var(label )) =>label.kind);
-        scope.push(LeaRM(Rax, string.kind));
+          Json::String(Var(label)) => label.kind
+        );
+        scope.push(match string {
+          Lit(l_str) => {
+            let id = self.global_str(l_str);
+            LeaRM(Rax, Global { id, disp: 0i32 })
+          }
+          Var(str_label) => MovQQ(Rq(Rax), Mq(str_label.kind)),
+        });
         scope.push(MovQQ(Mq(kind), Rq(Rax)));
         Json::String(Var(Label { kind, size: 8 }))
       }
       Json::Null => Json::Null,
-      Json::Int(Lit(int)) if is_global => {
-        Json::Int(Var(Label { kind: Global { id: self.global_num(int as u64) }, size: 8 }))
-      }
+      Json::Int(Lit(int)) if is_global => Json::Int(Var(Label {
+        kind: Global { id: self.global_num(int as u64), disp: 0i32 },
+        size: 8,
+      })),
       Json::Int(int) => {
-        if let Var(label) = int {
-          func.sched_free_tmp(&label);
-        }
         let kind = get_target_kind!(
-          self, scope, is_global, 8, local_label,
-          Json::Int(Var(label )) =>label.kind);
+          self, scope, is_global, 8,local_label,
+          Json::Int(Var(label )) => label.kind
+        );
         scope.push(match int {
           Lit(l_int) => MovQQ(Rq(Rax), Iq(l_int as u64)),
           Var(int_label) => MovQQ(Rq(Rax), Mq(int_label.kind)),
@@ -69,16 +67,14 @@ impl Jsonpiler {
         scope.push(MovQQ(Mq(kind), Rq(Rax)));
         Json::Int(Var(Label { kind, size: 8 }))
       }
-      Json::Bool(Lit(l_bool)) if is_global => {
-        Json::Bool(Var(Label { kind: Global { id: self.global_bool(l_bool) }, size: 1 }))
-      }
+      Json::Bool(Lit(l_bool)) if is_global => Json::Bool(Var(Label {
+        kind: Global { id: self.global_bool(l_bool), disp: 0i32 },
+        size: 1,
+      })),
       Json::Bool(boolean) => {
-        if let Var(label) = boolean {
-          func.sched_free_tmp(&label);
-        }
         let kind = get_target_kind!(
           self, scope, is_global, 1, local_label,
-          Json::Bool(Var(label )) =>label.kind);
+          Json::Bool(Var(label )) => label.kind);
         match boolean {
           Lit(l_bool) => scope.push(MovMbIb(kind, if l_bool { 0xFF } else { 0 })),
           Var(bool_label) => {
@@ -88,15 +84,13 @@ impl Jsonpiler {
         }
         Json::Bool(Var(Label { kind, size: 1 }))
       }
-      Json::Float(Lit(l_float)) if is_global => {
-        Json::Float(Var(Label { kind: Global { id: self.global_num(l_float.to_bits()) }, size: 8 }))
-      }
+      Json::Float(Lit(l_float)) if is_global => Json::Float(Var(Label {
+        kind: Global { id: self.global_num(l_float.to_bits()), disp: 0i32 },
+        size: 8,
+      })),
       Json::Float(float) => {
-        if let Var(label) = float {
-          func.sched_free_tmp(&label);
-        }
         let kind = get_target_kind!(
-          self, scope, is_global, 8, local_label,
+          self, scope, is_global, 8,local_label,
           Json::Float(Var(label )) =>label.kind);
         scope.push(match float {
           Bind::Lit(l_float) => MovQQ(Rq(Rax), Iq(l_float.to_bits())),
@@ -107,14 +101,16 @@ impl Jsonpiler {
       }
       Json::Array(_) | Json::Object(_) => {
         return Err(
-          self.parser.type_err(2, &func.name, "Types excluding arrays and objects", &json2).into(),
+          self.parser[json2.pos.file]
+            .args_type_error(2, &func.name, "Types excluding arrays and objects", &json2)
+            .into(),
         );
       }
     };
     if is_global {
-      self.globals.insert(variable, value);
+      self.globals.insert(variable.value, value);
     } else if local_label.is_none() {
-      scope.innermost_scope()?.insert(variable, value);
+      scope.innermost_scope()?.insert(variable.value, value);
     }
     Ok(Json::Null)
   }
@@ -127,14 +123,14 @@ built_in! {self, func, scope, variable;
     self.assign(func, scope, false)
   }},
   reference => {"$", COMMON, Exactly(1), {
-    let (var_name, pos) = take_arg!(self, func, "String(Literal)", Json::String(Lit(x)) => x);
-    match self.get_var(&var_name, scope) {
+    let var_name = take_arg!(self, func, "String (Literal)", Json::String(Lit(x)) => x);
+    match self.get_var(&var_name.value, scope) {
       Some(var) => Ok(var),
-      None => err!(self, pos, "Undefined variables: `{var_name}`"),
+      None => err!(self, var_name.pos, "Undefined variables: `{}`", var_name.value),
     }
   }},
   scope => {"scope", SP_SCOPE, Exactly(1), {
-    let (object, object_pos) = take_arg!(self, func, "Sequence", Json::Object(Lit(x)) => x);
-    self.eval_object(object, object_pos, scope)
+    let object = take_arg!(self, func, "Sequence", Json::Object(Lit(x)) => x);
+    self.eval_object(object.value, object.pos, scope)
   }}
 }

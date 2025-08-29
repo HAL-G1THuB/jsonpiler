@@ -6,7 +6,7 @@ use crate::{
   OpQ::{Mq, Rq},
   Reg::{self, *},
   VarKind::{Local, Tmp},
-  utility::align_up_32,
+  utility::align_up_i32,
 };
 use core::iter::{DoubleEndedIterator as _, Iterator as _};
 use core::mem::{replace, take};
@@ -21,33 +21,33 @@ macro_rules! sub {
   ($op1:expr, $op2:expr) => {{ $op1.checked_sub($op2).ok_or("InternalError: Underflow occurred") }};
 }
 pub(crate) struct ScopeInfo {
-  alloc_map: BTreeMap<u32, u32>,
-  base_stack: u32,
+  alloc_map: BTreeMap<i32, i32>,
+  base_stack: i32,
   body: Vec<Inst>,
   locals: Vec<HashMap<String, Json>>,
   reg_used: BTreeSet<Reg>,
-  stack_args: u32,
-  stack_size: u32,
+  stack_args: i32,
+  stack_size: i32,
 }
 impl ScopeInfo {
-  fn alloc(&mut self, size: u32) -> ErrOR<u32> {
+  fn alloc(&mut self, size: i32, align: i32) -> ErrOR<i32> {
     for (&start, &size2) in &self.alloc_map {
-      let aligned_start = align_up_32(start, size)?;
+      let aligned_start = align_up_i32(start, align)?;
       let padding = sub!(aligned_start, start)?;
       if size2 >= add!(padding, size)? {
         self.alloc_map.remove(&start);
-        if padding > 0 {
+        if padding > 0i32 {
           self.alloc_map.insert(start, padding);
         }
         let used_end = add!(aligned_start, size)?;
         let tail_size = sub!(add!(start, size2)?, used_end)?;
-        if tail_size > 0 {
+        if tail_size > 0i32 {
           self.alloc_map.insert(used_end, tail_size);
         }
         return Ok(used_end);
       }
     }
-    let aligned_start = align_up_32(self.stack_size, size)?;
+    let aligned_start = align_up_i32(self.stack_size, align)?;
     if aligned_start > self.stack_size {
       let gap_size = sub!(aligned_start, self.stack_size)?;
       self.alloc_map.insert(self.stack_size, gap_size);
@@ -58,7 +58,7 @@ impl ScopeInfo {
   }
   pub(crate) fn begin(&mut self) -> ErrOR<ScopeInfo> {
     let prev_align = self.base_stack;
-    self.base_stack = add!(self.base_stack, align_up_32(self.stack_size, 16)?)?;
+    self.base_stack = add!(self.base_stack, align_up_i32(self.stack_size, 16)?)?;
     self.locals.push(HashMap::new());
     Ok(ScopeInfo {
       body: take(&mut self.body),
@@ -68,20 +68,22 @@ impl ScopeInfo {
       ..ScopeInfo::new()
     })
   }
+  #[expect(clippy::needless_pass_by_value)]
   pub(crate) fn drop_json(&mut self, json: Json) -> ErrOR<()> {
     if let Some(Label { kind: Tmp { offset }, size }) = json.get_label() {
       return self.free(offset, size);
     }
     Ok(())
   }
+  #[expect(clippy::cast_sign_loss)]
   pub(crate) fn end(&mut self, tmp: ScopeInfo) -> ErrOR<()> {
-    let align = align_up_32(self.stack_size, 16)?;
+    let align = align_up_i32(self.stack_size, 16)?;
     let mut scope_body = replace(&mut self.body, tmp.body);
-    if align != 0 {
+    if align != 0i32 {
       self.body.push(SubRId(Rsp, align as u32));
     }
     self.body.append(&mut scope_body);
-    if align != 0 {
+    if align != 0i32 {
       self.body.push(AddRId(Rsp, align as u32));
     }
     self.stack_size = tmp.stack_size;
@@ -93,7 +95,7 @@ impl ScopeInfo {
   pub(crate) fn extend(&mut self, insts: &[Inst]) {
     self.body.extend_from_slice(insts);
   }
-  pub(crate) fn free(&mut self, abs_end: u32, mut size: u32) -> ErrOR<()> {
+  pub(crate) fn free(&mut self, abs_end: i32, mut size: i32) -> ErrOR<()> {
     let end = sub!(abs_end, self.base_stack)?;
     let mut start = sub!(end, size)?;
     if let Some((&prev_start, &prev_size)) = self.alloc_map.range(..start).next_back() {
@@ -126,16 +128,16 @@ impl ScopeInfo {
   pub(crate) fn into_iter_code(self) -> IntoIter<Inst> {
     self.body.into_iter()
   }
-  pub(crate) fn local(&mut self, size: u32) -> ErrOR<Label> {
-    Ok(Label { kind: Local { offset: add!(self.alloc(size)?, self.base_stack)? }, size })
+  pub(crate) fn local(&mut self, size: i32, align: i32) -> ErrOR<Label> {
+    Ok(Label { kind: Local { offset: add!(self.alloc(size, align)?, self.base_stack)? }, size })
   }
   pub(crate) fn mov_tmp(&mut self, reg: Reg) -> ErrOR<Label> {
-    let return_value = self.tmp(8)?;
+    let return_value = self.tmp(8, 8)?;
     self.body.push(MovQQ(Mq(return_value.kind), Rq(reg)));
     Ok(return_value)
   }
   pub(crate) fn mov_tmp_bool(&mut self, reg: Reg) -> ErrOR<Json> {
-    let return_value = self.tmp(1)?;
+    let return_value = self.tmp(1, 8)?;
     self.body.push(MovMbRb(return_value.kind, reg));
     Ok(Json::Bool(Var(return_value)))
   }
@@ -153,19 +155,24 @@ impl ScopeInfo {
   pub(crate) fn push(&mut self, inst: Inst) {
     self.body.push(inst);
   }
-  pub(crate) fn reg_align(&mut self) -> ErrOR<u32> {
-    Ok(u32::try_from((self.reg_used.len() & 1) << 3)?)
+  pub(crate) fn reg_align(&mut self) -> ErrOR<i32> {
+    Ok(i32::try_from((self.reg_used.len() & 1) << 3)?)
   }
   pub(crate) fn reg_size(&mut self) -> usize {
     self.reg_used.len()
   }
-  pub(crate) fn resolve_stack_size(&self, align: u32) -> ErrOR<u32> {
-    let args_size = self.stack_args.checked_mul(8).ok_or("Overflow: args_slots * 8")?;
+  pub(crate) fn replace_locals(
+    &mut self, locals: Vec<HashMap<String, Json>>,
+  ) -> Vec<HashMap<String, Json>> {
+    replace(&mut self.locals, locals)
+  }
+  pub(crate) fn resolve_stack_size(&self, align: i32) -> ErrOR<u32> {
+    let args_size = self.stack_args.checked_mul(8).ok_or("InternalError: Overflow")?;
     let raw = add!(self.stack_size, args_size)?;
-    let locals = align_up_32(raw, 16)?;
+    let locals = align_up_i32(raw, 16)?;
     let aligned = add!(locals, align)?;
     let shadow_space = 32;
-    Ok(add!(aligned as u32, shadow_space)?)
+    Ok(add!(u32::try_from(aligned)?, shadow_space)?)
   }
   pub(crate) fn take_code(&mut self) -> Vec<Inst> {
     take(&mut self.body)
@@ -173,10 +180,10 @@ impl ScopeInfo {
   pub(crate) fn take_regs(&mut self) -> BTreeSet<Reg> {
     take(&mut self.reg_used)
   }
-  pub(crate) fn tmp(&mut self, size: u32) -> ErrOR<Label> {
-    Ok(Label { kind: Tmp { offset: add!(self.alloc(size)?, self.base_stack)? }, size })
+  pub(crate) fn tmp(&mut self, size: i32, align: i32) -> ErrOR<Label> {
+    Ok(Label { kind: Tmp { offset: add!(self.alloc(size, align)?, self.base_stack)? }, size })
   }
-  pub(crate) fn update_stack_args(&mut self, size: u32) {
+  pub(crate) fn update_stack_args(&mut self, size: i32) {
     self.stack_args = self.stack_args.max(size);
   }
   #[expect(dead_code)]

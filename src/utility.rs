@@ -4,11 +4,11 @@ use crate::{
   ErrOR, FuncInfo,
   Inst::{self, *},
   Json, Jsonpiler, Label,
-  OpQ::{Iq, Mq, Rq},
+  OpQ::*,
   Parser,
   Reg::{self, *},
   ScopeInfo,
-  VarKind::Global,
+  VarKind::*,
   take_arg,
 };
 use std::{
@@ -20,6 +20,7 @@ impl Jsonpiler {
   pub(crate) const CQO: [u8; 2] = [0x48, 0x99];
   pub(crate) const KERNEL32: &'static str = "kernel32.dll";
   pub(crate) const REGS: [Reg; 4] = [Rcx, Rdx, R8, R9];
+  pub(crate) const SCOPE: (bool, bool) = (true, false);
   pub(crate) const SPECIAL: (bool, bool) = (false, true);
   pub(crate) const SP_SCOPE: (bool, bool) = (true, true);
   pub(crate) const USER32: &'static str = "user32.dll";
@@ -54,9 +55,12 @@ impl Jsonpiler {
     if let Some(&id) = self.str_cache.get(&value) {
       return id;
     }
+    let len = value.len() as u64;
     let id = self.gen_id();
+    let unused = self.gen_id();
     self.str_cache.insert(value.clone(), id);
-    self.insts.push(StringZ(id, value));
+    self.insts.push(Quad(id, len));
+    self.insts.push(StringZ(unused, value));
     id
   }
   pub(crate) fn import(
@@ -78,28 +82,51 @@ impl Jsonpiler {
       };
     (outer_idx, inner_idx)
   }
-  pub(crate) fn mov_str(
-    &mut self, string: Bind<String>, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo,
-  ) {
+  pub(crate) fn mov_float_xmm(&self, float: &Bind<f64>, xmm: Reg, reg: Reg, scope: &mut ScopeInfo) {
+    let addr = match float {
+      Bind::Lit(l_float) => {
+        scope.push(MovQQ(Rq(reg), Iq(l_float.to_bits())));
+        let tmp = Global { id: self.sym_table["TMP"], disp: 0i32 };
+        scope.push(MovQQ(Mq(tmp), Rq(reg)));
+        tmp
+      }
+      Bind::Var(label) => label.kind,
+    };
+    scope.push(MovSdXM(xmm, addr));
+  }
+  pub(crate) fn mov_str(&mut self, string: Bind<String>, str_reg: Reg, scope: &mut ScopeInfo) {
     match string {
-      Lit(l_str) => scope.push(LeaRM(reg, Global { id: self.global_str(l_str) })),
-      Var(Label { kind: kind @ Global { .. }, .. }) => scope.push(LeaRM(reg, kind)),
-      Var(label) => {
-        func.sched_free_tmp(&label);
-        scope.push(MovQQ(Rq(reg), Mq(label.kind)));
+      Lit(l_str) => {
+        let lbl = Global { id: self.global_str(l_str), disp: 8i32 };
+        scope.push(LeaRM(str_reg, lbl));
+      }
+      Var(Label { kind: Global { id, .. }, .. }) => {
+        scope.push(MovQQ(Rq(str_reg), Mq(Global { id, disp: 0i32 })));
+        scope.push(AddRId(str_reg, 8));
+      }
+      Var(Label { kind: kind @ (Tmp { .. } | Local { .. }), .. }) => {
+        scope.push(MovQQ(Rq(str_reg), Mq(kind)));
+        scope.push(AddRId(str_reg, 8));
       }
     }
+  }
+  pub(crate) fn mov_str_len(
+    &mut self, string: Bind<String>, str_reg: Reg, len_reg: Reg, scope: &mut ScopeInfo,
+  ) {
+    self.mov_str(string.clone(), str_reg, scope);
+    mov_len(string, len_reg, scope);
   }
   // fn format(&mut self, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {}
   #[inline]
   #[must_use]
-  pub fn setup(source: Vec<u8>) -> Self {
+  pub fn setup(source: Vec<u8>, name: String) -> Self {
     Self {
       builtin: HashMap::new(),
       str_cache: HashMap::new(),
       label_id: 0,
       globals: HashMap::new(),
-      parser: Parser::from(source),
+      parser: vec![Parser::from(source, 0, name)],
+      files: vec![HashMap::new()],
       insts: vec![],
       sym_table: HashMap::new(),
       import_table: vec![],
@@ -109,26 +136,41 @@ impl Jsonpiler {
   pub(crate) fn take_bool(
     &self, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo,
   ) -> ErrOR<()> {
-    let boolean = take_arg!(self, func, "Bool", Json::Bool(x) => x).0;
-    mov_bool(&boolean, reg, func, scope);
+    let boolean = take_arg!(self, func, "Bool", Json::Bool(x) => x).value;
+    mov_bool(&boolean, reg, scope);
     Ok(())
   }
   pub(crate) fn take_float(
     &self, xmm: Reg, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo,
   ) -> ErrOR<()> {
-    let float = take_arg!(self, func, "Float", Json::Float(x) => x).0;
-    mov_float(&float, xmm, reg, func, scope)
+    let float = take_arg!(self, func, "Float", Json::Float(x) => x).value;
+    self.mov_float_xmm(&float, xmm, reg, scope);
+    Ok(())
   }
   pub(crate) fn take_int(&self, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<()> {
-    let int = take_arg!(self, func, "Int", Json::Int(x) => x).0;
-    mov_int(&int, reg, func, scope);
+    let int = take_arg!(self, func, "Int", Json::Int(x) => x).value;
+    mov_int(&int, reg, scope);
+    Ok(())
+  }
+  pub(crate) fn take_len(
+    &mut self, len_reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo,
+  ) -> ErrOR<()> {
+    let string = take_arg!(self, func, "String", Json::String(x) => x).value;
+    mov_len(string, len_reg, scope);
     Ok(())
   }
   pub(crate) fn take_str(
     &mut self, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo,
   ) -> ErrOR<()> {
-    let string = take_arg!(self, func, "String", Json::String(x) => x).0;
-    self.mov_str(string, reg, func, scope);
+    let string = take_arg!(self, func, "String", Json::String(x) => x).value;
+    self.mov_str(string, reg, scope);
+    Ok(())
+  }
+  pub(crate) fn take_str_len(
+    &mut self, str_reg: Reg, len_reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo,
+  ) -> ErrOR<()> {
+    let string = take_arg!(self, func, "String", Json::String(x) => x).value;
+    self.mov_str_len(string, str_reg, len_reg, scope);
     Ok(())
   }
 }
@@ -138,48 +180,50 @@ pub(crate) fn align_up(num: usize, align: usize) -> ErrOR<usize> {
 pub(crate) fn align_up_32(value: u32, align: u32) -> ErrOR<u32> {
   value.div_ceil(align).checked_mul(align).ok_or("InternalError: Overflow".into())
 }
+pub(crate) fn align_up_i32(value: i32, align: i32) -> ErrOR<i32> {
+  (value + align - 1)
+    .checked_div(align)
+    .and_then(|x| x.checked_mul(align))
+    .ok_or("InternalError: Overflow".into())
+}
 #[expect(clippy::cast_possible_truncation)]
 pub(crate) fn get_time_stamp() -> ErrOR<u32> {
   Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as u32)
 }
-pub(crate) fn mov_bool(boolean: &Bind<bool>, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo) {
+pub(crate) fn mov_bool(boolean: &Bind<bool>, reg: Reg, scope: &mut ScopeInfo) {
   match boolean {
     Bind::Lit(l_bool) => scope.push(MovRbIb(reg, if *l_bool { 0xFF } else { 0 })),
     Bind::Var(label) => {
-      func.sched_free_tmp(label);
       scope.push(MovRbMb(reg, label.kind));
     }
   }
 }
-pub(crate) fn mov_float(
-  float: &Bind<f64>, xmm: Reg, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo,
-) -> ErrOR<()> {
-  let addr = match float {
-    Bind::Lit(l_float) => {
-      scope.push(MovQQ(Rq(reg), Iq(l_float.to_bits())));
-      let addr = scope.tmp(8)?;
-      func.sched_free_tmp(&addr);
-      scope.push(MovQQ(Mq(addr.kind), Rq(reg)));
-      addr.kind
+pub(crate) fn mov_float_reg(float: &Bind<f64>, reg: Reg, scope: &mut ScopeInfo) {
+  let src = match float {
+    Bind::Lit(l_float) => Iq(l_float.to_bits()),
+    Bind::Var(label) => Mq(label.kind),
+  };
+  scope.push(MovQQ(Rq(reg), src));
+}
+pub(crate) fn mov_int(int: &Bind<i64>, reg: Reg, scope: &mut ScopeInfo) {
+  #[expect(clippy::cast_sign_loss)]
+  let src = match int {
+    Bind::Lit(l_int) => Iq(*l_int as u64),
+    Bind::Var(label) => Mq(label.kind),
+  };
+  scope.push(MovQQ(Rq(reg), src));
+}
+pub(crate) fn mov_len(string: Bind<String>, len_reg: Reg, scope: &mut ScopeInfo) {
+  let src = match string {
+    Lit(l_str) => Iq(l_str.len() as u64),
+    Var(Label { kind: Global { id, .. }, .. }) => {
+      scope.push(MovQQ(Rq(len_reg), Mq(Global { id, disp: 0i32 })));
+      Ref(len_reg)
     }
-    Bind::Var(label) => {
-      func.sched_free_tmp(label);
-      label.kind
+    Var(Label { kind: kind @ (Tmp { .. } | Local { .. }), .. }) => {
+      scope.push(MovQQ(Rq(len_reg), Mq(kind)));
+      Ref(len_reg)
     }
   };
-  scope.push(MovSdXM(xmm, addr));
-  Ok(())
-}
-pub(crate) fn mov_int(int: &Bind<i64>, reg: Reg, func: &mut FuncInfo, scope: &mut ScopeInfo) {
-  #[expect(clippy::cast_sign_loss)]
-  scope.push(MovQQ(
-    Rq(reg),
-    match int {
-      Bind::Lit(l_int) => Iq(*l_int as u64),
-      Bind::Var(label) => {
-        func.sched_free_tmp(label);
-        Mq(label.kind)
-      }
-    },
-  ));
+  scope.push(MovQQ(Rq(len_reg), src));
 }

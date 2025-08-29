@@ -195,12 +195,12 @@ int    ::= '0' | [1-9][0-9]*
 
 ### オブジェクト（object）
 
-```text
+```jspl
 key1(value1)
 key2(42)
 ```
 
-```text
+```jspl
 { key1: value1, key2: 42 }
 ```
 
@@ -274,7 +274,7 @@ $name;
 
 #### コメント
 
-```text
+```jspl
 # comment
 ```
 

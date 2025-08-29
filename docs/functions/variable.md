@@ -6,7 +6,7 @@
 {"scope": {"expression": "Sequence"}} -> "Any"
 ```
 
-```text
+```jspl
 scope({sequence})
 ```
 
@@ -26,7 +26,7 @@ It introduces a new scope and evaluates the expression in order and returns the 
 {"global": [{"variable": "String (Literal)"}, {"value": "Any"}]} -> "Null"
 ```
 
-```text
+```jspl
 variable = value
 global(variable, value)
 ```
@@ -47,7 +47,7 @@ Currently, the following types are **not assignable** and **not reassignable**:
 {"$": {"variable": "String (Literal)"}} -> "VAny"
 ```
 
-```text
+```jspl
 $variable
 ```
 

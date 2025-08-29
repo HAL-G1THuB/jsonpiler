@@ -137,7 +137,7 @@ A value can be one of the following:
 
 #### BNF Syntax for Numbers
 
-```bnf
+```text
 number ::= '-'? int ('.' [0-9]+)? ([eE] [+-]? [0-9]+)?
 int    ::= '0' | [1-9][0-9]*
 ```
@@ -193,12 +193,12 @@ Internally, it is treated as an abbreviation of String.
 
 ### Object
 
-```text
+```jspl
 key1(value1)
 key2(42)
 ```
 
-```text
+```jspl
 { key1: value1, key2: 42 }
 ```
 
@@ -273,7 +273,7 @@ $name
 
 #### Comment
 
-```text
+```jspl
 # comment
 ```
 

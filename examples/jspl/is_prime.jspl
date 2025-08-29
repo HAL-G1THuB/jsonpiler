@@ -1,0 +1,20 @@
+define(
+  is_prime, { n: Int }, Bool,
+  {
+    prime_flag = true
+    if([$n <= 1, prime_flag = false])
+    if([3 < $n, {
+      if([{{$n % 2} == 0} or {{$n % 3} == 0}, prime_flag = false])
+      i = 5
+      while({{$i * $i} <= $n} and $prime_flag, {
+        if([{{$n % $i} == 0} or {{$n % {$i + 2}} == 0}, {
+          prime_flag = false
+        }])
+        i = {$i + 6}
+      })
+    }])
+    $prime_flag
+  }
+)
+flag = is_prime(255)
+if ([$flag, print("255 is a prime\n")], [true, print("255 is not a prime\n")])

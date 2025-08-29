@@ -1,31 +1,32 @@
 define(
-  mandelbrot, { cr: Float ci: Float }, Int,
+  julia, { zx: Float zy: Float }, Int,
   {
-    zr = 0.0
-    zi = 0.0
+    cr = -0.7
+    ci = 0.27015
     i = 0
     while(
-      { $i < 50 } and { Int( { $zr * $zr } + { $zi * $zi } ) < 4 },
+      { $i < 50 } and { Int( { $zx * $zx } + { $zy * $zy } ) < 4 },
       {
-        tmp = { { { $zr * $zr } - { $zi * $zi } } + $cr}
-        zi = { { { 2.0 * $zr } * $zi }  + $ci }
-        zr = $tmp
-        i = { $i + 1 }
+        tmp = { { { $zx * $zx } - { $zy * $zy } } + $cr }
+        zy  = { { { 2.0 * $zx } * $zy } + $ci }
+        zx  = $tmp
+        i   = { $i + 1 }
       }
     )
     $i
   }
 )
+
 define(
   render_row, { y: Float }, Null,
   {
-    x = -80.0
+    x = -50.0
     while(
-      Int($x) < 20,
+      Int($x) < 50,
       {
         fx = {$x * 0.03}
         fy = {$y * 0.06}
-        iter = mandelbrot($fx, $fy)
+        iter = julia($fx, $fy)
         str = ""
         if(
         [$iter == 50, str = "#"],

@@ -3,6 +3,7 @@ mod jspl;
 use crate::{Bind::Lit, ErrOR, Json, Position, WithPos, parse_err, return_if};
 #[derive(Clone)]
 pub(crate) struct Parser {
+  file: String,
   pos: Position,
   source: Vec<u8>,
 }
@@ -38,8 +39,11 @@ impl Parser {
       parse_err!(self, self.pos, "Expected character '{}' not found.", char::from(expected))
     }
   }
-  pub(crate) fn from(source: Vec<u8>) -> Self {
-    Self { pos: Position { line: 1, offset: 0, size: 0 }, source }
+  pub(crate) fn from(source: Vec<u8>, file: usize, file_name: String) -> Self {
+    Self { pos: Position { line: 1, offset: 0, size: 0, file }, source, file: file_name }
+  }
+  pub(crate) fn get_file(&self) -> &str {
+    &self.file
   }
   pub(crate) fn parse(&mut self, is_jspl: bool) -> ErrOR<WithPos<Json>> {
     let value = if is_jspl { self.parse_block(true) } else { self.parse_json() }?;
@@ -130,22 +134,19 @@ impl Parser {
           );
         }
         let digit = i64::from(byte - b'0');
-        if let Some(ok_acc) = acc.checked_mul(10).and_then(|val| val.checked_add(digit)) {
+        if is_negative {
+          if let Some(ok_acc) = acc.checked_mul(10).and_then(|val| val.checked_sub(digit)) {
+            acc = ok_acc;
+          } else {
+            return parse_err!(self, pos, "Integer overflow");
+          }
+        } else if let Some(ok_acc) = acc.checked_mul(10).and_then(|val| val.checked_add(digit)) {
           acc = ok_acc;
         } else {
           return parse_err!(self, pos, "Integer overflow");
         }
       }
-      let final_val = if is_negative {
-        if let Some(ok_neg) = acc.checked_neg() {
-          ok_neg
-        } else {
-          return parse_err!(self, pos, "Integer overflow");
-        }
-      } else {
-        acc
-      };
-      Ok(WithPos { pos, value: Json::Int(Lit(final_val)) })
+      Ok(WithPos { pos, value: Json::Int(Lit(acc)) })
     }
   }
   fn parse_object(&mut self) -> ErrOR<WithPos<Json>> {

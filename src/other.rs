@@ -30,6 +30,15 @@ impl Label {
   }
 }
 impl VarKind {
+  /*
+  pub(crate) fn advanced(&self, ofs: i32) -> Self {
+    match *self {
+      Global { id, disp } => Global { id, disp: disp + ofs },
+      Local { offset } => Local { offset: offset + ofs },
+      Tmp { offset } => Tmp { offset: offset + ofs },
+    }
+  }
+  */
   pub(crate) fn size_of_mo_si_di(&self) -> u32 {
     match self {
       Global { .. } => 5,

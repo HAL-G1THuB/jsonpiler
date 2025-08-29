@@ -40,8 +40,9 @@ use scope_info::ScopeInfo;
 use std::{collections::HashMap, vec::IntoIter};
 type BuiltinPtr = fn(&mut Jsonpiler, &mut FuncInfo, &mut ScopeInfo) -> ErrOR<Json>;
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[expect(dead_code)]
+#[expect(clippy::allow_attributes)]
 enum Disp {
+  #[allow(dead_code)]
   Byte(i8),
   Dword(i32),
   Zero,
@@ -143,7 +144,8 @@ enum Inst {
   CmpRR(Reg, Reg),
   Custom(Vec<u8>),
   CvtTSd2Si(Reg, Reg),
-  DecQ(Reg),
+  #[expect(dead_code)]
+  DecR(Reg),
   DivSd(Reg, Reg),
   IDivR(Reg),
   IMulRR(Reg, Reg),
@@ -171,6 +173,8 @@ enum Inst {
   Quad(usize, u64),
   Ret,
   Shl1R(Reg),
+  ShlRIb(Reg, u8),
+  ShrRIb(Reg, u8),
   StringZ(usize, String),
   SubRId(Reg, u32),
   SubRR(Reg, Reg),
@@ -186,28 +190,9 @@ enum OpQ {
   Args(usize),
   Iq(u64),
   Mq(VarKind),
+  Ref(Reg),
   Rq(Reg),
 }
-/*
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum OpD {
-  Id(u32),
-  Md(VarKind),
-  Rd(Reg),
-}
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum OpW {
-  Iw(u16),
-  Mw(VarKind),
-  Rw(Reg),
-}
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum OpB {
-  Ib(u8),
-  Mb(VarKind),
-  Rb(Reg),
-}
-*/
 #[derive(Copy, Clone)]
 enum Arity {
   Any,
@@ -215,13 +200,13 @@ enum Arity {
   #[expect(dead_code)]
   AtMost(usize),
   Exactly(usize),
-  #[expect(dead_code)]
   NoArgs,
   #[expect(dead_code)]
   Range(usize, usize),
 }
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct AsmFunc {
+  file: usize,
   id: usize,
   params: Vec<Json>,
   ret: Json,
@@ -233,14 +218,14 @@ enum Bind<T> {
 }
 struct Builtin {
   arg_len: Arity,
-  func: BuiltinPtr,
+  ptr: BuiltinPtr,
   scoped: bool,
   skip_eval: bool,
 }
 type ErrOR<T> = Result<T, Box<dyn Error>>;
 struct FuncInfo {
   args: IntoIter<WithPos<Json>>,
-  free_list: Vec<(u32, u32)>,
+  free_list: Vec<(i32, i32)>,
   len: usize,
   name: String,
   nth: usize,
@@ -260,11 +245,12 @@ enum Json {
 #[doc(hidden)]
 pub struct Jsonpiler {
   builtin: HashMap<String, Builtin>,
+  files: Vec<HashMap<String, AsmFunc>>,
   globals: HashMap<String, Json>,
   import_table: Dlls,
   insts: Vec<Inst>,
   label_id: usize,
-  parser: Parser,
+  parser: Vec<Parser>,
   str_cache: HashMap<String, usize>,
   sym_table: HashMap<&'static str, usize>,
   user_defined: HashMap<String, AsmFunc>,
@@ -272,19 +258,20 @@ pub struct Jsonpiler {
 #[derive(Debug, Clone, Copy)]
 struct Label {
   kind: VarKind,
-  size: u32,
+  size: i32,
 }
 #[derive(Debug, Copy, Clone, Default)]
 struct Position {
+  file: usize,
   line: usize,
   offset: usize,
   size: usize,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VarKind {
-  Global { id: usize },
-  Local { offset: u32 },
-  Tmp { offset: u32 },
+  Global { id: usize, disp: i32 },
+  Local { offset: i32 },
+  Tmp { offset: i32 },
 }
 #[derive(Debug, Clone, Default)]
 struct WithPos<T> {

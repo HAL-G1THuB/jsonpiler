@@ -1,19 +1,28 @@
 # Examples
 
-[UTF8 check](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/json/utf8_check.json)
+[UTF8 check](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/hello.jspl)
 
-[Arithmetic operations](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/json/arithmetic.json)
+[Arithmetic operations](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/arithmetic.jspl)
 
-[Loop Demo](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/json/counter.json)
+[Loop Demo](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/counter.jspl)
 
-[Squaring a number](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/json/square.json)
+[Squaring a number](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/square.jspl)
 
-[Basic Boolean Logic Demo](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/json/or_and_nand.json)
+[Basic Boolean Logic Demo](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/or_and_nand.jspl)
 
-[Fibonacci Sequence](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/json/fib.json)
+[Fibonacci Sequence](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/fib.jspl)
 
-[LCM](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/json/lcm.json)
+[LCM](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/lcm.jspl)
 
-[Length of the string](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/json/length.json)
+[Length of the string](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/length.jspl)
 
-[Integer Square Root](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/json/int_sqrt.json)
+[Integer Square Root](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/int_sqrt.jspl)
+
+[Mandelbrot](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/mandelbrot.jspl)
+
+[Julia](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/julia.jspl)
+
+[Random](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/random.jspl)
+
+[Prime Number Check](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/is_prime.jspl)
+[Module](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/include.jspl)
