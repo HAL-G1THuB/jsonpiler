@@ -18,6 +18,9 @@ use std::{
 impl Jsonpiler {
   pub(crate) const COMMON: (bool, bool) = (false, false);
   pub(crate) const CQO: [u8; 2] = [0x48, 0x99];
+  pub(crate) const GDI32: &'static str = "gdi32.dll";
+  pub(crate) const GUI_H: u32 = 0x200;
+  pub(crate) const GUI_W: u32 = 0x200;
   pub(crate) const KERNEL32: &'static str = "kernel32.dll";
   pub(crate) const REGS: [Reg; 4] = [Rcx, Rdx, R8, R9];
   pub(crate) const SCOPE: (bool, bool) = (true, false);
@@ -33,9 +36,9 @@ impl Jsonpiler {
     self.label_id += 1;
     id
   }
-  pub(crate) fn get_bss_id(&mut self, size: u32) -> usize {
+  pub(crate) fn get_bss_id(&mut self, size: u32, align: u32) -> usize {
     let id = self.gen_id();
-    self.insts.push(Bss(id, size));
+    self.insts.push(Bss(id, size, align));
     id
   }
   pub(crate) fn get_var(&self, var_name: &str, scope: &ScopeInfo) -> Option<Json> {
@@ -218,11 +221,11 @@ pub(crate) fn mov_len(string: Bind<String>, len_reg: Reg, scope: &mut ScopeInfo)
     Lit(l_str) => Iq(l_str.len() as u64),
     Var(Label { kind: Global { id, .. }, .. }) => {
       scope.push(MovQQ(Rq(len_reg), Mq(Global { id, disp: 0i32 })));
-      Ref(len_reg)
+      RefQ(len_reg)
     }
     Var(Label { kind: kind @ (Tmp { .. } | Local { .. }), .. }) => {
       scope.push(MovQQ(Rq(len_reg), Mq(kind)));
-      Ref(len_reg)
+      RefQ(len_reg)
     }
   };
   scope.push(MovQQ(Rq(len_reg), src));

@@ -1,0 +1,24 @@
+define(
+  mouse_julia,
+  {x: Int; y: Int; frame: Int; mouse_x: Int; mouse_y: Int},
+  Int,
+  {
+    zx = {Float($x) / 128.0}
+    zy = {Float($y) / 128.0}
+    cx = {-0.7 + {Float($mouse_x) / 128.0}}
+    cy = {0.27015 + {Float($mouse_y) / 128.0}}
+    i = 0
+    zxn = $zx
+    zyn = $zy
+    while ({ $i < 256 } and { Int({ { $zxn * $zxn } + { $zyn * $zyn } }) < 4 },
+      {
+        tmp = { { { $zxn * $zxn } - { $zyn * $zyn } } + $cx }
+        zyn = { { 2.0 * $zxn * $zyn } + $cy}
+        zxn = $tmp
+        i = {$i + 1}
+      }
+    )
+  {abs(Int($zxn)) * 32} + {abs(Int($zyn)) * 32 * 65536} + {$i * 32 * 256}
+  }
+)
+GUI(mouse_julia)

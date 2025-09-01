@@ -135,7 +135,7 @@ enum Inst {
   AddRR(Reg, Reg),
   AddSd(Reg, Reg),
   AndRbRb(Reg, Reg),
-  Bss(usize, u32),
+  Bss(usize, u32, u32),
   Byte(usize, u8),
   Call(usize),
   CallApi((usize, usize)),
@@ -144,18 +144,18 @@ enum Inst {
   CmpRR(Reg, Reg),
   Custom(Vec<u8>),
   CvtTSd2Si(Reg, Reg),
-  #[expect(dead_code)]
+  CvtTSi2Sd(Reg, Reg),
   DecR(Reg),
   DivSd(Reg, Reg),
   IDivR(Reg),
   IMulRR(Reg, Reg),
+  IncR(Reg),
   Jcc(ConditionCode, usize),
   Jmp(usize),
   JmpSh(usize),
   Lbl(usize),
   LeaRM(Reg, VarKind),
-  #[expect(dead_code)]
-  MovMId(VarKind, u32),
+  MovDD(OpD, OpD),
   MovMbIb(VarKind, u8),
   MovMbRb(VarKind, Reg),
   MovQQ(OpQ, OpQ),
@@ -172,6 +172,8 @@ enum Inst {
   Push(Reg),
   Quad(usize, u64),
   Ret,
+  #[expect(dead_code)]
+  SarRIb(Reg, u8),
   Shl1R(Reg),
   ShlRIb(Reg, u8),
   ShrRIb(Reg, u8),
@@ -190,8 +192,15 @@ enum OpQ {
   Args(usize),
   Iq(u64),
   Mq(VarKind),
-  Ref(Reg),
+  RefQ(Reg),
   Rq(Reg),
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpD {
+  Id(u32),
+  Md(VarKind),
+  Rd(Reg),
+  RefD(Reg),
 }
 #[derive(Copy, Clone)]
 enum Arity {

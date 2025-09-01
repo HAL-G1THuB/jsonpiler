@@ -34,7 +34,7 @@ global(variable, value)
 Assigns the given value to the specified variable name.  
 Returns `null` after assignment.
 Assigned to local scope for `=` and to global scope for `global`.
-`=` supports reassignment.
+`global` and `=` support reassignment.
 
 Currently, the following types are **not assignable** and **not reassignable**:
 

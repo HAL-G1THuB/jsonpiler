@@ -10,6 +10,16 @@
 
 ## Released
 
+### jsonpiler 0.7
+
+#### 0.6.6
+
+- `global` is now reassignable.
+- `global` is now thread-safe.
+- GUI feature added: `GUI`.
+- jspl supports new notation: `1 + 10 + 1` is now interpreted as `+(1, 10, 1)`.
+- Semicolons are now required when writing multiple function calls on the same line in jspl.
+
 ### jsonpiler 0.6
 
 ### 0.6.5

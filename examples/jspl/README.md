@@ -1,5 +1,9 @@
 # Examples
 
+[GUI Julia](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/gui_julia_mouse.jspl)
+
+[GUI Mandelbrot](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/gui_mandelbrot_zoom.jspl)
+
 [UTF8 check](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/hello.jspl)
 
 [Arithmetic operations](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/arithmetic.jspl)

@@ -1,5 +1,5 @@
 define(
-  julia, { zx: Float zy: Float }, Int,
+  julia, { zx: Float; zy: Float }, Int,
   {
     cr = -0.7
     ci = 0.27015

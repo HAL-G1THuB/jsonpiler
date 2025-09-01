@@ -3,6 +3,7 @@ use crate::{
   Assembler, Disp, Dlls, ErrOR,
   Inst::{self, *},
   Memory,
+  OpD::{self, *},
   OpQ::{self, *},
   Reg::{self, *},
   Sect, Sib,
@@ -51,7 +52,7 @@ impl Assembler {
       #[expect(clippy::print_stdout, clippy::use_debug)]
       if code.len() - code_len != validate_vec[idx].try_into()? {
         println!(
-          "InternalError: actual: {} != prediction: {} {inst:?}",
+          "InternalError: actual: {} != expected: {} {inst:?}",
           code.len() - code_len,
           validate_vec[idx]
         );
@@ -80,6 +81,9 @@ impl Assembler {
       DecR(reg) => {
         code.extend(Memory::Reg(*reg).encode_romsd(vec![0xFF], Rcx, true));
       }
+      IncR(reg) => {
+        code.extend(Memory::Reg(*reg).encode_romsd(vec![0xFF], Rax, true));
+      }
       TestRdRd(dst, src) => {
         code.extend(Memory::Reg(*dst).encode_romsd(vec![0x85], *src, false));
       }
@@ -107,6 +111,10 @@ impl Assembler {
           *xmm,
           false,
         ));
+      }
+      CvtTSi2Sd(xmm, reg) => {
+        code.push(0xF2);
+        code.extend(Memory::Reg(*reg).encode_romsd(vec![0x0F, 0x2A], *xmm, true));
       }
       CvtTSd2Si(reg, xmm) => {
         code.push(0xF2);
@@ -178,6 +186,7 @@ impl Assembler {
         code.extend(memory.encode_romsd(vec![0x8D], *reg, true));
       }
       MovQQ(op1, op2) => self.encode_mov_q_q(code, op1, op2)?,
+      MovDD(op1, op2) => self.encode_mov_d_d(code, op1, op2)?,
       ShlRIb(reg, byte) => {
         code.extend(Memory::Reg(*reg).encode_romsd(vec![0xC1], Rsp, true));
         code.push(*byte);
@@ -186,17 +195,15 @@ impl Assembler {
         code.extend(Memory::Reg(*reg).encode_romsd(vec![0xC1], Rbp, true));
         code.push(*byte);
       }
+      SarRIb(reg, byte) => {
+        code.extend(Memory::Reg(*reg).encode_romsd(vec![0xC1], Rdi, true));
+        code.push(*byte);
+      }
       MovMbIb(mem, byte) => {
         let size = self.inst_size(inst, &mut 0, &mut vec![], 0)?;
         let memory = self.memory(*mem, code.len(), size)?;
         code.extend(memory.encode_romsd(vec![0xC6], Rax, false));
         code.push(*byte);
-      }
-      MovMId(dst, dword) => {
-        let size = self.inst_size(inst, &mut 0, &mut vec![], 0)?;
-        let memory = self.memory(*dst, code.len(), size)?;
-        code.extend(memory.encode_romsd(vec![0xC7], Rax, false));
-        code.extend_from_slice(&dword.to_le_bytes());
       }
       MovRbIb(reg, byte) => {
         reg.guard_reg8()?;
@@ -247,15 +254,57 @@ impl Assembler {
     }
     Ok(())
   }
+  fn encode_mov_d_d(&mut self, code: &mut Vec<u8>, op1: &OpD, op2: &OpD) -> ErrOR<()> {
+    match (op1, op2) {
+      (Rd(dst), RefD(src)) => {
+        let mem = Memory::Base(*src, Disp::Zero);
+        code.extend(mem.encode_romsd(vec![0x8B], *dst, false));
+      }
+      (RefD(dst), Rd(src)) => {
+        let mem = Memory::Base(*dst, Disp::Zero);
+        code.extend(mem.encode_romsd(vec![0x89], *src, false));
+      }
+      (Rd(dst), Rd(src)) => {
+        code.extend(Memory::Reg(*dst).encode_romsd(vec![0x89], *src, false));
+      }
+      (Rd(dst), Md(src)) => {
+        let size = self.inst_size(&MovDD(Rd(*dst), Md(*src)), &mut 0, &mut vec![], 0)?;
+        code.extend(self.memory(*src, code.len(), size)?.encode_romsd(vec![0x8B], *dst, false));
+      }
+      (Md(dst), Rd(src)) => {
+        let size = self.inst_size(&MovDD(Md(*dst), Rd(*src)), &mut 0, &mut vec![], 0)?;
+        code.extend(self.memory(*dst, code.len(), size)?.encode_romsd(vec![0x89], *src, false));
+      }
+      (Md(mem), Id(imm)) => {
+        let size = self.inst_size(&MovDD(Md(*mem), Id(*imm)), &mut 0, &mut vec![], 0)?;
+        code.extend(self.memory(*mem, code.len(), size)?.encode_romsd(vec![0xC7], Rax, false));
+        code.extend_from_slice(&imm.to_le_bytes());
+      }
+      (Rd(dst), Id(imm)) => {
+        code.extend(dst.mini_opcode(0xB8, false));
+        code.extend_from_slice(&imm.to_le_bytes());
+      }
+      _ => {
+        return Err(
+          format!("InternalError: Unsupported operand types: MovDD({op1:?}, {op2:?})").into(),
+        );
+      }
+    }
+    Ok(())
+  }
   fn encode_mov_q_q(&mut self, code: &mut Vec<u8>, op1: &OpQ, op2: &OpQ) -> ErrOR<()> {
     match (op1, op2) {
       (Rq(dst), Args(offset)) => {
         let mem = Memory::Base(Rsp, Disp::Dword(i32::try_from(*offset)?));
         code.extend(mem.encode_romsd(vec![0x8B], *dst, true));
       }
-      (Rq(dst), Ref(reg)) => {
-        let mem = Memory::Base(*reg, Disp::Zero);
+      (Rq(dst), RefQ(src)) => {
+        let mem = Memory::Base(*src, Disp::Zero);
         code.extend(mem.encode_romsd(vec![0x8B], *dst, true));
+      }
+      (RefQ(dst), Rq(src)) => {
+        let mem = Memory::Base(*dst, Disp::Zero);
+        code.extend(mem.encode_romsd(vec![0x89], *src, true));
       }
       (Args(offset), Rq(src)) => {
         let mem = Memory::Base(Rsp, Disp::Dword(i32::try_from(*offset)?));
@@ -277,7 +326,9 @@ impl Assembler {
         code.extend_from_slice(&imm.to_le_bytes());
       }
       _ => {
-        return Err("InternalError: Unsupported operand types: MovQQ(?, ?)".into());
+        return Err(
+          format!("InternalError: Unsupported operand types: MovQQ({op1:?}, {op2:?})").into(),
+        );
       }
     }
     Ok(())
@@ -293,10 +344,10 @@ impl Assembler {
       Custom(bytes) => u32::try_from(bytes.len())?,
       Ret => 1,
       JmpSh(_) | XorRbRb(..) | OrRbRb(..) | AndRbRb(..) | TestRbRb(..) => 2,
-      DecR(_) | CmpRR(..) | Shl1R(_) | TestRR(..) | IDivR(_) | XorRR(..) | SubRR(..)
+      IncR(_) | DecR(_) | CmpRR(..) | Shl1R(_) | TestRR(..) | IDivR(_) | XorRR(..) | SubRR(..)
       | AddRR(..) => 3,
-      ShrRIb(..) | ShlRIb(..) | IMulRR(..) | CmpRIb(..) => 4,
-      CvtTSd2Si(..) | Jmp(_) | Call(_) => 5,
+      SarRIb(..) | ShrRIb(..) | ShlRIb(..) | IMulRR(..) | CmpRIb(..) => 4,
+      CvtTSi2Sd(..) | CvtTSd2Si(..) | Jmp(_) | Call(_) => 5,
       Jcc(..) | CallApi(_) => 6,
       SubRId(..) | AddRId(..) => 7,
       TestRdRd(dst, src) => (dst.rex_size() | src.rex_size()) + 1 + 1,
@@ -310,14 +361,30 @@ impl Assembler {
       MovRbMb(reg, mem) | MovMbRb(mem, reg) => reg.rex_size() + 1 + mem.size_of_mo_si_di(),
       MovQQ(op1, op2) => match (op1, op2) {
         (Rq(_), Rq(_)) => 3,
-        (Rq(_), Ref(_)) => 4,
+        (Rq(_), RefQ(_)) | (RefQ(_), Rq(_)) => 4,
         (Rq(_), Mq(mem)) | (Mq(mem), Rq(_)) => 2 + mem.size_of_mo_si_di(),
         (Rq(_), Args(_)) | (Args(_), Rq(_)) => 8,
         (Rq(_), Iq(_)) => 10,
-        _ => return Err("InternalError: Unsupported operand types: MovQQ(?, ?)".into()),
+        _ => {
+          return Err(
+            format!("InternalError: Unsupported operand types: MovQQ({op1:?}, {op2:?})").into(),
+          );
+        }
       },
-      MovMId(mem, _) => 1 + 1 + mem.size_of_mo_si_di() + 4,
-      Bss(idx, size) => {
+      MovDD(op1, op2) => match (op1, op2) {
+        (Rd(r1), Rd(r2)) => (r1.rex_size() | r2.rex_size()) + 2,
+        (Rd(r1), RefD(r2)) | (RefD(r1), Rd(r2)) => (r1.rex_size() | r2.rex_size()) + 3,
+        (Rd(reg), Md(mem)) | (Md(mem), Rd(reg)) => reg.rex_size() + 1 + mem.size_of_mo_si_di(),
+        (Md(mem), Id(_)) => 5 + mem.size_of_mo_si_di(),
+        (Rd(reg), Id(_)) => reg.rex_size() + 5,
+        _ => {
+          return Err(
+            format!("InternalError: Unsupported operand types: MovDD({op1:?}, {op2:?})").into(),
+          );
+        }
+      },
+      Bss(idx, size, align) => {
+        *bss = align_up_32(*bss, *align)?;
         self.add_label(Sect::Bss, *idx, *bss);
         *bss += *size;
         0
@@ -512,7 +579,7 @@ mod tests {
     use std::io::Write as _;
     let dlls = vec![("kernel32.dll", vec![(0x0167, "ExitProcess")])];
     let sample = &[
-      Bss(0, 1),
+      Bss(0, 1, 1),
       Quad(1, 1),
       Lbl(2),
       MovQQ(Rq(Rcx), Iq(0xCAFE_BABE)),

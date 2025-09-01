@@ -211,7 +211,7 @@ key2(42)
 
 #### Omitted `{}` for Top-Level Blocks
 
-```js
+```jspl
 key: "value"
 list: [1, 2, 3]
 ```
@@ -225,21 +225,33 @@ list: [1, 2, 3]
 }
 ```
 
-### Triple Syntax: Value + Identifier + Value
+### Multiple elements on a single line in an object
 
-```js
-1 + 10
+```jspl
+key1: "value"; key2: 42
+```
+
+→ ``json
+
+```json
+{ "key1": "value", "key2": 42 }
+```
+
+#### Infix notation (Applicable to any function)
+
+```jspl
+1 + 20 + 300
 ```
 
 →
 
 ```json
-{ "+": [1, 10] }
+{ "+": [1, 20, 300] }
 ```
 
 ### Identifier Function Syntax
 
-```js
+```jspl
 sum(1, 2, 3)
 ```
 
@@ -249,7 +261,7 @@ sum(1, 2, 3)
 { "sum": [1, 2, 3] }
 ```
 
-```js
+```jspl
 abs: -1
 ```
 
@@ -259,7 +271,7 @@ abs: -1
 
 ### `$name` Notation
 
-```js
+```jspl
 $name
 ```
 

@@ -3,6 +3,7 @@ mod compare;
 mod control;
 mod evaluate;
 mod file;
+mod gui;
 mod internal;
 mod logical;
 mod output;
@@ -31,8 +32,9 @@ impl Jsonpiler {
     self.arithmetic();
     self.compare();
     self.control();
-    self.file();
     self.evaluate();
+    self.file();
+    self.gui();
     self.logical();
     self.output();
     self.string();
@@ -244,26 +246,32 @@ impl Jsonpiler {
     self.sym_table.insert("SEH_HANDLER_MSG", msg);
     */
     self.global_num(0);
-    let random_seed = self.get_bss_id(8);
+    let random_seed = self.get_bss_id(8, 8);
     self.sym_table.insert("RANDOM_SEED", random_seed);
-    let std_o = self.get_bss_id(8);
+    let std_o = self.get_bss_id(8, 8);
     self.sym_table.insert("STDO", std_o);
-    let std_e = self.get_bss_id(8);
+    let std_e = self.get_bss_id(8, 8);
     self.sym_table.insert("STDE", std_e);
-    let std_i = self.get_bss_id(8);
+    let std_i = self.get_bss_id(8, 8);
     self.sym_table.insert("STDI", std_i);
-    let heap = self.get_bss_id(8);
+    let heap = self.get_bss_id(8, 8);
     self.sym_table.insert("HEAP", heap);
-    let win = self.get_bss_id(8);
+    let win = self.get_bss_id(8, 8);
     self.sym_table.insert("WIN_HANDLER_MSG", win);
-    let tmp = self.get_bss_id(8);
+    let tmp = self.get_bss_id(8, 8);
     self.sym_table.insert("TMP", tmp);
+    let critical_section = self.get_bss_id(40, 8);
+    self.sym_table.insert("CRITICAL_SECTION", critical_section);
+    let flag_gui = self.get_bss_id(1, 1);
+    self.sym_table.insert("FLAG_GUI", flag_gui);
     let win_handler = self.gen_id();
     self.sym_table.insert("WIN_HANDLER", win_handler);
     self.register_all();
     let mut scope = ScopeInfo::new();
     // handler
     scope.update_stack_args(3);
+    let initialize_critical_section =
+      self.import(Jsonpiler::KERNEL32, "InitializeCriticalSection", 0x36C);
     let set_console_cp = self.import(Jsonpiler::KERNEL32, "SetConsoleCP", 0x4FB);
     let set_console_output_cp = self.import(Jsonpiler::KERNEL32, "SetConsoleOutputCP", 0x511);
     let exit_process = self.import(Jsonpiler::KERNEL32, "ExitProcess", 0x167);
@@ -287,7 +295,11 @@ impl Jsonpiler {
     insts.extend_from_slice(&self.get_std_any(get_std_handle, -11, std_o));
     insts.extend_from_slice(&self.get_std_any(get_std_handle, -12, std_e));
     insts.extend_from_slice(&self.call_api_check_null(get_process_heap));
-    insts.push(MovQQ(Mq(Global { id: heap, disp: 0i32 }), Rq(Rax)));
+    insts.extend_from_slice(&[
+      MovQQ(Mq(Global { id: heap, disp: 0i32 }), Rq(Rax)),
+      LeaRM(Rcx, Global { id: critical_section, disp: 0i32 }),
+      CallApi(initialize_critical_section),
+    ]);
     #[expect(clippy::cast_sign_loss)]
     if let Json::Int(int) = result {
       scope.push(MovQQ(

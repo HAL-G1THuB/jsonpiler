@@ -53,6 +53,13 @@ built_in! {self, _func, scope, arithmetic;
       Err(self.parser[arg.pos.file].args_type_error(1, &_func.name, "Int` or `Float", &arg).into())
     }
   }},
+  float => {"Float", COMMON, Exactly(1), {
+    self.take_int(Rax, _func, scope)?;
+    scope.push(CvtTSi2Sd(Rax, Rax));
+    let tmp = scope.tmp(8, 8)?;
+    scope.push(MovSdMX(tmp.kind, Rax));
+    Ok(Json::Float(Var(tmp)))
+  }},
   int => {"Int", COMMON, Exactly(1), {
     self.take_float(Rax, Rax, _func, scope)?;
     scope.push(CvtTSd2Si(Rax, Rax));
@@ -135,7 +142,7 @@ impl Jsonpiler {
       }
       Var(label) => {
         scope.push(MovQQ(Rq(Rcx), Mq(label.kind)));
-        scope.push(CmpRIb(Rcx, 0));
+        scope.push(TestRbRb(Rcx, Rcx));
         let zero_division_err = self.get_custom_error("ZeroDivisionError");
         scope.push(Jcc(E, zero_division_err));
       }

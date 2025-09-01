@@ -9,23 +9,35 @@ Jsonpiler は、その中間表現（IR）から Windows 用 PE を出力する�
 - [GitHub](https://github.com/HAL-G1THuB/jsonpiler)
 - [Crates.io](https://crates.io/crates/jsonpiler)
 - [AI 生成ドキュメント: ![badge](https://deepwiki.com/badge.svg)](https://deepwiki.com/HAL-G1THuB/jsonpiler)
-- [VSCode拡張機能](https://marketplace.visualstudio.com/items?itemName=H4LVS.jsplsyntax)
+- [VSCode 拡張機能](https://marketplace.visualstudio.com/items?itemName=H4LVS.jsplsyntax)
 
 > 🚨 **Windows のみ (x64)** — Jsonpiler は 64 ビット Windows を対象に、ネイティブ PE 実行ファイルを生成します。
 
 ---
 
+## GUI
+
+Jsonpilerに GUI をサポートする関数が追加されました。
+
+![Jsonpilerで描画されたジュリア集合](./julia.jpeg)
+
+[Jsonpilerで描画されたマンデルブロ集合のズーム](https://youtu.be/M8wEPkHmYdE)
+
+[ジュリア集合をGUIで描くプログラムのソースコード](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/gui_julia_mouse.jspl)
+
+[マンデルブロ集合をGUIで描くプログラムのソースコード](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/gui_mandelbrot_zoom.jspl)
+
+---
+
 ## 更新情報
 
-### 0.6.5
+### 0.7.0
 
-- 新しい関数を追加: `assert`, `random`, `>`, `>`, `!=`
-- モジュールシステムを追加: `include`
-- Int型が最小値(0xffffffffffffffff)を正しく扱えるようにしました。
-- エラーメッセージのフォーマットを変更。
-- `Float`型が`-`関数に渡されたとき正しく符号反転されない問題を修正。
-- `abs`関数が`Float`型に対応。
-- `print`関数がパイプ、リダイレクトに対応。
+- `global`が再代入可能に。
+- `global`がスレッドセーフに。
+- GUI機能を追加: `GUI`
+- jsplが新しい記法をサポート: `1 + 10 + 1` が `+(1, 10, 1)` と同じに解釈されるようになった
+- jsplで同じ行に複数回関数呼び出しなどを書くとき、セミコロンが必要になった。
 
 詳細は **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG-ja.md)** を参照してください。
 
@@ -60,15 +72,14 @@ jsonpiler <input.json | input.jspl> [生成exeへの引数]
 
 ## 言語仕様・関数リファレンス
 
-- **言語仕様 (Markdown)**: [https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification-ja.md](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md)
-- **関数リファレンス (Markdown)**: [https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md)
+[**言語仕様 (Markdown)**](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification-ja.md)
+[**関数リファレンス (Markdown)**](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions/README.md)
 
 ---
 
 ## 使用例
 
-準備済みサンプルは **`examples/`** にあります:
-[https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples)
+準備済みサンプルは [examples/](<https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples>) にあります。
 
 最小例:
 
@@ -99,23 +110,22 @@ JSPL は、関数定義・条件分岐・関数呼び出し・変数代入など
 Jsonpiler のコンパイル基盤との完全な互換性を保ちながら、
 人にとって書きやすく読みやすい記述が可能になります。
 詳細は上記の言語仕様に記載してあります。
-上記のサンプルコードをJSPLで記述した例:
+上記のサンプルコードを JSPL で記述した例:
 
-```json
+```jspl
 a = "title"
 message($a, "345")
 +(1, 2, 3)
 ```
 
-| JSPL-JSON の相違点           | JSON                                | JSPL                                    |
-| ---------------------------- | ----------------------------------- | --------------------------------------- |
-| **波括弧 `{}`**              | 必須                                | トップレベルブロックに限り省略可能      |
-| **関数呼び出し構文**         | `{"sum": [1,2,3]}` のような明示形式 | `sum(1, 2, 3)` の自然な関数形式         |
-| **識別子記法**               | 全て `"文字列"`                     | `"`を必要としない識別子が使える         |
-| **値-識別子-値（三項構文）** | 不可                                | `1 + 10` → `{ "+": [1, 10] }` に変換    |
-| **変数参照構文**             | `{"$": "name"}` のような明示形式    | `$name` で記述可能                      |
-| **コメント**                 | 不可（仕様上）                      | `# comment`で記述可能                   |
-| **制御構文の表現**           | 関数として記述                      | `if(...)`, `define(...)` のような構文糖 |
+| JSPL-JSON の相違点 | JSON                                | JSPL                                 |
+| ------------------ | ----------------------------------- | ------------------------------------ |
+| **波括弧 `{}`**    | 必須                                | トップレベルブロックに限り省略可能   |
+| **関数呼び出し**   | `{"sum": [1,2,3]}` のような明示形式 | `sum(1, 2, 3)` の自然な関数形式      |
+| **識別子記法**     | 全て `"文字列"`                     | `"`を必要としない識別子が使える      |
+| **中置記法**       | 不可                                | `1 + 10` → `{ "+": [1, 10] }` に変換 |
+| **変数参照**       | `{"$": "name"}` のような明示形式    | `$name` で記述可能                   |
+| **コメント**       | 不可（仕様上）                      | `# comment`で記述可能                |
 
 ---
 

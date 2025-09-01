@@ -16,15 +16,13 @@ Jsonpiler bundles an assembler and linker purpose-built for its IR and PE output
 
 ## What’s New
 
-### 0.6.5
+### 0.7.0
 
-- Added new functions: `assert`, `random`, `>`, `>`, `! =`!
-- Added module system: `include`.
-- Int type now correctly handles the minimum value (0xffffffffffffffffffffffffffffffffffff).
-- Changed format of error messages.
-- Fixed problem with `Float` type not being correctly sign-reversed when passed to the `-` function.
-- The `abs` function now supports the `Float` type.
-- The `print` function now supports pipe and redirection.
+- `global` is now reassignable.
+- `global` is now thread-safe.
+- GUI feature added: `GUI`.
+- jspl supports new notation: `1 + 10 + 1` is now interpreted as `+(1, 10, 1)`.
+- Semicolons are now required when writing multiple function calls on the same line in jspl.
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 
@@ -59,15 +57,15 @@ jsonpiler <input.json | input.jspl> [args passed to the produced .exe]
 
 ## Language & Function References
 
-- **Language Spec (Markdown):** [https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md)
-- **Function Reference (Markdown):** [https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md)
+[Language Spec (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md)
+
+[Function Reference (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md)
 
 ---
 
 ## Examples
 
-Browse ready-to-run samples in **`examples/`**:
-[https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples)
+Browse ready-to-run samples in [examples/](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples)
 
 Minimal example:
 
@@ -114,10 +112,9 @@ message($a, "345")
 | **Curly braces `{}`**         | Required                              | Optional for top-level blocks                 |
 | **Function call syntax**      | Explicit form like `{"sum": [1,2,3]}` | Natural syntax like `sum(1, 2, 3)`            |
 | **Identifier notation**       | All keys must be quoted `"string"`    | Unquoted identifiers are allowed              |
-| **Ternary-style syntax**      | Not supported                         | `1 + 10` → expanded to `{ "+": [1, 10] }`     |
+| **Infix notation**      | Not supported                         | `1 + 10` → expanded to `{ "+": [1, 10] }`     |
 | **Variable reference syntax** | Explicit form like `{"$": "name"}`    | Can be written as `$name`                     |
 | **Comments**                  | Not allowed (by spec)                 | Supported via `# comment`                     |
-| **Control structures**        | Written as functions                  | Syntactic sugar like `if(...)`, `define(...)` |
 
 ---
 

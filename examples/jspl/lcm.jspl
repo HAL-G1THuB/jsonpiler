@@ -1,5 +1,5 @@
 define(
-  gcd, { a: Int b: Int }, Int,
+  gcd, { a: Int; b: Int }, Int,
   {
     while(
       $b != 0,
@@ -13,7 +13,7 @@ define(
   }
 )
 define(
-  lcm, { a: Int b: Int }, Int,
+  lcm, { a: Int; b: Int }, Int,
   { $a * $b } / gcd($a, $b)
 )
 print("This program computes lcm(12, 18) = 36.\n")

@@ -35,14 +35,14 @@ macro_rules! warn {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! get_target_kind {
-  ($self:expr, $scope:expr, $is_global:expr, $size:expr, $local_label:expr, $pattern:pat => $kind_expr:expr) => {
-    if $is_global {
-      Global { id: $self.get_bss_id($size), disp: 0i32 }
-    } else if let Some(json) = &$local_label {
+  ($self:expr, $scope:expr, $is_global:expr, $size:expr, $ref_label:expr, $pattern:pat => $kind_expr:expr) => {
+    if let Some(json) = &$ref_label {
       match json {
         $pattern => $kind_expr,
         _ => return Err("InternalError: Unexpected Json variant during reassignment".into()),
       }
+    } else if $is_global {
+      Global { id: $self.get_bss_id($size, $size), disp: 0i32 }
     } else {
       $scope.local($size, $size)?.kind
     }

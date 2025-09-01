@@ -1,5 +1,5 @@
 define(
-  param_type_test, { a: Null b: Int c: Bool d: String e: Float }, Int,
+  param_type_test, { a: Null; b: Int; c: Bool; d: String; e: Float }, Int,
   {
     if(
       [ $c,

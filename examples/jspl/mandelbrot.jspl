@@ -1,5 +1,5 @@
 define(
-  mandelbrot, { cr: Float ci: Float }, Int,
+  mandelbrot, { cr: Float; ci: Float }, Int,
   {
     zr = 0.0
     zi = 0.0
