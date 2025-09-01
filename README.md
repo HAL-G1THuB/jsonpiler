@@ -14,6 +14,20 @@ Jsonpiler bundles an assembler and linker purpose-built for its IR and PE output
 
 ---
 
+## GUI
+
+Jsonpiler now has a function to support GUI.
+
+![Julia set drawn by Jsonpiler](./julia.jpeg)
+
+[Zoom of the Mandelbrot set drawn by Jsonpiler](https://youtu.be/M8wEPkHmYdE)
+
+[Source code of the program to draw the Julia set with GUI](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/gui_julia_mouse.jspl)
+
+[Source code of the program to draw the Mandelbrot set with GUI](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/gui_mandelbrot_zoom.jspl)
+
+---
+
 ## What’s New
 
 ### 0.7.0
