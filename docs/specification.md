@@ -29,7 +29,7 @@ See: [JSON specification](https://www.rfc-editor.org/info/rfc8259)
 { "key": "value" }
 ```
 
-- **Sequence**: Represents an ordered sequence of instructions.
+- **Block**: Represents an ordered sequence of instructions.
 
 ```json
 {

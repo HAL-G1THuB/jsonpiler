@@ -34,6 +34,9 @@ built_in! {self, func, scope, file;
         full_path.display()
       )
     };
+    if self.parser[path.pos.file].get_file() == abs_path.to_string_lossy() {
+      return err!(self, path.pos, "IncludeError: Recursive include detected for `{}`", path.value);
+    }
     if let Some(file_idx) = self.parser
       .iter()
       .position(|parser| Path::new(parser.get_file()) == abs_path)

@@ -1,9 +1,12 @@
 use crate::{
   Bind::{self, Var},
-  ErrOR, FuncInfo, Json, Label,
+  /*Disp, */ ErrOR, FuncInfo, Json, Label,
+  Operand::{self, *},
+  Register,
   VarKind::{self, *},
   WithPos,
 };
+use core::ops::Add;
 impl<T> Bind<T> {
   pub(crate) fn describe(&self, ty: &str) -> String {
     format!("{ty} ({})", if let Var(label) = self { label.describe() } else { "Literal" })
@@ -15,14 +18,14 @@ impl FuncInfo {
     self.args.next().ok_or("InternalError: Invalid argument reference".into())
   }
   pub(crate) fn sched_free_tmp(&mut self, label: &Label) {
-    if let Label { kind: Tmp { offset }, size } = label {
+    if let Label { mem: Tmp { offset }, size } = label {
       self.free_list.push((*offset, *size));
     }
   }
 }
 impl Label {
   pub(crate) fn describe(&self) -> &str {
-    match self.kind {
+    match self.mem {
       Tmp { .. } => "Temporary value",
       Local { .. } => "Local variable",
       Global { .. } => "Global variable",
@@ -44,5 +47,34 @@ impl VarKind {
       Global { .. } => 5,
       Local { .. } | Tmp { .. } => 6,
     }
+  }
+}
+/*
+impl Disp {
+  pub(crate) fn size(self) -> u32 {
+    match self {
+      Disp::Zero => 0,
+      Disp::Byte(_) => 1,
+      Disp::Dword(_) => 4,
+    }
+  }
+}
+*/
+impl<T> From<T> for Operand<T>
+where
+  T: Copy + Add<Output = T>,
+{
+  fn from(src: T) -> Operand<T> {
+    Imm(src)
+  }
+}
+impl<T> From<Register> for Operand<T> {
+  fn from(src: Register) -> Operand<T> {
+    Reg(src)
+  }
+}
+impl<T> From<VarKind> for Operand<T> {
+  fn from(src: VarKind) -> Operand<T> {
+    Mem(src)
   }
 }

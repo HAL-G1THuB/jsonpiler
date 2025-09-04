@@ -8,7 +8,7 @@ define(
       { $i < 50 } and { Int( { $zx * $zx } + { $zy * $zy } ) < 4 },
       {
         tmp = { { { $zx * $zx } - { $zy * $zy } } + $cr }
-        zy  = { { { 2.0 * $zx } * $zy } + $ci }
+        zy  = { { 2.0 * $zx * $zy } + $ci }
         zx  = $tmp
         i   = { $i + 1 }
       }
@@ -18,16 +18,16 @@ define(
 )
 
 define(
-  render_row, { y: Float }, Null,
+  render_row, { y: Int }, Null,
   {
-    x = -50.0
+    x = -50
     while(
-      Int($x) < 50,
+      $x < 50,
       {
-        fx = {$x * 0.03}
-        fy = {$y * 0.06}
+        fx = {Float($x) * 0.03}
+        fy = {Float($y) * 0.06}
         iter = julia($fx, $fy)
-        str = ""
+        str = " "
         if(
         [$iter == 50, str = "#"],
         [45 < $iter,  str = "@"],
@@ -38,11 +38,10 @@ define(
         [20 < $iter,  str = "+"],
         [15 < $iter,  str = "="],
         [10 < $iter,  str = "-"],
-        [5  < $iter,  str = "."],
-        [true,        str = " "]
+        [5  < $iter,  str = "."]
         )
         print($str)
-        x = {$x + 1.0}
+        x = {$x + 1}
       }
     )
     print("\n")
@@ -52,12 +51,12 @@ define(
 define(
   main, {}, Null,
   {
-    y = -20.0
+    y = -20
     while(
-      Int($y) < 20,
+      $y < 20,
       {
         render_row($y)
-        y = {$y + 1.0}
+        y = {$y + 1}
       }
     )
   }

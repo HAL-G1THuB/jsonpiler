@@ -35,10 +35,11 @@ impl Parser {
     if self.source.is_empty() {
       return gen_err(0, "\n^");
     }
+    let find_ln = |i: &usize| self.source[*i] == b'\n';
     let len = self.source.len();
     let index = pos.offset.min(len);
-    let start = (0..index).rfind(|i| self.source[*i] == b'\n').map_or(0, |st| st + 1);
-    let end = (index..len).find(|i| self.source[*i] == b'\n').unwrap_or(len);
+    let start = (0..index).rfind(&find_ln).map_or(0, |st| st + 1);
+    let end = (index..len).find(&find_ln).unwrap_or(len);
     let line = &self.source[start..end];
     let line_str = String::from_utf8_lossy(line);
     let caret_start = index - start;

@@ -8,7 +8,7 @@
     {"name": "String (Literal)"},
     {"params": "TypeAnnotations"},
     {"return_type": "String (Literal)"},
-    {"body": "Sequence"}
+    {"body": "Block"}
   ]
 } -> "Null"
 ```
@@ -51,7 +51,7 @@ The `define` keyword also introduces a new scope.
 
 ```json
 {"if": [
-  [{"condition": "Bool"}, {"then": "Sequence"}], "..."
+  [{"condition": "Bool"}, {"then": "Block"}], "..."
   ]
 } -> "Null"
 ```
@@ -94,7 +94,7 @@ Regardless of which branch is taken, the overall result is always `null`.
 ## while
 
 ```json
-{"while": [{"condition": "Bool"}, {"body": "Sequence"}]} -> "Null"
+{"while": [{"condition": "Bool"}, {"body": "Block"}]} -> "Null"
 ```
 
 ```jspl

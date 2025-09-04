@@ -19,14 +19,14 @@ If the given boolean is `false`, an error is generated at runtime.
 ## not
 
 ```json
-{"not": "Bool"} -> "Bool (Temporary Value)"
+{"not": "Bool or Int"} -> "Bool or Int (Temporary Value)"
 ```
 
 ```jspl
 not(bool)
 ```
 
-Returns the logical NOT of the given boolean.
+Returns the logical NOT of the given boolean or integer.
 
 ```json
 {"not": true} => false
@@ -35,14 +35,14 @@ Returns the logical NOT of the given boolean.
 ## and
 
 ```json
-{"and": ["Bool", "Bool", "..."]} -> "Bool (Temporary Value)"
+{"and": ["Bool or Int", "Bool or Int", "..."]} -> "Bool or Int (Temporary Value)"
 ```
 
 ```jspl
 bool and bool
 ```
 
-Returns the logical AND of the given booleans.
+Returns the logical AND of the given booleans or integers.
 
 ```json
 {"and": [true, false]} => false
@@ -51,14 +51,14 @@ Returns the logical AND of the given booleans.
 ## or
 
 ```json
-{"or": ["Bool", "Bool", "..."]} -> "Bool (Temporary Value)"
+{"or": ["Bool or Int", "Bool or Int", "..."]} -> "Bool or Int (Temporary Value)"
 ```
 
 ```jspl
 bool or bool
 ```
 
-Returns the logical OR of the given booleans.
+Returns the logical OR of the given booleans or integers.
 
 ```json
 {"or": [true, false]} => true
@@ -67,14 +67,14 @@ Returns the logical OR of the given booleans.
 ## xor
 
 ```json
-{"xor": ["Bool", "Bool", "..."]} -> "Bool (Temporary Value)"
+{"xor": ["Bool or Int", "Bool or Int", "..."]} -> "Bool or Int (Temporary Value)"
 ```
 
 ```jspl
 bool xor bool
 ```
 
-Returns the logical OR of the given booleans.
+Returns the logical OR of the given booleans or integers.
 
 ```json
 {"xor": [true, false]} => true

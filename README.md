@@ -30,10 +30,12 @@ Jsonpiler now has a function to support GUI.
 
 ## What’s New
 
-### 0.7.0
+### 0.7.1
 
-- `global` is now reassignable.
-- `global` is now thread-safe.
+- Added ability to perform `Int` bitwise operations on `not`, `and`, `or`, and `xor`.
+- Revised memory efficiency and structure of assembly intermediate representation.
+- The arithmetic operators (`+`, `-`, `*`, `/`, `%`) on `Int` support constant folding.
+- Changed to put string literals in the .rdata section.
 - GUI feature added: `GUI`.
 - jspl supports new notation: `1 + 10 + 1` is now interpreted as `+(1, 10, 1)`.
 - Semicolons are now required when writing multiple function calls on the same line in jspl.
@@ -48,9 +50,9 @@ No external toolchains or libraries are required.
 
 **The following system DLLs must be available in `C:\\Windows\\System32\\`:**
 
-- `kernel32.dll`
-- `user32.dll`
-
+- `gdi32.dll`(`GUI`, etc.)
+- `kernel32.dll`(required)
+- `user32.dll`(`message`, `GUI`, etc.)
 These are present on standard Windows installations.
 
 ---

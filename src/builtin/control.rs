@@ -6,12 +6,15 @@ use crate::{
   ErrOR, FuncInfo,
   Inst::*,
   Json, Jsonpiler, Label,
-  OpQ::{Args, Iq, Mq, Rq},
+  LogicByteOpcode::*,
+  Operand::Args,
   Position,
-  Reg::*,
+  Register::*,
   ScopeInfo,
   VarKind::Global,
-  WithPos, built_in, err, take_arg, unwrap_arg, warn,
+  WithPos, built_in, err, take_arg, unwrap_arg,
+  utility::{mov_b, mov_q},
+  warn,
 };
 use core::mem::{discriminant, replace, take};
 built_in! {self, func, scope, control;
@@ -51,8 +54,7 @@ built_in! {self, func, scope, control;
     let ret_val = self.json_from_string(&ret_str.value, ret_str.pos, scope.local(8, 8)?)?;
     let id = self.gen_id();
     self.user_defined.insert(name.value.clone(), AsmFunc { id, params, ret: ret_val.clone(), file: func.pos.file });
-    let reg_align = scope.reg_align()?;
-    let object = take_arg!(self, func, "Sequence", Json::Object(Lit(x)) => x);
+    let object = take_arg!(self, func, "Block", Json::Object(Lit(x)) => x);
     let ret_jwp = WithPos{value: self.eval_object(object.value, object.pos, scope)?, pos: object.pos};
     if discriminant(&ret_val) != discriminant(&ret_jwp.value){
       return Err(self.parser[ret_jwp.pos.file].type_error(
@@ -63,23 +65,19 @@ built_in! {self, func, scope, control;
           );
     }
     self.insts.push(Lbl(id));
-    let size = scope.resolve_stack_size(reg_align)?;
-    let regs = scope.take_regs();
-    for reg in &regs {
-      self.insts.push(Push(*reg));
-    }
+    let size = scope.resolve_stack_size()?;
     self.insts.push(Push(Rbp));
-    self.insts.push(MovQQ(Rq(Rbp), Rq(Rsp)));
+    self.insts.push(mov_q(Rbp, Rsp));
     self.insts.push(SubRId(Rsp, size));
     for (idx, local) in args.into_iter().enumerate() {
       let reg = *Jsonpiler::REGS.get(idx).unwrap_or(&Rax);
       if reg == Rax {
-        self.insts.push(MovQQ(Rq(Rax), Args(8 * idx + usize::try_from(size)? + (scope.reg_size() + 2) * 8)));
+        self.insts.push(mov_q(Rax, Args(8 * idx + usize::try_from(size)? + 16)));
       }
       if local.size == 1 {
-        self.insts.push(MovMbRb(local.kind, reg));
+        self.insts.push(mov_b(local.mem, reg));
       } else {
-        self.insts.push(MovQQ(Mq(local.kind), Rq(reg)));
+        self.insts.push(mov_q(local.mem, reg));
       }
     }
     let new_scope =  replace(scope, old_scope);
@@ -87,12 +85,9 @@ built_in! {self, func, scope, control;
       self.insts.push(body);
     }
     self.return_value(&ret_jwp)?;
-    self.insts.push(MovQQ(Rq(Rsp), Rq(Rbp)));
+    self.insts.push(mov_q(Rsp, Rbp));
     self.insts.push(Pop(Rbp));
-    for reg in regs.iter().rev() {
-      self.insts.push(Pop(*reg));
-    }
-    self.insts.push(Ret);
+    self.insts.push(Custom(&Jsonpiler::RET));
     Ok(Json::Null)
   }},
   f_if => {"if", SP_SCOPE, AtLeast(1), {
@@ -116,7 +111,7 @@ built_in! {self, func, scope, control;
       let then_jwp = cond_then.value.remove(0);
       let cond = WithPos{pos: cond_jwp.pos, value: self.eval(take(&mut cond_jwp), scope)?};
       let cond_bool = unwrap_arg!(self, cond, func, "Bool", Json::Bool(x) => x).value;
-      let object = unwrap_arg!(self, then_jwp, func, "Sequence", Json::Object(Lit(x)) => x).value;
+      let object = unwrap_arg!(self, then_jwp, func, "Block", Json::Object(Lit(x)) => x).value;
       match cond_bool {
         Lit(l_bool) => {
           if l_bool {
@@ -128,8 +123,8 @@ built_in! {self, func, scope, control;
         }
         Var(cond_label) => {
           func.sched_free_tmp(&cond_label);
-          scope.push(MovRbMb(Rax, cond_label.kind));
-          scope.push(TestRbRb(Rax, Rax));
+          scope.push(mov_b(Rax, cond_label.mem));
+          scope.push(LogicRbRb(Test, Rax, Rax));
           let next_label = self.gen_id();
           scope.push(Jcc(E, next_label));
           let then_result = self.eval_object(object, cond_then.pos, scope)?;
@@ -145,7 +140,7 @@ built_in! {self, func, scope, control;
   f_while => {"while", SP_SCOPE, Exactly(2), {
     let mut cond_jwp = func.arg()?;
     let body =
-    take_arg!(self, func, "Sequence", Json::Object(Lit(x)) => x);
+    take_arg!(self, func, "Block", Json::Object(Lit(x)) => x);
     let while_start = self.gen_id();
     let while_end   = self.gen_id();
     scope.push(Lbl(while_start));
@@ -166,8 +161,8 @@ built_in! {self, func, scope, control;
       }
       Var(cond_label) => {
         func.sched_free_tmp(&cond_label);
-        scope.push(MovRbMb(Rax, cond_label.kind));
-        scope.push(TestRbRb(Rax, Rax));
+        scope.push(mov_b(Rax, cond_label.mem));
+        scope.push(LogicRbRb(Test, Rax, Rax));
         scope.push(Jcc(E, while_end));
         let body_result = self.eval_object(body.value, body.pos, scope)?;
         scope.drop_json(body_result)?;
@@ -196,21 +191,23 @@ impl Jsonpiler {
         Json::String(string) => {
           let inst = match string {
             Lit(l_str) => {
-              let id = self.global_str(l_str.clone());
+              let id = self.global_str(l_str.clone()).0;
               LeaRM(Rax, Global { id, disp: 0i32 })
             }
-            Var(str_label) => MovQQ(Rq(Rax), Mq(str_label.kind)),
+            Var(str_label) => mov_q(Rax, str_label.mem),
           };
           self.insts.push(inst);
         }
         Json::Float(Var(label)) | Json::Bool(Var(label)) | Json::Int(Var(label)) => {
-          self.insts.push(MovQQ(Rq(Rax), Mq(label.kind)));
+          self.insts.push(mov_q(Rax, label.mem));
         }
         Json::Null => self.insts.push(Clear(Rax)),
         #[expect(clippy::cast_sign_loss)]
-        Json::Int(Lit(l_int)) => self.insts.push(MovQQ(Rq(Rax), Iq(*l_int as u64))),
-        Json::Bool(Lit(l_bool)) => self.insts.push(MovRbIb(Rax, if *l_bool { 0xFF } else { 0 })),
-        Json::Float(Lit(l_float)) => self.insts.push(MovQQ(Rq(Rax), Iq(l_float.to_bits()))),
+        Json::Int(Lit(l_int)) => self.insts.push(mov_q(Rax, *l_int as u64)),
+        Json::Bool(Lit(l_bool)) => {
+          self.insts.push(mov_b(Rax, if *l_bool { 0xFF } else { 0 }));
+        }
+        Json::Float(Lit(l_float)) => self.insts.push(mov_q(Rax, l_float.to_bits())),
         Json::Array(_) | Json::Object(_) => {
           return err!(
             self,

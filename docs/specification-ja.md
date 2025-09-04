@@ -29,7 +29,7 @@ Jsonpiler 言語の仕様。
 { "key": "value" }
 ```
 
-- **Sequence**：命令の順序付き列。
+- **Block**：命令の順序付き列。
 
 ```json
 {

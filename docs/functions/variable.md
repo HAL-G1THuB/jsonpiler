@@ -3,7 +3,7 @@
 ## scope
 
 ```json
-{"scope": {"expression": "Sequence"}} -> "Any"
+{"scope": {"expression": "Block"}} -> "Any"
 ```
 
 ```jspl

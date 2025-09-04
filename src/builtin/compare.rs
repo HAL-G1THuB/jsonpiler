@@ -1,126 +1,51 @@
 use crate::{
-  Arity::AtLeast, Bind::Var, ConditionCode::*, ErrOR, FuncInfo, Inst::*, Json, Jsonpiler, Reg::*,
+  Arity::AtLeast,
+  ConditionCode::{self, *},
+  ErrOR, FuncInfo,
+  Inst::*,
+  Json, Jsonpiler,
+  LogicByteOpcode::*,
+  Register::*,
   ScopeInfo, built_in,
+  utility::mov_b,
 };
 built_in! {self, func, scope, compare;
   eq => {"==", COMMON, AtLeast(2), {
-    self.take_int(Rax, func, scope)?;
-    let false_label = self.gen_id();
-    for idx in 1..func.len {
-      self.take_int(if idx % 2 == 0 { Rax } else { Rcx }, func, scope)?;
-      scope.extend(&[CmpRR(Rax, Rcx), Jcc(Ne, false_label)]);
-    }
-    let end_label = self.gen_id();
-    let return_value = scope.tmp(1, 1)?;
-    scope.extend(&[
-      MovMbIb(return_value.kind, 0xFF),
-      JmpSh(end_label),
-      Lbl(false_label),
-      MovMbIb(return_value.kind, 0),
-      Lbl(end_label)
-    ]);
-    Ok(Json::Bool(Var(return_value)))
+    self.compare_template(E, func, scope)
   }},
   grater => {">", COMMON, AtLeast(2), {
-    self.take_int(Rax, func, scope)?;
-    let false_label = self.gen_id();
-    for idx in 1..func.len {
-      self.take_int(if idx % 2 == 0 { Rax } else { Rcx }, func, scope)?;
-      scope.extend(&[
-        CmpRR(Rax, Rcx),
-        Jcc(if idx % 2 == 0 { Ge } else { L }, false_label),
-      ]);
-    }
-    let end_label = self.gen_id();
-    let return_value = scope.tmp(1, 1)?;
-    scope.extend(&[
-      MovMbIb(return_value.kind, 0xFF),
-      JmpSh(end_label),
-      Lbl(false_label),
-      MovMbIb(return_value.kind, 0),
-      Lbl(end_label)
-    ]);
-    Ok(Json::Bool(Var(return_value)))
+    self.compare_template(G, func, scope)
   }},
   grater_eq => {">=", COMMON, AtLeast(2), {
-    self.take_int(Rax, func, scope)?;
-    let false_label = self.gen_id();
-    for idx in 1..func.len {
-      self.take_int(if idx % 2 == 0 { Rax } else { Rcx }, func, scope)?;
-      scope.extend(&[
-        CmpRR(Rax, Rcx),
-        Jcc(if idx % 2 == 0 { G } else { Le }, false_label),
-      ]);
-    }
-    let end_label = self.gen_id();
-    let return_value = scope.tmp(1, 1)?;
-    scope.extend(&[
-      MovMbIb(return_value.kind, 0xFF),
-      JmpSh(end_label),
-      Lbl(false_label),
-      MovMbIb(return_value.kind, 0),
-      Lbl(end_label)
-    ]);
-    Ok(Json::Bool(Var(return_value)))
+    self.compare_template(Ge, func, scope)
   }},
   less => {"<", COMMON, AtLeast(2), {
-    self.take_int(Rax, func, scope)?;
-    let false_label = self.gen_id();
-    for idx in 1..func.len {
-      self.take_int(if idx % 2 == 0 { Rax } else { Rcx }, func, scope)?;
-      scope.extend(&[
-        CmpRR(Rax, Rcx),
-        Jcc(if idx % 2 == 0 { L } else { Ge }, false_label),
-      ]);
-    }
-    let end_label = self.gen_id();
-    let return_value = scope.tmp(1, 1)?;
-    scope.extend(&[
-      MovMbIb(return_value.kind, 0xFF),
-      JmpSh(end_label),
-      Lbl(false_label),
-      MovMbIb(return_value.kind, 0),
-      Lbl(end_label)
-    ]);
-    Ok(Json::Bool(Var(return_value)))
+    self.compare_template(L, func, scope)
   }},
   less_eq => {"<=", COMMON, AtLeast(2), {
-    self.take_int(Rax, func, scope)?;
-    let false_label = self.gen_id();
-    for idx in 1..func.len {
-      self.take_int(if idx % 2 == 0 { Rax } else { Rcx }, func, scope)?;
-      scope.extend(&[
-        CmpRR(Rax, Rcx),
-        Jcc(if idx % 2 == 0 { Le } else { G }, false_label),
-      ]);
-    }
-    let end_label = self.gen_id();
-    let return_value = scope.tmp(1, 1)?;
-    scope.extend(&[
-      MovMbIb(return_value.kind, 0xFF),
-      JmpSh(end_label),
-      Lbl(false_label),
-      MovMbIb(return_value.kind, 0),
-      Lbl(end_label)
-    ]);
-    Ok(Json::Bool(Var(return_value)))
+    self.compare_template(Le, func, scope)
   }},
   not_eq => {"!=", COMMON, AtLeast(2), {
-    self.take_int(Rax, func, scope)?;
-    let false_label = self.gen_id();
-    for idx in 1..func.len {
-      self.take_int(if idx % 2 == 0 { Rax } else { Rcx }, func, scope)?;
-      scope.extend(&[CmpRR(Rax, Rcx), Jcc(E, false_label)]);
-    }
-    let end_label = self.gen_id();
-    let return_value = scope.tmp(1, 1)?;
-    scope.extend(&[
-      MovMbIb(return_value.kind, 0xFF),
-      JmpSh(end_label),
-      Lbl(false_label),
-      MovMbIb(return_value.kind, 0),
-      Lbl(end_label)
-    ]);
-    Ok(Json::Bool(Var(return_value)))
+    self.compare_template(Ne, func, scope)
   }},
+}
+impl Jsonpiler {
+  fn compare_template(
+    &self, cc: ConditionCode, func: &mut FuncInfo, scope: &mut ScopeInfo,
+  ) -> ErrOR<Json> {
+    self.take_int(Rax, func, scope)?;
+    scope.extend(&[mov_b(Rdx, 0xFF)]);
+    for idx in 1..func.len {
+      let old_reg = if idx % 2 == 0 { Rcx } else { Rax };
+      let new_reg = if idx % 2 == 0 { Rax } else { Rcx };
+      self.take_int(new_reg, func, scope)?;
+      scope.extend(&[
+        LogicRR(Cmp, old_reg, new_reg),
+        SetCc(cc, old_reg),
+        NegRb(old_reg),
+        LogicRbRb(And, Rdx, old_reg),
+      ]);
+    }
+    scope.mov_tmp_bool(Rdx)
+  }
 }

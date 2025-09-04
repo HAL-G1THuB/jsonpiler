@@ -20,7 +20,7 @@ If the given integer is `0x8000000000000000` (the smallest 64-bit signed integer
 ## +
 
 ```json
-{"+": ["Float or Int", "Float or Int", "..."]} -> "Float or Int (Temporary Value)"
+{"+": ["Float or Int", "Float or Int", "..."]} -> "Float or Int (Temporary Value or Literal)"
 ```
 
 ```jspl
@@ -37,7 +37,7 @@ Returns the sum of all operands.
 ## -
 
 ```json
-{ "-": ["Float or Int", "..."] } -> "Float or Int (Temporary Value)"
+{ "-": ["Float or Int", "..."] } -> "Float or Int (Temporary Value or Literal)"
 ```
 
 ```jspl
@@ -55,7 +55,7 @@ If given one argument, invert the sign.
 ## *
 
 ```json
-{"*": ["Float or Int", "Float or Int", "..."]} -> "Float or Int (Temporary Value)"
+{"*": ["Float or Int", "Float or Int", "..."]} -> "Float or Int (Temporary Value or Literal)"
 ```
 
 ```jspl
@@ -72,7 +72,7 @@ Returns the result of multiplying operands.
 ## /
 
 ```json
-{"/": ["Float or Int", "Float or Int", "..."]} -> "Float or Int (Temporary Value)"
+{"/": ["Float or Int", "Float or Int", "..."]} -> "Float or Int (Temporary Value or Literal)"
 ```
 
 ```jspl
@@ -90,7 +90,7 @@ If the number to divide is zero, an error is generated at runtime or compile tim
 ## %
 
 ```json
-{"%": ["Int", "Int"]} -> "Int (Temporary Value)"
+{"%": ["Int", "Int"]} -> "Int (Temporary Value or Literal)"
 ```
 
 ```jspl

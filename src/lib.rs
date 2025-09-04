@@ -10,7 +10,7 @@ This program performs the following steps:
 7. Executes the resulting binary.
 8. Returns its exit code.
 # Panics
-This function will panic if:
+This program will panic if:
 - The platform is not Windows.
 - CLI arguments are invalid.
 - File reading, parsing, compilation, assembling, linking, or execution fails.
@@ -49,7 +49,7 @@ enum Disp {
 }
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[expect(dead_code, clippy::arbitrary_source_item_ordering)]
-enum Reg {
+enum Register {
   Rax = 0,
   Rcx = 1,
   Rdx = 2,
@@ -69,10 +69,9 @@ enum Reg {
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[expect(clippy::allow_attributes)]
-enum Memory {
-  #[allow(dead_code)]
-  Base(Reg, Disp),
-  Reg(Reg),
+enum RM {
+  Base(Register, Disp),
+  Reg(Register),
   RipRel(i32),
   #[allow(dead_code)]
   Sib(Sib),
@@ -87,9 +86,9 @@ enum Scale {
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct Sib {
-  base: Reg,
+  base: Register,
   disp: Disp,
-  index: Reg,
+  index: Register,
   scale: Scale,
 }
 #[repr(u8)]
@@ -99,17 +98,18 @@ enum Sect {
   Data,
   Idata,
   Text,
+  Rdata,
 }
 struct Assembler {
-  addr_sect: HashMap<usize, Sect>,
+  addr_sect: HashMap<u32, Sect>,
   dlls: Dlls,
   rva: HashMap<Sect, u32>,
-  sym_addr: HashMap<usize, u32>,
+  sym_addr: HashMap<u32, u32>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 #[non_exhaustive]
-#[expect(clippy::arbitrary_source_item_ordering, clippy::min_ident_chars, dead_code)]
+#[expect(clippy::min_ident_chars, dead_code)]
 enum ConditionCode {
   O = 0,
   No = 1,
@@ -128,79 +128,80 @@ enum ConditionCode {
   Le = 14,
   G = 15,
 }
-type Dlls = Vec<(&'static str, Vec<(u16, &'static str)>)>;
+type Dlls = Vec<(&'static str, Vec<&'static str>)>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+enum LogicByteOpcode {
+  And = 0x22,
+  Or = 0x0A,
+  Xor = 0x32,
+  Cmp = 0x3A,
+  Test = 0x84,
+}
+#[derive(Clone, Debug)]
+enum DataInst {
+  Bss(u32, u32, u32),
+  Byte(u32, u8),
+  #[expect(clippy::box_collection)]
+  Bytes(u32, Box<String>),
+  Quad(u32, u64),
+  RDAlign(usize),
+}
 #[derive(Clone, Debug)]
 enum Inst {
-  AddRId(Reg, u32),
-  AddRR(Reg, Reg),
-  AddSd(Reg, Reg),
-  AndRbRb(Reg, Reg),
-  Bss(usize, u32, u32),
-  Byte(usize, u8),
-  Call(usize),
-  CallApi((usize, usize)),
-  Clear(Reg),
-  CmpRIb(Reg, i8),
-  CmpRR(Reg, Reg),
-  Custom(Vec<u8>),
-  CvtTSd2Si(Reg, Reg),
-  CvtTSi2Sd(Reg, Reg),
-  DecR(Reg),
-  DivSd(Reg, Reg),
-  IDivR(Reg),
-  IMulRR(Reg, Reg),
-  IncR(Reg),
-  Jcc(ConditionCode, usize),
-  Jmp(usize),
-  JmpSh(usize),
-  Lbl(usize),
-  LeaRM(Reg, VarKind),
-  MovDD(OpD, OpD),
-  MovMbIb(VarKind, u8),
-  MovMbRb(VarKind, Reg),
-  MovQQ(OpQ, OpQ),
-  MovRId(Reg, u32),
-  MovRbIb(Reg, u8),
-  MovRbMb(Reg, VarKind),
-  MovSdMX(VarKind, Reg),
-  MovSdXM(Reg, VarKind),
-  MulSd(Reg, Reg),
-  NegR(Reg),
-  NotRb(Reg),
-  OrRbRb(Reg, Reg),
-  Pop(Reg),
-  Push(Reg),
-  Quad(usize, u64),
-  Ret,
+  AddRId(Register, u32),
+  AddRR(Register, Register),
+  AddSd(Register, Register),
+  Call(u32),
+  CallApi((u32, u32)),
+  Clear(Register),
+  CmpRIb(Register, i8),
+  Custom(&'static &'static [u8]),
+  CvtSi2Sd(Register, Register),
+  CvtTSd2Si(Register, Register),
+  DecR(Register),
+  DivSd(Register, Register),
+  IDivR(Register),
+  IMulRR(Register, Register),
+  IncR(Register),
+  Jcc(ConditionCode, u32),
+  Jmp(u32),
   #[expect(dead_code)]
-  SarRIb(Reg, u8),
-  Shl1R(Reg),
-  ShlRIb(Reg, u8),
-  ShrRIb(Reg, u8),
-  StringZ(usize, String),
-  SubRId(Reg, u32),
-  SubRR(Reg, Reg),
-  SubSd(Reg, Reg),
-  TestRR(Reg, Reg),
-  TestRbRb(Reg, Reg),
-  TestRdRd(Reg, Reg),
-  XorRR(Reg, Reg),
-  XorRbRb(Reg, Reg),
+  JmpSh(u32),
+  Lbl(u32),
+  LeaRM(Register, VarKind),
+  LogicRR(LogicByteOpcode, Register, Register),
+  LogicRbRb(LogicByteOpcode, Register, Register),
+  MovBB(Box<(Operand<u8>, Operand<u8>)>),
+  MovDD(Box<(Operand<u32>, Operand<u32>)>),
+  MovQQ(Box<(Operand<u64>, Operand<u64>)>),
+  MovSdMX(VarKind, Register),
+  MovSdXM(Register, VarKind),
+  MulSd(Register, Register),
+  NegR(Register),
+  NegRb(Register),
+  NotR(Register),
+  NotRb(Register),
+  Pop(Register),
+  Push(Register),
+  #[expect(dead_code)]
+  SarRIb(Register, u8),
+  SetCc(ConditionCode, Register),
+  Shl1R(Register),
+  ShlRIb(Register, u8),
+  ShrRIb(Register, u8),
+  SubRId(Register, u32),
+  SubRR(Register, Register),
+  SubSd(Register, Register),
+  TestRdRd(Register, Register),
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum OpQ {
+enum Operand<T> {
   Args(usize),
-  Iq(u64),
-  Mq(VarKind),
-  RefQ(Reg),
-  Rq(Reg),
-}
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum OpD {
-  Id(u32),
-  Md(VarKind),
-  Rd(Reg),
-  RefD(Reg),
+  Imm(T),
+  Mem(VarKind),
+  Ref(Register),
+  Reg(Register),
 }
 #[derive(Copy, Clone)]
 enum Arity {
@@ -216,7 +217,7 @@ enum Arity {
 #[derive(Debug, Clone)]
 struct AsmFunc {
   file: usize,
-  id: usize,
+  id: u32,
   params: Vec<Json>,
   ret: Json,
 }
@@ -254,19 +255,21 @@ enum Json {
 #[doc(hidden)]
 pub struct Jsonpiler {
   builtin: HashMap<String, Builtin>,
+  data_insts: Vec<DataInst>,
   files: Vec<HashMap<String, AsmFunc>>,
   globals: HashMap<String, Json>,
   import_table: Dlls,
   insts: Vec<Inst>,
-  label_id: usize,
+  label_id: u32,
   parser: Vec<Parser>,
-  str_cache: HashMap<String, usize>,
-  sym_table: HashMap<&'static str, usize>,
+  startup: Vec<Inst>,
+  str_cache: HashMap<String, (u32, usize)>,
+  sym_table: HashMap<&'static str, u32>,
   user_defined: HashMap<String, AsmFunc>,
 }
 #[derive(Debug, Clone, Copy)]
 struct Label {
-  kind: VarKind,
+  mem: VarKind,
   size: i32,
 }
 #[derive(Debug, Copy, Clone, Default)]
@@ -278,7 +281,7 @@ struct Position {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VarKind {
-  Global { id: usize, disp: i32 },
+  Global { id: u32, disp: i32 },
   Local { offset: i32 },
   Tmp { offset: i32 },
 }
