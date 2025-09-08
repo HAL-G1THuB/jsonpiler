@@ -8,7 +8,7 @@ define(
       { $i < 50 } and { Int( { $zr * $zr } + { $zi * $zi } ) < 4 },
       {
         tmp = { { { $zr * $zr } - { $zi * $zi } } + $cr}
-        zi = { { { 2.0 * $zr } * $zi }  + $ci }
+        zi = { { { 2.0 * $zr } * $zi } + $ci }
         zr = $tmp
         i = { $i + 1 }
       }
@@ -40,7 +40,7 @@ define(
         [5  < $iter,  str = "."]
         )
         print($str)
-        x = {$x + 1}
+        x = { $x + 1 }
       }
     )
     print("\n")
@@ -55,7 +55,7 @@ define(
       $y < 20,
       {
         render_row($y)
-        y = {$y + 1}
+        y = { $y + 1 }
       }
     )
   }

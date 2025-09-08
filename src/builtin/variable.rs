@@ -4,11 +4,10 @@ use crate::{
   ErrOR, FuncInfo,
   Inst::*,
   Json, Jsonpiler, Label,
+  Memory::Global,
   Register::*,
-  ScopeInfo,
-  VarKind::Global,
-  built_in, err, get_target_mem, take_arg,
-  utility::{mov_b, mov_bool, mov_q},
+  ScopeInfo, built_in, err, get_target_mem, take_arg,
+  utility::{mov_b, mov_bool, mov_int, mov_q},
 };
 use core::mem::discriminant;
 impl Jsonpiler {
@@ -62,13 +61,10 @@ impl Jsonpiler {
           self.enter_c_s(scope)?;
         }
         let mem = get_target_mem!(
-          self, scope, is_global, 8,ref_label,
-          Json::Int(Var(label )) => label.mem
+          self, scope, is_global, 8, ref_label,
+          Json::Int(Var(label)) => label.mem
         );
-        scope.push(match int {
-          Lit(l_int) => mov_q(Rax, l_int as u64),
-          Var(int_label) => mov_q(Rax, int_label.mem),
-        });
+        mov_int(&int, Rax, scope);
         scope.push(mov_q(mem, Rax));
         if is_global {
           self.leave_c_s(scope)?;

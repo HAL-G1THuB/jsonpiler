@@ -6,11 +6,10 @@ use crate::{
   Inst::{self, *},
   Json, Jsonpiler,
   LogicByteOpcode::*,
+  Memory::*,
   Operand, Parser,
   Register::{self, *},
-  ScopeInfo,
-  VarKind::*,
-  take_arg,
+  ScopeInfo, take_arg,
 };
 use std::{
   collections::HashMap,
@@ -30,7 +29,7 @@ impl Jsonpiler {
   pub(crate) const SP_SCOPE: (bool, bool) = (true, true);
   pub(crate) const USER32: &'static str = "user32.dll";
   pub(crate) fn call_api_check_null(&self, api: (u32, u32)) -> [Inst; 3] {
-    [CallApi(api), LogicRR(Test, Rax, Rax), Jcc(E, self.sym_table["WIN_HANDLER"])]
+    [CallApi(api), LogicRR(Test, Rax, Rax), JCc(E, self.sym_table["WIN_HANDLER"])]
   }
   // Overflow is unlikely.
   pub(crate) fn gen_id(&mut self) -> u32 {
@@ -86,43 +85,6 @@ impl Jsonpiler {
       u32::try_from(inner_idx).or(Err("InternalError: Overflow"))?,
     ))
   }
-  pub(crate) fn mov_float_xmm(
-    &self, float: &Bind<f64>, xmm: Register, reg: Register, scope: &mut ScopeInfo,
-  ) {
-    let addr = match float {
-      Bind::Lit(l_float) => {
-        scope.push(mov_q(reg, l_float.to_bits()));
-        let tmp = Global { id: self.sym_table["TMP"], disp: 0i32 };
-        scope.push(mov_q(tmp, reg));
-        tmp
-      }
-      Bind::Var(label) => label.mem,
-    };
-    scope.push(MovSdXM(xmm, addr));
-  }
-  pub(crate) fn mov_len_c_a_d(&self, string: &Bind<String>, dst: Register, scope: &mut ScopeInfo) {
-    match string {
-      Lit(l_str) => scope.push(mov_q(dst, l_str.len() as u64)),
-      Var(label) => {
-        const CLD_REPNE_SCASB: &[u8] = &[0xFC, 0xF2, 0xAE];
-        let tmp = Global { id: self.sym_table["TMP"], disp: 0i32 };
-        scope.push(mov_q(dst, label.mem));
-        scope.extend(&[
-          mov_q(tmp, Rdi),
-          mov_q(Rdx, label.mem),
-          mov_q(Rdi, Rdx),
-          Clear(Rcx),
-          DecR(Rcx),
-          Clear(Rax),
-          Custom(&CLD_REPNE_SCASB),
-          SubRR(Rdi, Rdx),
-          DecR(Rdi),
-          mov_q(dst, Rdi),
-          mov_q(Rdi, tmp),
-        ]);
-      }
-    }
-  }
   pub(crate) fn mov_str(&mut self, string: Bind<String>, dst: Register, scope: &mut ScopeInfo) {
     match string {
       Lit(l_str) => {
@@ -134,9 +96,10 @@ impl Jsonpiler {
   }
   pub(crate) fn mov_str_len_c_a_d(
     &mut self, string: Bind<String>, str_reg: Register, len_reg: Register, scope: &mut ScopeInfo,
-  ) {
-    self.mov_len_c_a_d(&string, len_reg, scope);
+  ) -> ErrOR<()> {
+    mov_len_c_a_d(&string, len_reg, scope)?;
     self.mov_str(string, str_reg, scope);
+    Ok(())
   }
   // fn format(&mut self, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {}
   #[inline]
@@ -168,7 +131,7 @@ impl Jsonpiler {
     &self, xmm: Register, reg: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
   ) -> ErrOR<()> {
     let float = take_arg!(self, func, "Float", Json::Float(x) => x).value;
-    self.mov_float_xmm(&float, xmm, reg, scope);
+    mov_float_xmm(&float, xmm, reg, scope)?;
     Ok(())
   }
   pub(crate) fn take_int(
@@ -182,7 +145,7 @@ impl Jsonpiler {
     &mut self, dst: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
   ) -> ErrOR<()> {
     let string = take_arg!(self, func, "String", Json::String(x) => x).value;
-    self.mov_len_c_a_d(&string, dst, scope);
+    mov_len_c_a_d(&string, dst, scope)?;
     Ok(())
   }
   pub(crate) fn take_str(
@@ -196,8 +159,7 @@ impl Jsonpiler {
     &mut self, str_reg: Register, len_reg: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
   ) -> ErrOR<()> {
     let string = take_arg!(self, func, "String", Json::String(x) => x).value;
-    self.mov_str_len_c_a_d(string, str_reg, len_reg, scope);
-    Ok(())
+    self.mov_str_len_c_a_d(string, str_reg, len_reg, scope)
   }
 }
 pub(crate) fn align_up(num: usize, align: usize) -> ErrOR<usize> {
@@ -231,7 +193,17 @@ pub(crate) fn mov_float_reg(float: &Bind<f64>, dst: Register, scope: &mut ScopeI
 pub(crate) fn mov_int(int: &Bind<i64>, dst: Register, scope: &mut ScopeInfo) {
   #[expect(clippy::cast_sign_loss)]
   scope.push(match int {
-    Bind::Lit(l_int) => mov_q(dst, *l_int as u64),
+    Bind::Lit(l_int) => {
+      if *l_int == 0 {
+        Clear(dst)
+      } else if let Ok(l_i32) = i32::try_from(*l_int)
+        && l_int.is_positive()
+      {
+        mov_d(dst, l_i32 as u32)
+      } else {
+        mov_q(dst, *l_int as u64)
+      }
+    }
     Bind::Var(label) => mov_q(dst, label.mem),
   });
 }
@@ -243,4 +215,47 @@ pub(crate) fn mov_d<T: Into<Operand<u32>>, U: Into<Operand<u32>>>(dst: T, src: U
 }
 pub(crate) fn mov_b<T: Into<Operand<u8>>, U: Into<Operand<u8>>>(dst: T, src: U) -> Inst {
   MovBB((dst.into(), src.into()).into())
+}
+pub(crate) fn mov_float_xmm(
+  float: &Bind<f64>, xmm: Register, reg: Register, scope: &mut ScopeInfo,
+) -> ErrOR<()> {
+  let addr = match float {
+    Bind::Lit(l_float) => {
+      scope.push(mov_q(reg, l_float.to_bits()));
+      let tmp = scope.alloc(8, 8)?;
+      scope.push(mov_q(Tmp { offset: tmp }, reg));
+      scope.free(tmp, 8)?;
+      Tmp { offset: tmp }
+    }
+    Bind::Var(label) => label.mem,
+  };
+  scope.push(MovSdXM(xmm, addr));
+  Ok(())
+}
+#[expect(clippy::cast_possible_wrap)]
+pub(crate) fn mov_len_c_a_d(
+  string: &Bind<String>, dst: Register, scope: &mut ScopeInfo,
+) -> ErrOR<()> {
+  match string {
+    Lit(l_str) => mov_int(&Lit(l_str.len() as i64), dst, scope),
+    Var(label) => {
+      const CLD_REPNE_SCASB: &[u8] = &[0xFC, 0xF2, 0xAE];
+      let tmp = scope.alloc(8, 8)?;
+      scope.push(mov_q(dst, label.mem));
+      scope.extend(&[
+        mov_q(Tmp { offset: tmp }, Rdi),
+        mov_q(Rdx, label.mem),
+        mov_q(Rdi, Rdx),
+        Clear(Rcx),
+        DecR(Rcx),
+        Clear(Rax),
+        Custom(&CLD_REPNE_SCASB),
+        SubRR(Rdi, Rdx),
+        DecR(Rdi),
+        mov_q(dst, Rdi),
+        mov_q(Rdi, Tmp { offset: tmp }),
+      ]);
+    }
+  }
+  Ok(())
 }

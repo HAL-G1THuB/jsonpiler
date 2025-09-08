@@ -1,0 +1,173 @@
+ball_x global 0.0
+ball_y global 0.0
+ball_vx global -12.0
+ball_vy global 18.0
+score_p1 global 0
+score_p2 global 0
+pos_p1 global 0.0
+
+width global 512.0
+height global 512.0
+paddle_w global 8.0
+paddle_h global 64.0
+ball_r global 20.0
+square_r global Int($ball_r * $ball_r)
+left_x global -256.0
+right_x global 256.0
+score_per_line global 5
+paddle_h_half global { $paddle_h / 2.0 }
+collision_x global 236
+p1_surface global { $left_x + $paddle_w }
+p2_surface global { $right_x - $paddle_w }
+
+p1_bottom global { $pos_p1 - $paddle_h_half }
+p1_top global { $pos_p1 + $paddle_h_half }
+p2_bottom global -: $paddle_h_half
+p2_top global $paddle_h_half
+define(
+  square, {n: Float}, Float,
+  $n * $n
+)
+define(
+  rgb, { r: Int; g: Int; b: Int }, Int,
+
+  { $r * 256 * 256 } + { $g * 256 } + $b
+
+)
+define(
+  in_score_cell,
+  { px: Float; py: Float; score: Int; base_x: Int; base_y: Int; invert_x: Bool },
+  Bool,
+  {
+    score_size = 24
+    spacing = 8
+    score_span = { $score_size + $spacing }
+    row = { { $base_y - Int($py) } / $score_span }
+    column = 0
+    paddle_surface = { Int($px) - $base_x }
+    if([$invert_x, paddle_surface = -: $paddle_surface])
+    column = { { $paddle_surface / $score_span } % $score_per_line }
+    index = { {$row * $score_per_line} + $column }
+    cell_x = 0
+    cell_y = { $base_y - {$row * $score_span} - $score_size }
+    cell_offset = { $column * $score_span }
+    if([$invert_x,
+        cell_x = { $base_x - $cell_offset - $score_size }
+      ],
+      [true,
+        cell_x = { $base_x + $cell_offset }
+      ]
+    )
+    if([
+      { $index < $score } and {
+        Int($px) >= $cell_x >= { Int($px + 1.0) - $score_size } } and {
+        Int($py) >= $cell_y >= { Int($py + 1.0) - $score_size } },
+      ret(true)
+    ])
+    false
+  }
+)
+define(update, { x: Int; y: Int; frame: Int; mx: Int; my: Int }, Null,
+	{
+		bx = { $ball_x + $ball_vx }
+		by = { $ball_y + $ball_vy }
+		vx = $ball_vx
+		vy = $ball_vy
+		follow_ratio = { { 256.0 - $bx } / 1024.0 }
+		p1_cy = { { $pos_p1 + { $follow_ratio * $by } } / { 1.0 + $follow_ratio } }
+    if(
+      [Int($pos_p1 - $p1_cy) > 16, p1_cy = { $pos_p1 - 16.0 } ],
+      [Int($pos_p1 - $p1_cy) < -16, p1_cy = { $pos_p1 + 16.0 } ]
+    )
+		p2_cy = Float($my)
+		pos_p1 global $p1_cy
+		p1_bottom global { $p1_cy - $paddle_h_half }
+		p1_top global { $p1_cy + $paddle_h_half }
+		p2_bottom global { $p2_cy - $paddle_h_half }
+		p2_top global { $p2_cy + $paddle_h_half }
+		if([ Int($by) < -: $collision_x, { by = Float(-: $collision_x); vy = -: $vy } ])
+		if([ Int($by) > $collision_x, { by = Float($collision_x); vy = -: $vy } ])
+		if([
+			{
+				{ Int($bx - $ball_r) <= Int($p1_surface) } and {
+          Int($p1_bottom) <= Int($by) <= Int($p1_top) }
+			} or {
+				Int(square($bx - $p1_surface) + square($by - $p1_bottom)) <= $square_r
+      } or {
+				Int(square($bx - $p1_surface) + square($by - $p1_top)) <= $square_r
+			},
+			{
+				bx = { $p1_surface + $ball_r }
+				vx = -: { $vx * 1.0625 }
+				hit_pos = { $by - $p1_cy }
+				vy = { { $hit_pos / $paddle_h_half } * abs($vx) }
+			}
+		])
+		if([
+			{
+				{ Int($bx + $ball_r) >= Int($p2_surface) } and {
+          Int($p2_bottom) <= Int($by) <= Int($p2_top) }
+			} or {
+				Int(square($bx - $p2_surface) + square($by - $p2_bottom)) <= $square_r
+			} or {
+				Int(square($bx - $p2_surface) + square($by - $p2_top)) <= $square_r
+			},
+			{
+				bx = { $p2_surface - $ball_r }
+				vx = -: { $vx * 1.0625 }
+				hit_pos = { $by - $p2_cy }
+				vy = { { $hit_pos / $paddle_h_half } * abs($vx) }
+			}
+		])
+		if([ Int($bx) < {Int($left_x) - 10},
+			{
+				score_p2 global { $score_p2 + 1 }
+				bx = 0.0
+				by = 0.0
+				vx = 12.0
+				vy = 18.0
+			}
+		])
+		if([ Int($bx) > {Int($right_x) + 10},
+			{
+				score_p1 global { $score_p1 + 1 }
+				bx = 0.0
+				by = 0.0
+				vx = -12.0
+				vy = 18.0
+			}
+		])
+		ball_x global $bx
+		ball_y global $by
+		ball_vx global $vx
+		ball_vy global $vy
+		}
+)
+define(ping_pong, { x: Int; y: Int; frame: Int; mx: Int; my: Int }, Int,
+  {
+  if([
+    $x == $y == -256,
+		update($x, $y, $frame, $mx, $my)
+    ])
+    px = { Float($x) + 0.5 }
+    py = { Float($y) + 0.5 }
+    p2_cy = Float($my)
+    dist2 = { square($px - $ball_x) + square($py - $ball_y) }
+    if([ Int($dist2) < $square_r, { ret(rgb(255,255,0)) } ])
+    if([
+      { Int($left_x) <= Int($px) <= Int($p1_surface) } and {
+        Int($p1_bottom) <= Int($py) <= Int($p1_top) },
+      ret(rgb(0,255,255))
+    ])
+    if([
+      { Int($p2_surface) <= Int($px) <= Int($right_x) } and {
+        Int($p2_bottom) <= Int($py) <= Int($p2_top) },
+      ret(rgb(255,0,255))
+    ])
+    if([in_score_cell($px, $py, $score_p2, 248, 248, true), ret(rgb(255,0,255))])
+    if([in_score_cell($px, $py, $score_p1, -248, 248, false), ret(rgb(0,255,255))])
+    if([{ $x == 0 } and { { { { $y + 264 } / 16 } % 2 } == 1 }, ret(rgb(255,255,255))])
+		rgb(0,0,0)
+  }
+)
+GUI(ping_pong)

@@ -18,13 +18,12 @@ use crate::{
   ErrOR, FuncInfo,
   Inst::{self, *},
   Json, Jsonpiler, Label,
+  Memory::*,
   Operand::Args,
   Position,
   Register::*,
-  ScopeInfo,
-  VarKind::*,
-  WithPos, err,
-  utility::{mov_b, mov_d, mov_q},
+  ScopeInfo, WithPos, err,
+  utility::{mov_b, mov_d, mov_int, mov_q},
 };
 use core::mem::{discriminant, take};
 use std::{fs::File, io::Write as _};
@@ -153,9 +152,9 @@ impl Jsonpiler {
       let tmp_json = self.eval_func(scope, key, val)?;
       scope.drop_json(tmp_json)?;
     }
-    let (key, val) = object
-      .pop()
-      .ok_or_else(|| self.parser[pos.file].fmt_err("Empty object is not allowed", pos))?;
+    let Some((key, val)) = object.pop() else {
+      return err!(self, pos, "Empty block is not allowed");
+    };
     self.eval_func(scope, key, val)
   }
   #[expect(clippy::cast_sign_loss)]
@@ -164,20 +163,21 @@ impl Jsonpiler {
       mov_d(Rcx, std_any as u32),
       CallApi(get_std_handle),
       CmpRIb(Rax, -1i8),
-      Jcc(E, self.sym_table["WIN_HANDLER"]),
+      JCc(E, self.sym_table["WIN_HANDLER"]),
       mov_q(Global { id, disp: 0i32 }, Rax),
     ]
   }
-  fn handler(&mut self) -> ErrOR<[Inst; 25]> {
+  fn handler(&mut self) -> ErrOR<[Inst; 26]> {
     let exit_process = self.import(Jsonpiler::KERNEL32, "ExitProcess")?;
     let format_message = self.import(Jsonpiler::KERNEL32, "FormatMessageW")?;
     let get_last_error = self.import(Jsonpiler::KERNEL32, "GetLastError")?;
     let message_box = self.import(Jsonpiler::USER32, "MessageBoxW")?;
     let local_free = self.import(Jsonpiler::KERNEL32, "LocalFree")?;
     let win_handler_exit = self.gen_id();
-    let msg = Global { id: self.sym_table["TMP"], disp: 0i32 };
+    let msg = Local { offset: 8i32 };
     Ok([
       Lbl(self.sym_table["WIN_HANDLER"]),
+      SubRId(Rsp, 0x40),
       CallApi(get_last_error),
       mov_q(Rdi, Rax),
       mov_d(Rcx, 0x1300),
@@ -191,7 +191,7 @@ impl Jsonpiler {
       mov_q(Args(0x30), Rax),
       CallApi(format_message),
       TestRdRd(Rax, Rax),
-      Jcc(E, win_handler_exit),
+      JCc(E, win_handler_exit),
       Clear(Rcx),
       mov_q(Rdx, msg),
       Clear(R8),
@@ -256,8 +256,6 @@ impl Jsonpiler {
     self.sym_table.insert("STDI", std_i);
     let heap = self.get_bss_id(8, 8);
     self.sym_table.insert("HEAP", heap);
-    let tmp = self.get_bss_id(8, 8);
-    self.sym_table.insert("TMP", tmp);
     let flag_gui = self.get_bss_id(1, 1);
     self.sym_table.insert("FLAG_GUI", flag_gui);
     let win_handler = self.gen_id();
@@ -284,12 +282,8 @@ impl Jsonpiler {
     insts.extend_from_slice(&self.call_api_check_null(get_process_heap));
     insts.push(mov_q(Global { id: heap, disp: 0i32 }, Rax));
     insts.extend_from_slice(&take(&mut self.startup));
-    #[expect(clippy::cast_sign_loss)]
     if let Json::Int(int) = result {
-      scope.push(match int {
-        Lit(l_int) => mov_q(Rcx, l_int as u64),
-        Var(label) => mov_q(Rcx, label.mem),
-      });
+      mov_int(&int, Rcx, &mut scope);
     } else {
       scope.push(Clear(Rcx));
     }

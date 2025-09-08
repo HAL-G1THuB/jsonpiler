@@ -1,10 +1,9 @@
 use crate::{
   Bind::{self, Var},
   /*Disp, */ ErrOR, FuncInfo, Json, Label,
+  Memory::{self, *},
   Operand::{self, *},
-  Register,
-  VarKind::{self, *},
-  WithPos,
+  Register, WithPos,
 };
 use core::ops::Add;
 impl<T> Bind<T> {
@@ -32,7 +31,7 @@ impl Label {
     }
   }
 }
-impl VarKind {
+impl Memory {
   /*
   pub(crate) fn advanced(&self, ofs: i32) -> Self {
     match *self {
@@ -45,7 +44,13 @@ impl VarKind {
   pub(crate) fn size_of_mo_si_di(&self) -> u32 {
     match self {
       Global { .. } => 5,
-      Local { .. } | Tmp { .. } => 6,
+      Local { offset } | Tmp { offset } => {
+        if i8::try_from(-*offset).is_ok() {
+          2
+        } else {
+          5
+        }
+      }
     }
   }
 }
@@ -73,8 +78,8 @@ impl<T> From<Register> for Operand<T> {
     Reg(src)
   }
 }
-impl<T> From<VarKind> for Operand<T> {
-  fn from(src: VarKind) -> Operand<T> {
+impl<T> From<Memory> for Operand<T> {
+  fn from(src: Memory) -> Operand<T> {
     Mem(src)
   }
 }

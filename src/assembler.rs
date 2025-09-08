@@ -3,11 +3,11 @@ use crate::{
   DataInst::{self, *},
   Disp, Dlls, ErrOR,
   Inst::{self, *},
+  Memory::{self, Global, Local, Tmp},
   Operand::{self, *},
   RM,
   Register::{self, *},
   Sect, Sib,
-  VarKind::{self, Global, Local, Tmp},
   utility::{align_up, align_up_32},
 };
 use core::iter::Chain;
@@ -92,14 +92,16 @@ impl Assembler {
   #[expect(clippy::too_many_lines)]
   fn encode_inst(&mut self, inst: &Inst, code: &mut Vec<u8>) -> ErrOR<()> {
     match inst {
+      CMovCc(cc, dst, src) => {
+        code.extend(RM::Reg(*src).encode_romsd(vec![0x0F, 0x40 + *cc as u8], *dst, true));
+      }
       SetCc(cc, reg) => {
-        code.push(0x0F);
-        code.extend(RM::Reg(*reg).encode_romsd(vec![0x90 + *cc as u8], Rax, false));
+        code.extend(RM::Reg(*reg).encode_romsd(vec![0x0F, 0x90 + *cc as u8], Rax, false));
       }
       Shl1R(reg) => {
         code.extend(RM::Reg(*reg).encode_romsd(vec![0xD1], Rsp, true));
       }
-      Jcc(cc, lbl) => {
+      JCc(cc, lbl) => {
         let rel = self.get_rel(*lbl, code.len(), 6)?;
         code.push(0x0F);
         code.push(0x80 + *cc as u8);
@@ -375,9 +377,9 @@ impl Assembler {
       JmpSh(_) => 2,
       NegR(_) | NotR(_) | LogicRR(..) | IncR(_) | DecR(_) | Shl1R(_) | IDivR(_) | SubRR(..)
       | AddRR(..) => 3,
-      SarRIb(..) | ShrRIb(..) | ShlRIb(..) | IMulRR(..) | CmpRIb(..) => 4,
+      CMovCc(..) | SarRIb(..) | ShrRIb(..) | ShlRIb(..) | IMulRR(..) | CmpRIb(..) => 4,
       CvtSi2Sd(..) | CvtTSd2Si(..) | Jmp(_) | Call(_) => 5,
-      Jcc(..) | CallApi(_) => 6,
+      JCc(..) | CallApi(_) => 6,
       SubRId(..) | AddRId(..) => 7,
       AddSd(xmm, xmm2) | SubSd(xmm, xmm2) | MulSd(xmm, xmm2) | DivSd(xmm, xmm2) => {
         4 + (xmm.rex_size() | xmm2.rex_size())
@@ -397,10 +399,13 @@ impl Assembler {
       }
     })
   }
-  pub(crate) fn memory(&self, lbl: VarKind, code_len: usize, len_inst: u32) -> ErrOR<RM> {
+  pub(crate) fn memory(&self, lbl: Memory, code_len: usize, len_inst: u32) -> ErrOR<RM> {
     Ok(match lbl {
       Global { id, disp } => RM::RipRel(self.get_rel(id, code_len, len_inst)? + disp),
-      Local { offset } | Tmp { offset } => RM::Base(Rbp, crate::Disp::Dword(-offset)),
+      Local { offset } | Tmp { offset } => RM::Base(
+        Rbp,
+        if let Ok(l_i8) = i8::try_from(-offset) { Disp::Byte(l_i8) } else { Disp::Dword(-offset) },
+      ),
     })
   }
   pub(crate) fn new(dlls: Dlls) -> Self {
@@ -460,21 +465,23 @@ impl RM {
       RM::Base(base, disp) => {
         let (base_bits, rb) = base.reg_field();
         rex_b = rb;
-        opcode.push(
-          match disp {
-            Disp::Zero => {
-              if base_bits == 5 {
-                0x40
-              } else {
-                0
-              }
+        let mod_bits = match disp {
+          Disp::Zero => {
+            if base_bits == 5 {
+              0x40
+            } else {
+              0
             }
-            Disp::Byte(_) => 0x40,
-            Disp::Dword(_) => 0x80,
-          } | (reg_bits << 3u8)
-            | 4,
-        );
-        opcode.push((4 << 3u8) | (base_bits & 7));
+          }
+          Disp::Byte(_) => 0x40,
+          Disp::Dword(_) => 0x80,
+        };
+        if base_bits == 4 || base_bits == 12 {
+          opcode.push(mod_bits | (reg_bits << 3u8) | 4);
+          opcode.push((4 << 3u8) | (base_bits & 7));
+        } else {
+          opcode.push(mod_bits | (reg_bits << 3u8) | (base_bits & 7));
+        }
         #[expect(clippy::cast_sign_loss)]
         match disp {
           Disp::Byte(int) => opcode.push(*int as u8),
@@ -555,7 +562,13 @@ impl RM {
 fn size_of_mov_q_q(operands: (Operand<u64>, Operand<u64>)) -> ErrOR<u32> {
   Ok(match operands {
     (Reg(_), Reg(_)) => 3,
-    (Reg(_), Ref(_)) | (Ref(_), Reg(_)) => 4,
+    (Reg(_), Ref(reg)) | (Ref(reg), Reg(_)) => {
+      if reg == Rsp || reg == R12 {
+        4
+      } else {
+        3
+      }
+    }
     (Reg(_), Mem(mem)) | (Mem(mem), Reg(_)) => 2 + mem.size_of_mo_si_di(),
     (Reg(_), Args(_)) | (Args(_), Reg(_)) => 8,
     (Reg(_), Imm(_)) => 10,
@@ -578,7 +591,9 @@ fn size_of_mov_b_b(operands: (Operand<u8>, Operand<u8>)) -> ErrOR<u32> {
 fn size_of_mov_d_d(operands: (Operand<u32>, Operand<u32>)) -> ErrOR<u32> {
   Ok(match operands {
     (Reg(r1), Reg(r2)) => (r1.rex_size() | r2.rex_size()) + 2,
-    (Reg(r1), Ref(r2)) | (Ref(r1), Reg(r2)) => (r1.rex_size() | r2.rex_size()) + 3,
+    (Reg(r1), Ref(r2)) | (Ref(r1), Reg(r2)) => {
+      (r1.rex_size() | r2.rex_size()) + if r1 == Rsp || r1 == R12 { 3 } else { 2 }
+    }
     (Reg(reg), Mem(mem)) | (Mem(mem), Reg(reg)) => reg.rex_size() + 1 + mem.size_of_mo_si_di(),
     (Mem(mem), Imm(_)) => 5 + mem.size_of_mo_si_di(),
     (Reg(reg), Imm(_)) => reg.rex_size() + 5,

@@ -19,7 +19,7 @@ Jsonpiler は、その中間表現（IR）から Windows 用 PE を出力する�
 
 Jsonpilerに GUI をサポートする関数が追加されました。
 
-![Jsonpilerで描画されたジュリア集合](./julia.jpeg)
+![Jsonpilerで描画されたジュリア集合・ピンポンゲーム](./gui.jpeg)
 
 [Jsonpilerで描画されたマンデルブロ集合のズーム](https://youtu.be/M8wEPkHmYdE)
 
@@ -31,15 +31,11 @@ Jsonpilerに GUI をサポートする関数が追加されました。
 
 ## 更新情報
 
-### 0.7.0
+### 0.7.2
 
-- `not`,`and`,`or`,`xor` に対して `Int` ビット演算を行う機能を追加。
-- アセンブリ中間表現のメモリ効率と構造を修正。
-- `Int`の算術演算子 (`+`,`-`,`*`,`/`,`%`) に定数畳み込み最適化を行うように。
-- 文字列リテラルを.rdataセクションに置くように変更。
-- GUI機能を追加: `GUI`
-- jsplが新しい記法をサポート: `1 + 10 + 1` が `+(1, 10, 1)` と同じに解釈されるようになった
-- jsplで同じ行に複数回関数呼び出しなどを書くとき、セミコロンが必要になった。
+- 整数格納やローカルメモリ参照の最適化により、生成 .exe の機械語部を削減(例として 9KB → 6KB 程度)
+- 関数の途中リターン機構を追加: `ret`
+- ループ制御機構を追加: `break`, `continue`
 
 詳細は **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG-ja.md)** を参照してください。
 

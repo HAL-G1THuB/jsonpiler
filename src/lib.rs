@@ -152,6 +152,7 @@ enum Inst {
   AddRId(Register, u32),
   AddRR(Register, Register),
   AddSd(Register, Register),
+  CMovCc(ConditionCode, Register, Register),
   Call(u32),
   CallApi((u32, u32)),
   Clear(Register),
@@ -164,19 +165,19 @@ enum Inst {
   IDivR(Register),
   IMulRR(Register, Register),
   IncR(Register),
-  Jcc(ConditionCode, u32),
+  JCc(ConditionCode, u32),
   Jmp(u32),
   #[expect(dead_code)]
   JmpSh(u32),
   Lbl(u32),
-  LeaRM(Register, VarKind),
+  LeaRM(Register, Memory),
   LogicRR(LogicByteOpcode, Register, Register),
   LogicRbRb(LogicByteOpcode, Register, Register),
   MovBB(Box<(Operand<u8>, Operand<u8>)>),
   MovDD(Box<(Operand<u32>, Operand<u32>)>),
   MovQQ(Box<(Operand<u64>, Operand<u64>)>),
-  MovSdMX(VarKind, Register),
-  MovSdXM(Register, VarKind),
+  MovSdMX(Memory, Register),
+  MovSdXM(Register, Memory),
   MulSd(Register, Register),
   NegR(Register),
   NegRb(Register),
@@ -199,7 +200,7 @@ enum Inst {
 enum Operand<T> {
   Args(usize),
   Imm(T),
-  Mem(VarKind),
+  Mem(Memory),
   Ref(Register),
   Reg(Register),
 }
@@ -269,7 +270,7 @@ pub struct Jsonpiler {
 }
 #[derive(Debug, Clone, Copy)]
 struct Label {
-  mem: VarKind,
+  mem: Memory,
   size: i32,
 }
 #[derive(Debug, Copy, Clone, Default)]
@@ -280,7 +281,7 @@ struct Position {
   size: usize,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum VarKind {
+enum Memory {
   Global { id: u32, disp: i32 },
   Local { offset: i32 },
   Tmp { offset: i32 },

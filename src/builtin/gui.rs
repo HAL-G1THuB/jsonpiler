@@ -7,11 +7,10 @@ use crate::{
   Inst::*,
   Json, Jsonpiler,
   LogicByteOpcode::*,
+  Memory::Global,
   Operand::Args,
   Register::*,
-  ScopeInfo,
-  VarKind::Global,
-  built_in, err, take_arg,
+  ScopeInfo, built_in, err, take_arg,
   utility::{mov_b, mov_d, mov_q},
 };
 use core::mem::discriminant;
@@ -41,16 +40,16 @@ init_gui => {"GUI", COMMON, Exactly(1), {
   };
   scope.update_stack_args(8);
   let get_module_handle = self.import(Jsonpiler::KERNEL32, "GetModuleHandleW")?;
-  let load_icon = self.import(Jsonpiler::USER32, "LoadIconW")?;
-  let load_cursor = self.import(Jsonpiler::USER32, "LoadCursorW")?;
-  let register_class = self.import(Jsonpiler::USER32, "RegisterClassExW")?;
-  let create_window_ex = self.import(Jsonpiler::USER32, "CreateWindowExW")?;
+  let load_icon_w = self.import(Jsonpiler::USER32, "LoadIconW")?;
+  let load_cursor_w = self.import(Jsonpiler::USER32, "LoadCursorW")?;
+  let register_class_ex_w = self.import(Jsonpiler::USER32, "RegisterClassExW")?;
+  let create_window_ex_w = self.import(Jsonpiler::USER32, "CreateWindowExW")?;
   let adjust_window_rect_ex = self.import(Jsonpiler::USER32, "AdjustWindowRectEx")?;
   let show_window = self.import(Jsonpiler::USER32, "ShowWindow")?;
   let update_window = self.import(Jsonpiler::USER32, "UpdateWindow")?;
-  let get_message = self.import(Jsonpiler::USER32, "GetMessageW")?;
+  let get_message_w = self.import(Jsonpiler::USER32, "GetMessageW")?;
   let translate_message = self.import(Jsonpiler::USER32, "TranslateMessage")?;
-  let dispatch_message = self.import(Jsonpiler::USER32, "DispatchMessageW")?;
+  let dispatch_message_w = self.import(Jsonpiler::USER32, "DispatchMessageW")?;
   self.data_insts.push(RDAlign(2));
   let class_name = self.global_str(String::from("J\0s\0o\0n\0p\0i\0l\0e\0r\0 \0G\0U\0I\0\0")).0;
   self.data_insts.push(RDAlign(2));
@@ -69,7 +68,7 @@ init_gui => {"GUI", COMMON, Exactly(1), {
   scope.extend(&[
     mov_b(Rax, Global { id: self.sym_table["FLAG_GUI"], disp: 0 }),
     LogicRbRb(Test, Rax, Rax),
-    Jcc(Ne, self.get_custom_error("GUI already initialized")?),
+    JCc(Ne, self.get_custom_error("GUI already initialized")?),
     mov_b(Global { id: self.sym_table["FLAG_GUI"], disp: 0 }, 0xFF),
     mov_q(Rax, 0x40_0000_0050),
     mov_q(Global { id: wnd_class, disp: 0x00 }, Rax),
@@ -85,13 +84,13 @@ init_gui => {"GUI", COMMON, Exactly(1), {
     Clear(Rcx),
     mov_d(Rdx, 0x7F00),
   ]);
-  scope.extend(&self.call_api_check_null(load_icon));
+  scope.extend(&self.call_api_check_null(load_icon_w));
   scope.extend(&[
     mov_q(Global { id: wnd_class, disp: 0x20 }, Rax),
     Clear(Rcx),
     mov_d(Rdx, 0x7F00),
   ]);
-  scope.extend(&self.call_api_check_null(load_cursor));
+  scope.extend(&self.call_api_check_null(load_cursor_w));
   scope.extend(&[
     mov_q(Global { id: wnd_class, disp: 0x28 }, Rax),
     mov_d(Rax, 6),
@@ -104,7 +103,7 @@ init_gui => {"GUI", COMMON, Exactly(1), {
     mov_q(Global { id: wnd_class, disp: 0x48 }, Rax),
     LeaRM(Rcx, Global { id: wnd_class, disp: 0 }),
   ]);
-  scope.extend(&self.call_api_check_null(register_class));
+  scope.extend(&self.call_api_check_null(register_class_ex_w));
   scope.extend(&[
     mov_d(Global { id: size_rect, disp: 8 }, Jsonpiler::GUI_W),
     mov_d(Global { id: size_rect, disp: 12 }, Jsonpiler::GUI_H),
@@ -137,7 +136,7 @@ init_gui => {"GUI", COMMON, Exactly(1), {
     mov_q(Rax, Global { id: wnd_class, disp: 0x18 }),
     mov_q(Args(0x50), Rax)
   ]);
-  scope.extend(&self.call_api_check_null(create_window_ex));
+  scope.extend(&self.call_api_check_null(create_window_ex_w));
   scope.extend(&[
     mov_q(Global { id: gui_handle, disp: 0 }, Rax),
     mov_q(Rcx, Global { id: gui_handle, disp: 0 }),
@@ -152,17 +151,17 @@ init_gui => {"GUI", COMMON, Exactly(1), {
     Clear(Rdx),
     Clear(R8),
     Clear(R9),
-    CallApi(get_message),
+    CallApi(get_message_w),
     IncR(Rax),
     LogicRR(Test, Rax, Rax),
-    Jcc(E, self.sym_table["WIN_HANDLER"]),
+    JCc(E, self.sym_table["WIN_HANDLER"]),
     DecR(Rax),
     LogicRR(Test, Rax, Rax),
-    Jcc(E, exit_gui),
+    JCc(E, exit_gui),
     LeaRM(Rcx, Global { id: msg, disp: 0 }),
     CallApi(translate_message),
     LeaRM(Rcx, Global { id: msg, disp: 0 }),
-    CallApi(dispatch_message),
+    CallApi(dispatch_message_w),
     Jmp(msg_loop),
     Lbl(exit_gui),
   ]);

@@ -12,6 +12,12 @@
 
 ### jsonpiler 0.7
 
+#### 0.7.2
+
+- Reduced machine language part of generated .exe by optimizing integer storage and local memory references (e.g., 9KB → 6KB)
+- Add function return mechanism: `ret`.
+- Add loop control mechanism: `break`, `continue`.
+
 #### 0.7.1
 
 - Added ability to perform `Int` bitwise operations on `not`, `and`, `or`, and `xor`.

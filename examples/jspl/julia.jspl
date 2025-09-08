@@ -24,8 +24,8 @@ define(
     while(
       $x < 50,
       {
-        fx = {Float($x) * 0.03}
-        fy = {Float($y) * 0.06}
+        fx = { Float($x) * 0.03 }
+        fy = { Float($y) * 0.06 }
         iter = julia($fx, $fy)
         str = " "
         if(
@@ -41,7 +41,7 @@ define(
         [5  < $iter,  str = "."]
         )
         print($str)
-        x = {$x + 1}
+        x = { $x + 1 }
       }
     )
     print("\n")
@@ -56,7 +56,7 @@ define(
       $y < 20,
       {
         render_row($y)
-        y = {$y + 1}
+        y = { $y + 1 }
       }
     )
   }

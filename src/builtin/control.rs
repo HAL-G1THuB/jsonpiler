@@ -7,12 +7,11 @@ use crate::{
   Inst::*,
   Json, Jsonpiler, Label,
   LogicByteOpcode::*,
+  Memory::Global,
   Operand::Args,
   Position,
   Register::*,
-  ScopeInfo,
-  VarKind::Global,
-  WithPos, built_in, err, take_arg, unwrap_arg,
+  ScopeInfo, WithPos, built_in, err, take_arg, unwrap_arg,
   utility::{mov_b, mov_q},
   warn,
 };
@@ -53,6 +52,8 @@ built_in! {self, func, scope, control;
     let ret_str = take_arg!(self, func, "String (Literal)", Json::String(Lit(x)) => x);
     let ret_val = self.json_from_string(&ret_str.value, ret_str.pos, scope.local(8, 8)?)?;
     let id = self.gen_id();
+    let epilogue = self.gen_id();
+    scope.set_epilogue(Some((epilogue, ret_val.clone())));
     self.user_defined.insert(name.value.clone(), AsmFunc { id, params, ret: ret_val.clone(), file: func.pos.file });
     let object = take_arg!(self, func, "Block", Json::Object(Lit(x)) => x);
     let ret_jwp = WithPos{value: self.eval_object(object.value, object.pos, scope)?, pos: object.pos};
@@ -62,8 +63,9 @@ built_in! {self, func, scope, control;
             &ret_val.type_name(),
             &ret_jwp,
           ).into()
-          );
-    }
+        );
+      }
+      self.return_value(&ret_jwp, scope)?;
     self.insts.push(Lbl(id));
     let size = scope.resolve_stack_size()?;
     self.insts.push(Push(Rbp));
@@ -84,10 +86,24 @@ built_in! {self, func, scope, control;
     for body in new_scope.into_iter_code() {
       self.insts.push(body);
     }
-    self.return_value(&ret_jwp)?;
+    self.insts.push(Lbl(epilogue));
     self.insts.push(mov_q(Rsp, Rbp));
     self.insts.push(Pop(Rbp));
     self.insts.push(Custom(&Jsonpiler::RET));
+    Ok(Json::Null)
+  }},
+  f_break => {"break", COMMON, Exactly(0), {
+    let Some(&(_, end_label)) = scope.loop_label() else {
+      return err!(self, func.pos, "ScopeError: `break` outside of loop.");
+    };
+    scope.push(Jmp(end_label));
+    Ok(Json::Null)
+  }},
+  f_continue => {"continue", COMMON, Exactly(0), {
+    let Some(&(start_label, _)) = scope.loop_label() else {
+      return err!(self, func.pos, "ScopeError: `continue` outside of loop.");
+    };
+    scope.push(Jmp(start_label));
     Ok(Json::Null)
   }},
   f_if => {"if", SP_SCOPE, AtLeast(1), {
@@ -126,7 +142,7 @@ built_in! {self, func, scope, control;
           scope.push(mov_b(Rax, cond_label.mem));
           scope.push(LogicRbRb(Test, Rax, Rax));
           let next_label = self.gen_id();
-          scope.push(Jcc(E, next_label));
+          scope.push(JCc(E, next_label));
           let then_result = self.eval_object(object, cond_then.pos, scope)?;
           scope.drop_json(then_result)?;
           scope.push(Jmp(if_end_label));
@@ -143,13 +159,13 @@ built_in! {self, func, scope, control;
     take_arg!(self, func, "Block", Json::Object(Lit(x)) => x);
     let while_start = self.gen_id();
     let while_end   = self.gen_id();
+    scope.loop_enter(while_start, while_end);
     scope.push(Lbl(while_start));
     let cond = WithPos { pos: cond_jwp.pos, value: self.eval(take(&mut cond_jwp), scope)? };
     let cond_bool = unwrap_arg!(self, cond, func, "Bool", Json::Bool(x) => x).value;
     match cond_bool {
       Lit(l_bool) => {
         if l_bool {
-          warn!(self, cond_jwp.pos, "This while loop never terminates because `break` is not implemented");
           let body_result = self.eval_object(body.value, body.pos, scope)?;
           scope.drop_json(body_result)?;
           scope.push(Jmp(while_start));
@@ -163,13 +179,31 @@ built_in! {self, func, scope, control;
         func.sched_free_tmp(&cond_label);
         scope.push(mov_b(Rax, cond_label.mem));
         scope.push(LogicRbRb(Test, Rax, Rax));
-        scope.push(Jcc(E, while_end));
+        scope.push(JCc(E, while_end));
         let body_result = self.eval_object(body.value, body.pos, scope)?;
         scope.drop_json(body_result)?;
         scope.push(Jmp(while_start));
       }
     }
     scope.push(Lbl(while_end));
+    scope.loop_exit();
+    Ok(Json::Null)
+  }},
+  ret => {"ret", COMMON, Exactly(1), {
+    let ret_jwp = func.arg()?;
+    self.return_value(&ret_jwp, scope)?;
+    let Some((epilogue, json)) = scope.get_epilogue() else {
+      return err!(self, ret_jwp.pos, "ScopeError: `ret` outside of function.");
+    };
+    if discriminant(json) != discriminant(&ret_jwp.value){
+      return Err(self.parser[ret_jwp.pos.file].type_error(
+            &format!("Return value of function `{}`", func.name),
+            &json.type_name(),
+            &ret_jwp,
+          ).into()
+          );
+    }
+    scope.push(Jmp(*epilogue));
     Ok(Json::Null)
   }},
 }
@@ -185,7 +219,7 @@ impl Jsonpiler {
       _ => err!(self, pos, "Unknown type"),
     }
   }
-  fn return_value(&mut self, jwp: &WithPos<Json>) -> ErrOR<()> {
+  fn return_value(&mut self, jwp: &WithPos<Json>, scope: &mut ScopeInfo) -> ErrOR<()> {
     {
       match &jwp.value {
         Json::String(string) => {
@@ -196,18 +230,18 @@ impl Jsonpiler {
             }
             Var(str_label) => mov_q(Rax, str_label.mem),
           };
-          self.insts.push(inst);
+          scope.push(inst);
         }
         Json::Float(Var(label)) | Json::Bool(Var(label)) | Json::Int(Var(label)) => {
-          self.insts.push(mov_q(Rax, label.mem));
+          scope.push(mov_q(Rax, label.mem));
         }
-        Json::Null => self.insts.push(Clear(Rax)),
+        Json::Null => scope.push(Clear(Rax)),
         #[expect(clippy::cast_sign_loss)]
-        Json::Int(Lit(l_int)) => self.insts.push(mov_q(Rax, *l_int as u64)),
+        Json::Int(Lit(l_int)) => scope.push(mov_q(Rax, *l_int as u64)),
         Json::Bool(Lit(l_bool)) => {
-          self.insts.push(mov_b(Rax, if *l_bool { 0xFF } else { 0 }));
+          scope.push(mov_b(Rax, if *l_bool { 0xFF } else { 0 }));
         }
-        Json::Float(Lit(l_float)) => self.insts.push(mov_q(Rax, l_float.to_bits())),
+        Json::Float(Lit(l_float)) => scope.push(mov_q(Rax, l_float.to_bits())),
         Json::Array(_) | Json::Object(_) => {
           return err!(
             self,

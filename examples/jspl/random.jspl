@@ -6,7 +6,7 @@ define(
       "must be greater than or equal to zero."
     ))
     rand = random()
-    if([$rand == {-128 * 256 * 65536 * 65536 * 65536}, rand = 0])
+    if([$rand == {-128 * 256 * 65536 * 65536 * 65536}, ret(0)])
     abs($rand) % $max
   }
 )

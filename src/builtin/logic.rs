@@ -20,7 +20,7 @@ built_in! {self, func, scope, logic;
     scope.push(LogicRbRb(Test, Rax, Rax));
     let error_label = self.gen_id();
     let end_label = self.gen_id();
-    scope.push(Jcc(E, error_label));
+    scope.push(JCc(E, error_label));
     scope.push(Jmp(end_label));
     scope.push(Lbl(error_label));
     self.take_str(Rcx, func, scope)?;

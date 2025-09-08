@@ -11,7 +11,7 @@ See: [JSON specification](https://www.rfc-editor.org/info/rfc8259)
 
 ### Primitive Types
 
-- **Null**: Represents the absence of a value.
+- **Null**: Represents the absence of a value. The concept is similar to the Unit value.
 - **Bool**: Represents a 8-bit boolean value, either `true` or `false`.
 - **Int**: Represents a 64-bit integer number.
 - **Float**: Represents a 64-bit floating-point number.

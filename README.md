@@ -18,7 +18,7 @@ Jsonpiler bundles an assembler and linker purpose-built for its IR and PE output
 
 Jsonpiler now has a function to support GUI.
 
-![Julia set drawn by Jsonpiler](./julia.jpeg)
+![Julia set and ping pong game drawn by Jsonpiler](./gui.jpeg)
 
 [Zoom of the Mandelbrot set drawn by Jsonpiler](https://youtu.be/M8wEPkHmYdE)
 
@@ -30,15 +30,11 @@ Jsonpiler now has a function to support GUI.
 
 ## What’s New
 
-### 0.7.1
+### 0.7.2
 
-- Added ability to perform `Int` bitwise operations on `not`, `and`, `or`, and `xor`.
-- Revised memory efficiency and structure of assembly intermediate representation.
-- The arithmetic operators (`+`, `-`, `*`, `/`, `%`) on `Int` support constant folding.
-- Changed to put string literals in the .rdata section.
-- GUI feature added: `GUI`.
-- jspl supports new notation: `1 + 10 + 1` is now interpreted as `+(1, 10, 1)`.
-- Semicolons are now required when writing multiple function calls on the same line in jspl.
+- Reduced machine language part of generated .exe by optimizing integer storage and local memory references (e.g., 9KB → 6KB)
+- Add function return mechanism: `ret`.
+- Add loop control mechanism: `break`, `continue`.
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 

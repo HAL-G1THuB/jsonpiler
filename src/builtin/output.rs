@@ -1,6 +1,6 @@
 use crate::{
-  Arity::Exactly, ErrOR, FuncInfo, Inst::*, Json, Jsonpiler, Operand::Args, Register::*, ScopeInfo,
-  VarKind::Global, built_in, utility::mov_q,
+  Arity::Exactly, ErrOR, FuncInfo, Inst::*, Json, Jsonpiler, Memory::Global, Operand::Args,
+  Register::*, ScopeInfo, built_in, utility::mov_q,
 };
 built_in! {self, func, scope, output;
   message => {"message", COMMON, Exactly(2), {
@@ -14,9 +14,11 @@ built_in! {self, func, scope, output;
     let std_o = Global { id: self.sym_table["STDO"], disp: 0 };
     let write_file = self.import(Jsonpiler::KERNEL32, "WriteFile")?;
     self.take_str_len_c_a_d(Rdx, R8, func, scope)?;
+    let tmp = scope.tmp(8, 8)?;
+    func.sched_free_tmp(&tmp);
     scope.extend(&[
       mov_q(Rcx, std_o),
-      LeaRM(R9, Global { id: self.sym_table["TMP"], disp: 0 }),
+      LeaRM(R9, tmp.mem),
       Clear(Rax),
       mov_q(Args(0x20), Rax),
     ]);

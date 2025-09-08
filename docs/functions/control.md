@@ -138,3 +138,43 @@ An error occurs if the file does not contain the specified function.
 {"include": "my_library.jspl", "my_func"}
 {"my_func": ["arg"]}
 ```
+
+## ret
+
+```json
+{"ret": "Any"} -> "Null"
+```
+
+```jspl
+ret(value)
+```
+
+Terminates execution of the function and returns the given value.
+`return` may only be used within a function defined by `define`.
+A `return` may only be written at the end of any block.
+
+## break
+
+```json
+{"break": []} -> "Null"
+```
+
+```jspl
+break()
+```
+
+Terminates the innermost `while` loop.
+`break` may only be used within a `while` loop.
+
+## continue
+
+```json
+{"continue": []} -> "Null"
+```
+
+```jspl
+continue()
+```
+
+Terminates the current iteration of the innermost `while` loop.
+`continue` may only be used within a `while` loop.

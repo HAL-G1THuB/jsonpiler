@@ -3,8 +3,8 @@ use crate::{
   ErrOR,
   Inst::{self, *},
   Json, Label,
+  Memory::{Local, Tmp},
   Register::{self, *},
-  VarKind::{Local, Tmp},
   utility::{align_up_i32, mov_b, mov_q},
 };
 use core::iter::{DoubleEndedIterator as _, Iterator as _};
@@ -23,12 +23,14 @@ pub(crate) struct ScopeInfo {
   alloc_map: BTreeMap<i32, i32>,
   base_stack: i32,
   body: Vec<Inst>,
+  epilogue: Option<(u32, Json)>,
   locals: Vec<HashMap<String, Json>>,
+  loop_labels: Vec<(u32, u32)>,
   stack_args: i32,
   stack_size: i32,
 }
 impl ScopeInfo {
-  fn alloc(&mut self, size: i32, align: i32) -> ErrOR<i32> {
+  pub(crate) fn alloc(&mut self, size: i32, align: i32) -> ErrOR<i32> {
     for (&start, &size2) in &self.alloc_map {
       let aligned_start = align_up_i32(start, align)?;
       let padding = sub!(aligned_start, start)?;
@@ -42,7 +44,7 @@ impl ScopeInfo {
         if tail_size > 0i32 {
           self.alloc_map.insert(used_end, tail_size);
         }
-        return Ok(used_end);
+        return Ok(add!(used_end, self.base_stack)?);
       }
     }
     let aligned_start = align_up_i32(self.stack_size, align)?;
@@ -52,7 +54,7 @@ impl ScopeInfo {
     }
     let new_end = add!(aligned_start, size)?;
     self.stack_size = new_end;
-    Ok(new_end)
+    Ok(add!(new_end, self.base_stack)?)
   }
   pub(crate) fn begin(&mut self) -> ErrOR<ScopeInfo> {
     let prev_align = self.base_stack;
@@ -63,6 +65,7 @@ impl ScopeInfo {
       alloc_map: take(&mut self.alloc_map),
       stack_size: take(&mut self.stack_size),
       base_stack: prev_align,
+      epilogue: self.epilogue.clone(),
       ..ScopeInfo::new()
     })
   }
@@ -112,6 +115,9 @@ impl ScopeInfo {
     self.alloc_map.insert(start, size);
     Ok(())
   }
+  pub(crate) fn get_epilogue(&self) -> Option<&(u32, Json)> {
+    self.epilogue.as_ref()
+  }
   pub(crate) fn get_var_local(&self, var_name: &str) -> Option<Json> {
     for table in &self.locals {
       if let Some(val) = table.get(var_name) {
@@ -127,7 +133,16 @@ impl ScopeInfo {
     self.body.into_iter()
   }
   pub(crate) fn local(&mut self, size: i32, align: i32) -> ErrOR<Label> {
-    Ok(Label { mem: Local { offset: add!(self.alloc(size, align)?, self.base_stack)? }, size })
+    Ok(Label { mem: Local { offset: self.alloc(size, align)? }, size })
+  }
+  pub(crate) fn loop_enter(&mut self, start_label: u32, end_label: u32) {
+    self.loop_labels.push((start_label, end_label));
+  }
+  pub(crate) fn loop_exit(&mut self) {
+    self.loop_labels.pop();
+  }
+  pub(crate) fn loop_label(&mut self) -> Option<&(u32, u32)> {
+    self.loop_labels.last()
   }
   pub(crate) fn mov_tmp(&mut self, reg: Register) -> ErrOR<Label> {
     let return_value = self.tmp(8, 8)?;
@@ -139,9 +154,16 @@ impl ScopeInfo {
     self.body.push(mov_b(return_value.mem, reg));
     Ok(Json::Bool(Var(return_value)))
   }
+  pub(crate) fn mov_tmp_xmm(&mut self, reg: Register) -> ErrOR<Json> {
+    let return_value = self.tmp(8, 8)?;
+    self.body.push(MovSdMX(return_value.mem, reg));
+    Ok(Json::Float(Var(return_value)))
+  }
   pub(crate) fn new() -> Self {
     Self {
+      epilogue: None,
       alloc_map: BTreeMap::new(),
+      loop_labels: vec![],
       stack_args: 0,
       body: vec![],
       locals: vec![HashMap::new()],
@@ -166,11 +188,14 @@ impl ScopeInfo {
     let aligned = locals;
     Ok(add!(u32::try_from(aligned)?, SHADOW_SPACE)?)
   }
+  pub(crate) fn set_epilogue(&mut self, epilogue: Option<(u32, Json)>) {
+    self.epilogue = epilogue;
+  }
   pub(crate) fn take_code(&mut self) -> Vec<Inst> {
     take(&mut self.body)
   }
   pub(crate) fn tmp(&mut self, size: i32, align: i32) -> ErrOR<Label> {
-    Ok(Label { mem: Tmp { offset: add!(self.alloc(size, align)?, self.base_stack)? }, size })
+    Ok(Label { mem: Tmp { offset: self.alloc(size, align)? }, size })
   }
   pub(crate) fn update_stack_args(&mut self, size: i32) {
     self.stack_args = self.stack_args.max(size);

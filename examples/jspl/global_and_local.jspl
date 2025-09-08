@@ -20,5 +20,5 @@ g_a global null
 g_b global 7
 g_c global false
 g_e global 999.999
-{Int($g_e) + $g_b} - $x
+{ Int($g_e) + $g_b } - $x
 # this program returns 1000.

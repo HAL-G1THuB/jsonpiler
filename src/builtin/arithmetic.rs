@@ -8,7 +8,7 @@ use crate::{
   LogicByteOpcode::*,
   Register::*,
   ScopeInfo, WithPos, built_in, err, take_arg,
-  utility::{mov_float_reg, mov_int, mov_q},
+  utility::{mov_float_reg, mov_float_xmm, mov_int, mov_q},
 };
 built_in! {self, _func, scope, arithmetic;
   abs => {"abs", COMMON, Exactly(1), {
@@ -63,22 +63,20 @@ built_in! {self, _func, scope, arithmetic;
       }
       for label in vars {
         scope.push(mov_q(Rcx, label.mem));
-        scope.push(LogicRbRb(Test, Rcx, Rcx));
+        scope.push(LogicRR(Test, Rcx, Rcx));
         let zero_division_err = self.get_custom_error("ZeroDivisionError")?;
-        scope.push(Jcc(E, zero_division_err));
+        scope.push(JCc(E, zero_division_err));
         scope.push(Custom(&Jsonpiler::CQO));
         scope.push(IDivR(Rcx));
       }
       Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
     } else if let Json::Float(float) = arg.value {
-      self.mov_float_xmm(&float, Rax, Rax, scope);
+      mov_float_xmm(&float, Rax, Rax, scope)?;
         for _ in 1.._func.len {
           self.take_float(Rcx, Rax, _func, scope)?;
           scope.push(DivSd(Rax, Rcx));
         }
-        let tmp = scope.tmp(8, 8)?;
-        scope.push(MovSdMX(tmp.mem, Rax));
-        Ok(Json::Float(Var(tmp)))
+        scope.mov_tmp_xmm(Rax)
     } else {
       Err(self.parser[arg.pos.file].args_type_error(1, &_func.name, "Int` or `Float", &arg).into())
     }
@@ -86,9 +84,7 @@ built_in! {self, _func, scope, arithmetic;
   float => {"Float", COMMON, Exactly(1), {
     self.take_int(Rax, _func, scope)?;
     scope.push(CvtSi2Sd(Rax, Rax));
-    let tmp = scope.tmp(8, 8)?;
-    scope.push(MovSdMX(tmp.mem, Rax));
-    Ok(Json::Float(Var(tmp)))
+    scope.mov_tmp_xmm(Rax)
   }},
   int => {"Int", COMMON, Exactly(1), {
     self.take_float(Rax, Rax, _func, scope)?;
@@ -144,9 +140,9 @@ built_in! {self, _func, scope, arithmetic;
       }
       Var(label) => {
         scope.push(mov_q(Rcx, label.mem));
-        scope.push(LogicRbRb(Test, Rcx, Rcx));
+        scope.push(LogicRR(Test, Rcx, Rcx));
         let zero_division_err = self.get_custom_error("ZeroDivisionError")?;
-        scope.push(Jcc(E, zero_division_err));
+        scope.push(JCc(E, zero_division_err));
       }
     }
     scope.push(Custom(&Jsonpiler::CQO));
@@ -193,14 +189,12 @@ impl Jsonpiler {
         Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
       }
       WithPos { value: Json::Float(float), .. } => {
-        self.mov_float_xmm(&float, Rax, Rax, scope);
+        mov_float_xmm(&float, Rax, Rax, scope)?;
         for _ in 1..func.len {
           self.take_float(Rcx, Rax, func, scope)?;
           scope.push(op_inst.1.clone());
         }
-        let tmp = scope.tmp(8, 8)?;
-        scope.push(MovSdMX(tmp.mem, Rax));
-        Ok(Json::Float(Var(tmp)))
+        scope.mov_tmp_xmm(Rax)
       }
       other => Err(
         self.parser[other.pos.file].args_type_error(1, &func.name, "Int` or `Float", &other).into(),
