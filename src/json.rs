@@ -24,7 +24,7 @@ impl Json {
   pub(crate) fn type_name(&self) -> String {
     match self {
       Json::Bool(bind) => bind.describe("Bool"),
-      Json::Null => String::from("Null"),
+      Json::Null => "Null".into(),
       Json::Float(bind) => bind.describe("Float"),
       Json::Object(bind) => bind.describe("Object"),
       Json::Int(bind) => bind.describe("Int"),

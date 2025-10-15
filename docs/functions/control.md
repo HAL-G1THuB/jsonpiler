@@ -24,7 +24,6 @@ Registers a user-defined function with the following parameters:
 - The third argument specifies the return type annotation.
 - The fourth argument is the function body, which is evaluated when the function is called.
 
-Up to 16 arguments can be defined for a single function.
 The `define` keyword also introduces a new scope.
 
 ```json

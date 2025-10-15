@@ -4,6 +4,7 @@ use crate::{
   ErrOR, FuncInfo, Json, Jsonpiler,
   Register::*,
   ScopeInfo, built_in, take_arg,
+  utility::take_len_c_a_d,
 };
 built_in! {self, func, _scope, string;
   f_concat =>{"concat", COMMON, AtLeast(1), {
@@ -14,7 +15,7 @@ built_in! {self, func, _scope, string;
     Ok(Json::String(Lit(result)))
   }},
   len =>{"len", COMMON, Exactly(1), {
-    self.take_len_c_a_d(Rax, func, _scope)?;
+    take_len_c_a_d(Rax, func, _scope)?;
     Ok(Json::Int(Var(_scope.mov_tmp(Rax)?)))
   }}
 }

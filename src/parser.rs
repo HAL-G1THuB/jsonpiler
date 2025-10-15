@@ -1,6 +1,9 @@
 mod err_msg;
 mod jspl;
-use crate::{Bind::Lit, ErrOR, Json, Position, WithPos, parse_err, return_if};
+use crate::{
+  Bind::Lit, CompilationErrKind::*, ErrOR, Json, JsonpilerErr::*, Position, TokenKind, WithPos,
+  parse_err, return_if,
+};
 #[derive(Clone)]
 pub(crate) struct Parser {
   file: String,
@@ -22,7 +25,7 @@ impl Parser {
       parse_err!(
         self,
         Position { offset: self.source.len().saturating_sub(1), ..self.pos },
-        "Unexpected EOF."
+        UnexpectedTokenError(TokenKind::Eof)
       )
     } else {
       Ok(())
@@ -41,7 +44,7 @@ impl Parser {
     if self.consume_if(expected)? {
       Ok(())
     } else {
-      parse_err!(self, self.pos, "Expected character '{}' not found.", char::from(expected))
+      parse_err!(self, self.pos, ExpectedTokenError(TokenKind::Char(char::from(expected))))
     }
   }
   pub(crate) fn from(source: Vec<u8>, file: usize, file_name: String) -> Self {
@@ -79,18 +82,14 @@ impl Parser {
     if self.pos.offset == self.source.len() {
       Ok(result)
     } else {
-      parse_err!(self, "Unexpected trailing characters")
+      parse_err!(self, ExpectedTokenError(TokenKind::Eof))
     }
   }
-  fn parse_keyword(&mut self, keyword: &str, value: Json) -> ErrOR<Json> {
+  fn parse_keyword(&mut self, keyword: &'static str, value: Json) -> ErrOR<Json> {
     let pos = self.pos;
     self.advance(keyword.len())?;
     let slice = &self.source[pos.offset..self.pos.offset];
-    if slice == keyword.as_bytes() {
-      Ok(value)
-    } else {
-      parse_err!(self, pos, "Failed to parse '{keyword}'")
-    }
+    if slice == keyword.as_bytes() { Ok(value) } else { parse_err!(self, pos, ParseError(keyword)) }
   }
   fn parse_number(&mut self) -> ErrOR<Json> {
     let mut pos = self.pos;
@@ -99,7 +98,7 @@ impl Parser {
     let is_negative = self.consume_if(b'-')?;
     if self.consume_if(b'0').is_ok_and(|ok| ok) {
       if self.peek().is_ascii_digit() {
-        return parse_err!(self, "Leading zeros are not allowed");
+        return parse_err!(self, StartsWithZero);
       }
     } else {
       self.skip_digits();
@@ -107,7 +106,7 @@ impl Parser {
     if self.consume_if(b'.').is_ok_and(|ok| ok) {
       is_float = true;
       if !self.peek().is_ascii_digit() {
-        return parse_err!(self, "Expected digit after '.'");
+        return parse_err!(self, ParseError("Float"));
       }
       self.skip_digits();
     }
@@ -117,7 +116,7 @@ impl Parser {
         self.consume_if(b'-')?;
       }
       if !self.peek().is_ascii_digit() {
-        return parse_err!(self, "Expected digit after exponent");
+        return parse_err!(self, ParseError("Float"));
       }
       self.skip_digits();
     }
@@ -127,32 +126,24 @@ impl Parser {
     let num_str = unsafe { str::from_utf8_unchecked(slice) };
     if is_float {
       num_str.parse::<f64>().map_or_else(
-        |_| parse_err!(self, pos, "Invalid float value: {num_str}"),
+        |_| parse_err!(self, pos, ParseError("Float")),
         |float| Ok(Json::Float(Lit(float))),
       )
     } else {
       let digits = if is_negative { &slice[1..] } else { slice };
       let mut acc: i64 = 0;
       for &byte in digits {
-        if !byte.is_ascii_digit() {
-          return parse_err!(
-            self,
-            pos,
-            "InternalError: Invalid digit in integer: {}",
-            char::from(byte)
-          );
-        }
         let digit = i64::from(byte - b'0');
         if is_negative {
           if let Some(ok_acc) = acc.checked_mul(10).and_then(|val| val.checked_sub(digit)) {
             acc = ok_acc;
           } else {
-            return parse_err!(self, pos, "Integer overflow");
+            return parse_err!(self, pos, IntegerOutOfRange);
           }
         } else if let Some(ok_acc) = acc.checked_mul(10).and_then(|val| val.checked_add(digit)) {
           acc = ok_acc;
         } else {
-          return parse_err!(self, pos, "Integer overflow");
+          return parse_err!(self, pos, IntegerOutOfRange);
         }
       }
       Ok(Json::Int(Lit(acc)))
@@ -164,14 +155,13 @@ impl Parser {
     self.skip_ws()?;
     return_if!(self, b'}', Json::Object(Lit(object)));
     loop {
-      let key = self.parse_value()?;
-      let Json::String(Lit(string)) = key.value else {
-        return parse_err!(self, key.pos, "Keys must be strings.");
-      };
+      let mut pos = self.pos;
+      let key = self.parse_string()?;
+      pos.extend_to(self.pos.offset);
       self.skip_ws()?;
       self.expect(b':')?;
       self.skip_ws()?;
-      object.push((WithPos { value: string, pos: key.pos }, self.parse_value()?));
+      object.push((WithPos { value: key, pos }, self.parse_value()?));
       self.skip_ws()?;
       return_if!(self, b'}', Json::Object(Lit(object)));
       self.expect(b',')?;
@@ -187,12 +177,12 @@ impl Parser {
         b'"' => {
           self.pos.offset += 1;
           pos.extend_to(self.pos.offset);
-          let string = String::from_utf8(bytes).map_err(|_| {
-            format!("Invalid UTF-8 in string.\nError occurred on line: {}", self.pos.line)
-          })?;
+          let Ok(string) = String::from_utf8(bytes) else {
+            return parse_err!(self, pos, InvalidChar);
+          };
           return Ok(string);
         }
-        b'\r' | b'\n' => return parse_err!(self, "Unescaped newline in string."),
+        b'\r' | b'\n' => return parse_err!(self, UnterminatedLiteral),
         b'\\' => {
           self.advance(1)?;
           let esc = self.peek();
@@ -203,11 +193,14 @@ impl Parser {
                 self.advance(1)?;
                 hex.push(char::from(self.peek()));
               }
-              let code_point =
-                u32::from_str_radix(&hex, 16).map_err(|_| "Invalid hex digits in \\u escape.")?;
-              char::from_u32(code_point).ok_or("Invalid Unicode codepoint")?;
-              #[expect(clippy::big_endian_bytes)]
-              bytes.extend_from_slice(&code_point.to_be_bytes());
+              if let Ok(code_point) = u32::from_str_radix(&hex, 16)
+                && char::from_u32(code_point).is_some()
+              {
+                #[expect(clippy::big_endian_bytes)]
+                bytes.extend_from_slice(&code_point.to_be_bytes());
+              } else {
+                return parse_err!(self, pos, InvalidUnicodeEsc);
+              }
             }
             b'/' => bytes.push(b'/'),
             b'"' => bytes.push(b'"'),
@@ -217,10 +210,11 @@ impl Parser {
             b'r' => bytes.push(b'\r'),
             b'n' => bytes.push(b'\n'),
             b't' => bytes.push(b'\t'),
-            _ => return parse_err!(self, "Invalid escape sequence."),
+            ctrl if ctrl.is_ascii_control() => return parse_err!(self, InvalidChar),
+            _ => return parse_err!(self, InvalidEsc(char::from(esc))),
           }
         }
-        0x00..=0x1F => return parse_err!(self, "Invalid control character in string."),
+        ctrl if ctrl.is_ascii_control() => return parse_err!(self, InvalidChar),
         byte => bytes.push(byte),
       }
       self.advance(1)?;
@@ -237,7 +231,8 @@ impl Parser {
       b'f' => self.parse_keyword("false", Json::Bool(Lit(false)))?,
       b'n' => self.parse_keyword("null", Json::Null)?,
       b'0'..=b'9' | b'-' => self.parse_number()?,
-      _ => return parse_err!(self, "Expected a json value, but an unknown value was passed."),
+      ctrl if ctrl.is_ascii_control() => return parse_err!(self, InvalidChar),
+      other => return parse_err!(self, UnexpectedTokenError(TokenKind::Char(char::from(other)))),
     };
     pos.extend_to(self.pos.offset);
     Ok(WithPos { pos, value })

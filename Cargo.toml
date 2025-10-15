@@ -1,6 +1,6 @@
 [package]
 name = "jsonpiler"
-version = "0.7.2"
+version = "0.7.3"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
 license = "Apache-2.0"
@@ -46,3 +46,4 @@ enum_glob_use = "allow"
 as_conversions = "allow"
 else_if_without_else = "allow"
 exit = "allow"
+wildcard_imports = "allow"

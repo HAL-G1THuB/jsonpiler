@@ -71,6 +71,7 @@ Each JSON value is evaluated independently, except in the case of arrays (`[]`) 
 - If the key matches a registered built-in function, that is used; otherwise, a user-defined function is looked up.
 - Multiple key-function entries are supported and evaluated in insertion order.
 - The result of the last function call is returned as the final value.
+- An empty `Block` returns Null.
 
 ```json
 {

@@ -1,16 +1,12 @@
-# The program sets a, b, and c to false.
-# it initializes cnt to 0 and runs a loop while cnt < 2.
-# Each time, it prints "cnt < 2" and increments cnt.
-# After the loop, the final value 2 is returned.
-a = false
-b = false
-c = false
-cnt = 0
-while(
-  $cnt < 2,
+define(repeat_print, { str: String; cnt: Int }, Null,
   {
-    print("cnt < 2\n")
-    cnt = { $cnt + 1 }
+    while(
+      $cnt > 0,
+      {
+        print($str)
+        cnt = { $cnt - 1 }
+      }
+    )
   }
 )
-$cnt
+repeat_print("repeat 5 times\n", 5)

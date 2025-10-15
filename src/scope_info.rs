@@ -2,9 +2,12 @@ use crate::{
   Bind::Var,
   ErrOR,
   Inst::{self, *},
-  Json, Label,
+  InternalErrKind::*,
+  Json,
+  JsonpilerErr::*,
+  Label,
   Memory::{Local, Tmp},
-  Register::{self, *},
+  Register,
   utility::{align_up_i32, mov_b, mov_q},
 };
 use core::iter::{DoubleEndedIterator as _, Iterator as _};
@@ -13,15 +16,14 @@ use std::collections::{BTreeMap, HashMap};
 use std::vec::IntoIter;
 macro_rules! add {
   ($op1:expr, $op2:expr) => {
-    $op1.checked_add($op2).ok_or("InternalError: Overflow occurred")
+    $op1.checked_add($op2).ok_or(InternalError(Overflow))
   };
 }
 macro_rules! sub {
-  ($op1:expr, $op2:expr) => {{ $op1.checked_sub($op2).ok_or("InternalError: Underflow occurred") }};
+  ($op1:expr, $op2:expr) => {{ $op1.checked_sub($op2).ok_or(InternalError(Underflow)) }};
 }
 pub(crate) struct ScopeInfo {
   alloc_map: BTreeMap<i32, i32>,
-  base_stack: i32,
   body: Vec<Inst>,
   epilogue: Option<(u32, Json)>,
   locals: Vec<HashMap<String, Json>>,
@@ -44,7 +46,7 @@ impl ScopeInfo {
         if tail_size > 0i32 {
           self.alloc_map.insert(used_end, tail_size);
         }
-        return Ok(add!(used_end, self.base_stack)?);
+        return Ok(used_end);
       }
     }
     let aligned_start = align_up_i32(self.stack_size, align)?;
@@ -54,20 +56,10 @@ impl ScopeInfo {
     }
     let new_end = add!(aligned_start, size)?;
     self.stack_size = new_end;
-    Ok(add!(new_end, self.base_stack)?)
+    Ok(new_end)
   }
-  pub(crate) fn begin(&mut self) -> ErrOR<ScopeInfo> {
-    let prev_align = self.base_stack;
-    self.base_stack = add!(self.base_stack, align_up_i32(self.stack_size, 16)?)?;
+  pub(crate) fn begin(&mut self) {
     self.locals.push(HashMap::new());
-    Ok(ScopeInfo {
-      body: take(&mut self.body),
-      alloc_map: take(&mut self.alloc_map),
-      stack_size: take(&mut self.stack_size),
-      base_stack: prev_align,
-      epilogue: self.epilogue.clone(),
-      ..ScopeInfo::new()
-    })
   }
   #[expect(clippy::needless_pass_by_value)]
   pub(crate) fn drop_json(&mut self, json: Json) -> ErrOR<()> {
@@ -76,28 +68,21 @@ impl ScopeInfo {
     }
     Ok(())
   }
-  #[expect(clippy::cast_sign_loss)]
-  pub(crate) fn end(&mut self, tmp: ScopeInfo) -> ErrOR<()> {
-    let align = align_up_i32(self.stack_size, 16)?;
-    let mut scope_body = replace(&mut self.body, tmp.body);
-    if align != 0i32 {
-      self.body.push(SubRId(Rsp, align as u32));
+  pub(crate) fn end(&mut self) -> ErrOR<()> {
+    if let Some(locals) = self.locals.pop() {
+      #[expect(clippy::iter_over_hash_type)]
+      for (_, json) in locals {
+        if let Some(Label { mem: Tmp { offset } | Local { offset }, size }) = json.get_label() {
+          self.free(offset, size)?;
+        }
+      }
     }
-    self.body.append(&mut scope_body);
-    if align != 0i32 {
-      self.body.push(AddRId(Rsp, align as u32));
-    }
-    self.stack_size = tmp.stack_size;
-    self.base_stack = tmp.base_stack;
-    self.alloc_map = tmp.alloc_map;
-    self.locals.pop();
     Ok(())
   }
   pub(crate) fn extend(&mut self, insts: &[Inst]) {
     self.body.extend_from_slice(insts);
   }
-  pub(crate) fn free(&mut self, abs_end: i32, mut size: i32) -> ErrOR<()> {
-    let end = sub!(abs_end, self.base_stack)?;
+  pub(crate) fn free(&mut self, end: i32, mut size: i32) -> ErrOR<()> {
     let mut start = sub!(end, size)?;
     if let Some((&prev_start, &prev_size)) = self.alloc_map.range(..start).next_back()
       && add!(prev_start, prev_size)? == start
@@ -127,7 +112,7 @@ impl ScopeInfo {
     None
   }
   pub(crate) fn innermost_scope(&mut self) -> ErrOR<&mut HashMap<String, Json>> {
-    Ok(self.locals.last_mut().ok_or("InternalError: Invalid scope.")?)
+    self.locals.last_mut().ok_or(InternalError(InvalidScope))
   }
   pub(crate) fn into_iter_code(self) -> IntoIter<Inst> {
     self.body.into_iter()
@@ -167,7 +152,6 @@ impl ScopeInfo {
       stack_args: 0,
       body: vec![],
       locals: vec![HashMap::new()],
-      base_stack: 0,
       stack_size: 0,
     }
   }
@@ -182,7 +166,7 @@ impl ScopeInfo {
   pub(crate) fn resolve_stack_size(&self) -> ErrOR<u32> {
     const SHADOW_SPACE: u32 = 32;
     // let ret_addr = 8; let rbp = 8; (ret_addr + rbp) % 16 == 0
-    let args_size = self.stack_args.checked_mul(8).ok_or("InternalError: Overflow")?;
+    let args_size = self.stack_args.checked_mul(8).ok_or(InternalError(Overflow))?;
     let raw = add!(self.stack_size, args_size)?;
     let locals = align_up_i32(raw, 16)?;
     let aligned = locals;

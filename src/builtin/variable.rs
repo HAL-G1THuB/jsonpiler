@@ -1,13 +1,19 @@
 use crate::{
   Arity::Exactly,
   Bind::{self, Lit, Var},
+  CompilationErrKind::*,
   ErrOR, FuncInfo,
   Inst::*,
-  Json, Jsonpiler, Label,
+  InternalErrKind::*,
+  Json, Jsonpiler,
+  JsonpilerErr::*,
+  Label,
   Memory::Global,
   Register::*,
-  ScopeInfo, built_in, err, get_target_mem, take_arg,
-  utility::{mov_b, mov_bool, mov_int, mov_q},
+  ScopeInfo, built_in,
+  dll::*,
+  err, get_target_mem, take_arg,
+  utility::{args_type_error, mov_b, mov_bool, mov_int, mov_q},
 };
 use core::mem::discriminant;
 impl Jsonpiler {
@@ -16,6 +22,9 @@ impl Jsonpiler {
     let variable = take_arg!(self, func, "String", Json::String(Lit(x)) => x);
     let json2 = func.arg()?;
     let ref_label = if is_global {
+      if scope.get_var_local(&variable.value).is_some() {
+        return err!(self, variable.pos, ExistentVar(variable.value));
+      }
       self.globals.get(&variable.value).cloned()
     } else {
       scope.get_var_local(&variable.value)
@@ -23,11 +32,12 @@ impl Jsonpiler {
     if let Some(json) = &ref_label
       && discriminant(json) != discriminant(&json2.value)
     {
-      return Err(
-        self.parser[json2.pos.file]
-          .args_type_error(1, &format!("Variable `{}`", variable.value), &json.type_name(), &json2)
-          .into(),
-      );
+      return Err(args_type_error(
+        1,
+        &format!("Variable `{}`", variable.value),
+        &json.type_name(),
+        &json2,
+      ));
     }
     let value = match json2.value {
       Json::String(string) => {
@@ -52,10 +62,12 @@ impl Jsonpiler {
         Json::String(Var(Label { mem, size: 8 }))
       }
       Json::Null => Json::Null,
-      Json::Int(Lit(int)) if is_global => Json::Int(Var(Label {
-        mem: Global { id: self.global_num(int as u64), disp: 0i32 },
-        size: 8,
-      })),
+      Json::Int(Lit(int)) if is_global && ref_label.is_none() && scope.get_epilogue().is_none() => {
+        Json::Int(Var(Label {
+          mem: Global { id: self.global_num(int as u64), disp: 0i32 },
+          size: 8,
+        }))
+      }
       Json::Int(int) => {
         if is_global {
           self.enter_c_s(scope)?;
@@ -71,7 +83,9 @@ impl Jsonpiler {
         }
         Json::Int(Var(Label { mem, size: 8 }))
       }
-      Json::Bool(Lit(l_bool)) if is_global => {
+      Json::Bool(Lit(l_bool))
+        if is_global && ref_label.is_none() && scope.get_epilogue().is_none() =>
+      {
         Json::Bool(Var(Label { mem: Global { id: self.global_bool(l_bool), disp: 0i32 }, size: 1 }))
       }
       Json::Bool(boolean) => {
@@ -89,10 +103,14 @@ impl Jsonpiler {
         }
         Json::Bool(Var(Label { mem, size: 1 }))
       }
-      Json::Float(Lit(l_float)) if is_global => Json::Float(Var(Label {
-        mem: Global { id: self.global_num(l_float.to_bits()), disp: 0i32 },
-        size: 8,
-      })),
+      Json::Float(Lit(l_float))
+        if is_global && ref_label.is_none() && scope.get_epilogue().is_none() =>
+      {
+        Json::Float(Var(Label {
+          mem: Global { id: self.global_num(l_float.to_bits()), disp: 0i32 },
+          size: 8,
+        }))
+      }
       Json::Float(float) => {
         if is_global {
           self.enter_c_s(scope)?;
@@ -111,11 +129,7 @@ impl Jsonpiler {
         Json::Float(Var(Label { mem, size: 8 }))
       }
       Json::Array(_) | Json::Object(_) => {
-        return Err(
-          self.parser[json2.pos.file]
-            .args_type_error(2, &func.name, "Types excluding arrays and objects", &json2)
-            .into(),
-        );
+        return Err(args_type_error(2, &func.name, "Types excluding arrays and objects", &json2));
       }
     };
     if is_global {
@@ -127,13 +141,13 @@ impl Jsonpiler {
   }
   fn enter_c_s(&mut self, scope: &mut ScopeInfo) -> ErrOR<()> {
     let critical_section = Global { id: self.get_critical_section()?, disp: 0i32 };
-    let enter_c_s = self.import(Jsonpiler::KERNEL32, "EnterCriticalSection")?;
+    let enter_c_s = self.import(KERNEL32, "EnterCriticalSection")?;
     scope.extend(&[LeaRM(Rcx, critical_section), CallApi(enter_c_s)]);
     Ok(())
   }
   fn leave_c_s(&mut self, scope: &mut ScopeInfo) -> ErrOR<()> {
     let critical_section = Global { id: self.get_critical_section()?, disp: 0i32 };
-    let leave_c_s = self.import(Jsonpiler::KERNEL32, "LeaveCriticalSection")?;
+    let leave_c_s = self.import(KERNEL32, "LeaveCriticalSection")?;
     scope.extend(&[LeaRM(Rcx, critical_section), CallApi(leave_c_s)]);
     Ok(())
   }
@@ -149,11 +163,11 @@ built_in! {self, func, scope, variable;
     let var_name = take_arg!(self, func, "String (Literal)", Json::String(Lit(x)) => x);
     match self.get_var(&var_name.value, scope) {
       Some(var) => Ok(var),
-      None => err!(self, var_name.pos, "Undefined variables: `{}`", var_name.value),
+      None => err!(self, var_name.pos, UndefinedVar(var_name.value)),
     }
   }},
   scope => {"scope", SP_SCOPE, Exactly(1), {
-    let object = take_arg!(self, func, "Block", Json::Object(Lit(x)) => x);
-    self.eval_object(object.value, object.pos, scope)
+    let object = take_arg!(self, func, "Block", Json::Object(Lit(x)) => x).value;
+    self.eval_object(object, scope)
   }}
 }

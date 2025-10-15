@@ -1,12 +1,8 @@
 define(
   fib, { n: Int }, Int,
   {
-    y = 0
-    if(
-      [$n <= 1, y = $n],
-      [true, y = { fib($n - 1) + fib($n - 2) } ]
-    )
-    $y
+    if( [ $n > 1, ret(fib($n - 1) + fib($n - 2)) ] )
+    $n
   }
 )
 # This program computes fib(10) = 55.

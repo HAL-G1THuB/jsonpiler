@@ -12,6 +12,16 @@
 
 ### jsonpiler 0.7
 
+#### 0.7.3
+
+- Systematized compile error propagation with Enum. Changed the format of error messages accordingly.
+- Implemented SEH (structured exception handling) within my assembler.
+- Transferred runtime zero-division errors to SEH
+- Optimization of compiled arithmetic operations when any of the arguments after the second argument is zero.
+- Fixed a bug in global reassignment
+- Empty object now returns `Null` when evaluated
+- Removed the upper limit on the number of arguments for user-defined functions
+
 #### 0.7.2
 
 - Reduced machine language part of generated .exe by optimizing integer storage and local memory references (e.g., 9KB → 6KB)
@@ -61,7 +71,7 @@
 
 - Fixed problem with bool values not being passed correctly to user-defined functions
 - Fixed problem with strings stored in local variables not being recognized correctly
-- Set maximum number of arguments for user-defined functions to 16
+- ~~Set maximum number of arguments for user-defined functions to 16~~
 - Jsonpiler now returns the correct exe exit code.
 - Add new function: `len`.
 

@@ -20,21 +20,21 @@ impl Assembler {
       current_offset += lookup_size * 2;
       let mut offsets = Vec::with_capacity(dll.1.len());
       for func in &dll.1 {
-        let offset = align_up(hint_name_table.len(), 8)?;
+        let offset = align_up(hint_name_table.len(), 2)?;
         hint_name_table.resize(offset, 0);
         offsets.push(u32::try_from(offset)?);
         hint_name_table.extend_from_slice(&[0; 2]);
         hint_name_table.extend_from_slice(func.as_bytes());
         hint_name_table.push(0);
       }
-      func_name_offsets.push(offsets);
-      let dll_name_offset = align_up_32(u32::try_from(hint_name_table.len())?, 8)?;
+      let dll_name_offset = align_up_32(u32::try_from(hint_name_table.len())?, 2)?;
       hint_name_table.resize(usize::try_from(dll_name_offset)?, 0);
       hint_name_table.extend_from_slice(dll.0.as_bytes());
       hint_name_table.push(0);
       dll_name_offsets.push(dll_name_offset);
+      func_name_offsets.push(offsets);
     }
-    let aligned_hint_name_len = align_up(hint_name_table.len(), 8)?;
+    let aligned_hint_name_len = align_up(hint_name_table.len(), 2)?;
     hint_name_table.resize(aligned_hint_name_len, 0);
     let total_lookup_size: usize = self.dlls.iter().map(|dll| (dll.1.len() + 1) * 8 * 2).sum();
     let mut idata = Vec::with_capacity(idt_size + total_lookup_size + aligned_hint_name_len);
@@ -54,7 +54,7 @@ impl Assembler {
         let rva = base_rva + current_offset + offset;
         lookup_address_data.extend_from_slice(&u64::from(rva).to_le_bytes());
       }
-      lookup_address_data.extend_from_slice(&[0; 8]);
+      lookup_address_data.resize(lookup_address_data.len() + 8, 0);
       let lookup_start = lookup_address_data.len() - (dll.1.len() + 1) * 8;
       let address = lookup_address_data[lookup_start..].to_vec();
       lookup_address_data.extend(address);
@@ -63,19 +63,20 @@ impl Assembler {
     idata.extend(hint_name_table);
     Ok(idata)
   }
-  #[expect(clippy::too_many_lines)]
+  #[expect(clippy::too_many_lines, clippy::too_many_arguments)]
   pub(crate) fn build_pe(
-    self, code: Vec<u8>, data: Vec<u8>, rdata: Vec<u8>, bss: u32, idata: Vec<u8>,
+    self, text: Vec<u8>, data: Vec<u8>, rdata: Vec<u8>, pdata: Vec<u8>, xdata: Vec<u8>, bss: u32,
+    idata: Vec<u8>,
   ) -> ErrOR<Vec<u8>> {
     const IMAGE_BASE: u64 = 0x1_4000_0000;
     const FILE_ALIGNMENT: u32 = 0x200;
     const SECTION_ALIGNMENT: u32 = 0x1000;
-    const PE_HEADER_OFFSET: u32 = 0x80;
-    const NUMBER_OF_SECTIONS: u16 = 5;
+    const PE_HEADER_OFFSET: u32 = 0x40;
+    const NUMBER_OF_SECTIONS: u16 = 7;
     let pe_headers_total = 4 + 20 + 0xF0 + 40 * usize::from(NUMBER_OF_SECTIONS);
     let size_of_headers_unaligned = usize::try_from(PE_HEADER_OFFSET)? + pe_headers_total;
     let size_of_headers = align_up_32(u32::try_from(size_of_headers_unaligned)?, FILE_ALIGNMENT)?;
-    let text_v_size = u32::try_from(code.len())?;
+    let text_v_size = u32::try_from(text.len())?;
     let text_v_address = self.rva[&Sect::Text];
     let text_raw_size = align_up_32(text_v_size, FILE_ALIGNMENT)?;
     let text_raw_ptr = align_up_32(size_of_headers, FILE_ALIGNMENT)?;
@@ -87,25 +88,35 @@ impl Assembler {
     let rdata_v_address = self.rva[&Sect::Rdata];
     let rdata_raw_size = align_up_32(rdata_v_size, FILE_ALIGNMENT)?;
     let rdata_raw_ptr = data_raw_ptr + data_raw_size;
+    let pdata_v_size = u32::try_from(pdata.len())?;
+    let pdata_v_address = self.rva[&Sect::Pdata];
+    let pdata_raw_size = align_up_32(pdata_v_size, FILE_ALIGNMENT)?;
+    let pdata_raw_ptr = rdata_raw_ptr + rdata_raw_size;
+    let xdata_v_size = u32::try_from(xdata.len())?;
+    let xdata_v_address = self.rva[&Sect::Xdata];
+    let xdata_raw_size = align_up_32(xdata_v_size, FILE_ALIGNMENT)?;
+    let xdata_raw_ptr = pdata_raw_ptr + pdata_raw_size;
     let bss_v_size = bss;
     let bss_v_address = self.rva[&Sect::Bss];
     let idata_v_size = u32::try_from(idata.len())?;
     let idata_v_address = self.rva[&Sect::Idata];
     let idata_raw_size = align_up_32(u32::try_from(idata.len())?, FILE_ALIGNMENT)?;
-    let idata_raw_ptr = rdata_raw_ptr + rdata_raw_size;
+    let idata_raw_ptr = xdata_raw_ptr + xdata_raw_size;
     let size_of_image = align_up_32(
       idata_v_address + align_up_32(idata_v_size, SECTION_ALIGNMENT)?,
       SECTION_ALIGNMENT,
     )?;
     let size_of_file = idata_raw_ptr + idata_raw_size;
     let mut out = Vec::with_capacity(usize::try_from(size_of_file)?);
+    out.resize(PE_HEADER_OFFSET as usize, 0);
+    out[..2].copy_from_slice(b"MZ");
+    out[0x3C..0x40].copy_from_slice(&PE_HEADER_OFFSET.to_le_bytes());
     extend_bytes!(
       out,
-      include_bytes!("bin/dos_stub.bin"),
       b"PE\0\0",
       &0x8664u16.to_le_bytes(),
       &NUMBER_OF_SECTIONS.to_le_bytes(),
-      &get_time_stamp()?.to_le_bytes(),
+      &get_time_stamp().to_le_bytes(),
       &[0; 8],
       &0xF0u16.to_le_bytes(),
       &0x0222u16.to_le_bytes(),
@@ -139,7 +150,10 @@ impl Assembler {
     out.resize(out.len() + 8, 0);
     out.extend_from_slice(&idata_v_address.to_le_bytes());
     out.extend_from_slice(&u32::try_from((self.dlls.len() + 1) * 20)?.to_le_bytes());
-    out.resize(out.len() + 80, 0);
+    out.resize(out.len() + 8, 0);
+    out.extend_from_slice(&pdata_v_address.to_le_bytes());
+    out.extend_from_slice(&pdata_v_size.to_le_bytes());
+    out.resize(out.len() + 64, 0);
     out.extend_from_slice(&self.resolve_address_rva(0, 0)?.to_le_bytes());
     out.extend_from_slice(&u32::try_from(self.resolve_iat_size())?.to_le_bytes());
     out.resize(out.len() + 24, 0);
@@ -166,6 +180,20 @@ impl Assembler {
       &rdata_raw_ptr.to_le_bytes(),
       &[0; 12],
       &0x4000_0040u32.to_le_bytes(),
+      b".pdata\0\0",
+      &pdata_v_size.to_le_bytes(),
+      &pdata_v_address.to_le_bytes(),
+      &pdata_raw_size.to_le_bytes(),
+      &pdata_raw_ptr.to_le_bytes(),
+      &[0; 12],
+      &0x4000_0040u32.to_le_bytes(),
+      b".xdata\0\0",
+      &xdata_v_size.to_le_bytes(),
+      &xdata_v_address.to_le_bytes(),
+      &xdata_raw_size.to_le_bytes(),
+      &xdata_raw_ptr.to_le_bytes(),
+      &[0; 12],
+      &0x4000_0040u32.to_le_bytes(),
       b".bss\0\0\0\0",
       &bss_v_size.to_le_bytes(),
       &bss_v_address.to_le_bytes(),
@@ -180,11 +208,15 @@ impl Assembler {
       &0x4000_0040u32.to_le_bytes(),
     );
     out.resize(usize::try_from(text_raw_ptr)?, 0);
-    out.extend(code);
+    out.extend(text);
     out.resize(usize::try_from(data_raw_ptr)?, 0);
     out.extend(data);
     out.resize(usize::try_from(rdata_raw_ptr)?, 0);
     out.extend(rdata);
+    out.resize(usize::try_from(pdata_raw_ptr)?, 0);
+    out.extend(pdata);
+    out.resize(usize::try_from(xdata_raw_ptr)?, 0);
+    out.extend(xdata);
     out.resize(usize::try_from(idata_raw_ptr)?, 0);
     out.extend(idata);
     out.resize(usize::try_from(size_of_file)?, 0);

@@ -24,8 +24,8 @@ define(
     while(
       $x < 50,
       {
-        fx = { Float($x) * 0.03 }
-        fy = { Float($y) * 0.06 }
+        fx = { Float($x) / 30.0 }
+        fy = { Float($y) / 15.0 }
         iter = julia($fx, $fy)
         str = " "
         if(

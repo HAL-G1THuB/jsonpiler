@@ -3,12 +3,14 @@ use crate::{
   DataInst::{self, *},
   Disp, Dlls, ErrOR,
   Inst::{self, *},
+  InternalErrKind::*,
+  JsonpilerErr::*,
   Memory::{self, Global, Local, Tmp},
   Operand::{self, *},
   RM,
   Register::{self, *},
   Sect, Sib,
-  utility::{align_up, align_up_32},
+  utility::{align_up, align_up_32, mov_q},
 };
 use core::iter::Chain;
 use core::slice::Iter;
@@ -19,13 +21,17 @@ impl Assembler {
     self.addr_sect.insert(idx, sect);
   }
   pub(crate) fn assemble_and_link(
-    mut self, insts: Chain<Iter<Inst>, Iter<Inst>>, data_insts: Vec<DataInst>,
+    mut self, insts: Chain<Iter<Inst>, Iter<Inst>>, data_insts: Vec<DataInst>, seh_handler: u32,
   ) -> ErrOR<Vec<u8>> {
     self.sym_addr.clear();
     self.addr_sect.clear();
     let mut text: u32 = 0;
     let mut data = vec![];
     let mut rdata = vec![];
+    let mut seh = vec![];
+    let mut stack_size = vec![];
+    let mut pdata = vec![];
+    let mut xdata = vec![];
     let mut bss: u32 = 0;
     for data_inst in data_insts {
       match data_inst {
@@ -35,22 +41,21 @@ impl Assembler {
           bss += size;
         }
         Byte(idx, byte) => {
-          self.add_label(Sect::Data, idx, u32::try_from(data.len())?);
+          self.add_label(Sect::Data, idx, to_rva(&data)?);
           data.push(byte);
         }
         Quad(idx, qword) => {
           data.resize(align_up(data.len(), 8)?, 0);
-          self.add_label(Sect::Data, idx, u32::try_from(data.len())?);
+          self.add_label(Sect::Data, idx, to_rva(&data)?);
           data.extend_from_slice(&qword.to_le_bytes());
         }
         Bytes(idx, string) => {
-          self.add_label(Sect::Rdata, idx, u32::try_from(rdata.len())?);
+          self.add_label(Sect::Rdata, idx, to_rva(&rdata)?);
           rdata.extend_from_slice(string.as_bytes());
           rdata.push(0x00);
         }
-        RDAlign(align) => {
-          rdata.resize(align_up(rdata.len(), align)?, 0);
-        }
+        RDAlign(align) => rdata.resize(align_up(rdata.len(), align)?, 0),
+        Seh(prologue, epilogue, size) => seh.push((prologue, epilogue, size)),
       }
     }
     #[cfg(debug_assertions)]
@@ -62,11 +67,35 @@ impl Assembler {
       validate_vec.push(inst_len);
     }
     self.rva.insert(Sect::Text, 0x1000);
+    seh.sort_by(|lhs, rhs| self.sym_addr[&lhs.0].cmp(&self.sym_addr[&rhs.0]));
+    for (prologue, epilogue, size) in seh {
+      pdata.extend_from_slice(&(self.sym_addr[&prologue] + self.rva[&Sect::Text]).to_le_bytes());
+      pdata.extend_from_slice(&(self.sym_addr[&epilogue] + self.rva[&Sect::Text]).to_le_bytes());
+      pdata.extend_from_slice(&[0; 4]);
+      stack_size.push(size);
+    }
     self.rva.insert(Sect::Data, 0x1000 + align_up_32(text, 0x1000)?);
-    let data_raw_size = align_up_32(u32::try_from(data.len())?, 0x1000)?;
+    let data_raw_size = align_up_32(to_rva(&data)?, 0x1000)?;
     self.rva.insert(Sect::Rdata, self.rva[&Sect::Data] + data_raw_size);
-    let rdata_raw_size = align_up_32(u32::try_from(data.len())?, 0x1000)?;
-    self.rva.insert(Sect::Bss, self.rva[&Sect::Rdata] + rdata_raw_size);
+    let rdata_raw_size = align_up_32(to_rva(&data)?, 0x1000)?;
+    self.rva.insert(Sect::Pdata, self.rva[&Sect::Rdata] + rdata_raw_size);
+    let pdata_raw_size = align_up_32(to_rva(&pdata)?, 0x1000)?;
+    self.rva.insert(Sect::Xdata, self.rva[&Sect::Pdata] + pdata_raw_size);
+    #[expect(clippy::cast_possible_truncation)]
+    for (idx, size) in stack_size.iter().enumerate() {
+      xdata.resize(align_up(xdata.len(), 4)?, 0);
+      pdata[idx * 12 + 8..idx * 12 + 12]
+        .copy_from_slice(&(to_rva(&xdata)? + self.rva[&Sect::Xdata]).to_le_bytes());
+      let push_offset = self.inst_size(&Push(Rbp), 0)? as u8;
+      let mov_offset = push_offset + self.inst_size(&mov_q(Rbp, Rsp), 0)? as u8;
+      let sub_offset = mov_offset + self.inst_size(&SubRId(Rsp, *size), 0)? as u8;
+      xdata.extend_from_slice(&[9, sub_offset, 4, Rbp as u8, sub_offset, 1]);
+      xdata.extend_from_slice(&(((*size + 7) >> 3) as u16).to_le_bytes());
+      xdata.extend_from_slice(&[mov_offset, 3, push_offset, (Rbp as u8) << 4u8]);
+      xdata.extend_from_slice(&(self.sym_addr[&seh_handler] + self.rva[&Sect::Text]).to_le_bytes());
+    }
+    let xdata_raw_size = align_up_32(to_rva(&xdata)?, 0x1000)?;
+    self.rva.insert(Sect::Bss, self.rva[&Sect::Xdata] + xdata_raw_size);
     self.rva.insert(Sect::Idata, self.rva[&Sect::Bss] + align_up_32(bss, 0x1000)?);
     let idata = self.build_idata_section(self.rva[&Sect::Idata])?;
     let mut code = vec![];
@@ -76,18 +105,15 @@ impl Assembler {
     }
     #[cfg(debug_assertions)]
     for (idx, inst) in insts.enumerate() {
-      let code_len = code.len();
+      let code_len = to_rva(&code)?;
       self.encode_inst(inst, &mut code)?;
+      let inst_len = to_rva(&code)? - code_len;
       #[expect(clippy::print_stdout, clippy::use_debug)]
-      if code.len() - code_len != validate_vec[idx].try_into()? {
-        println!(
-          "InternalError: actual: {} != expected: {} {inst:?}",
-          code.len() - code_len,
-          validate_vec[idx]
-        );
+      if inst_len != validate_vec[idx] {
+        println!("InternalError: actual: {} != expected: {} {inst:?}", inst_len, validate_vec[idx]);
       }
     }
-    self.build_pe(code, data, rdata, bss, idata)
+    self.build_pe(code, data, rdata, pdata, xdata, bss, idata)
   }
   #[expect(clippy::too_many_lines)]
   fn encode_inst(&mut self, inst: &Inst, code: &mut Vec<u8>) -> ErrOR<()> {
@@ -102,16 +128,10 @@ impl Assembler {
         code.extend(RM::Reg(*reg).encode_romsd(vec![0xD1], Rsp, true));
       }
       JCc(cc, lbl) => {
-        let rel = self.get_rel(*lbl, code.len(), 6)?;
+        let rel = self.get_rel(*lbl, to_rva(code)?, 6)?;
         code.push(0x0F);
         code.push(0x80 + *cc as u8);
         code.extend_from_slice(&rel.to_le_bytes());
-      }
-      #[expect(clippy::cast_sign_loss)]
-      JmpSh(lbl) => {
-        let rel = self.get_rel(*lbl, code.len(), 2)?;
-        code.push(0xEB);
-        code.push(i8::try_from(rel).map_err(|_| "InternalError: Failed short jump")? as u8);
       }
       DecR(reg) => {
         code.extend(RM::Reg(*reg).encode_romsd(vec![0xFF], Rcx, true));
@@ -136,12 +156,12 @@ impl Assembler {
       }
       MovSdMX(mem, xmm) => {
         let size = self.inst_size(inst, 0)?;
-        let memory = self.memory(*mem, code.len(), size)?;
+        let memory = self.memory(*mem, to_rva(code)?, size)?;
         code.extend(memory.encode_romsd(vec![0xF2, 0x0F, 0x11], *xmm, false));
       }
       MovSdXM(xmm, mem) => {
         let size = self.inst_size(inst, 0)?;
-        code.extend(self.memory(*mem, code.len(), size)?.encode_romsd(
+        code.extend(self.memory(*mem, to_rva(code)?, size)?.encode_romsd(
           vec![0xF2, 0x0F, 0x10],
           *xmm,
           false,
@@ -173,12 +193,12 @@ impl Assembler {
         code.extend(RM::Reg(*src).encode_romsd(vec![0x0F, 0xAF], *dst, true));
       }
       Call(lbl) => {
-        let rel = self.get_rel(*lbl, code.len(), 5)?;
+        let rel = self.get_rel(*lbl, to_rva(code)?, 5)?;
         code.push(0xE8);
         code.extend_from_slice(&rel.to_le_bytes());
       }
       CallApi((dll, func)) => {
-        let cur_rva = self.rva[&Sect::Text] + u32::try_from(code.len())?;
+        let cur_rva = self.rva[&Sect::Text] + to_rva(code)?;
         let func_address_rva = self.resolve_address_rva(*dll, *func)?;
         let rip_rel_disp = i32::try_from(func_address_rva)? - i32::try_from(cur_rva)? - 6i32;
         code.extend_from_slice(&RM::RipRel(rip_rel_disp).encode_romsd(vec![0xFF], Rdx, false));
@@ -190,13 +210,13 @@ impl Assembler {
         code.push(*imm as u8);
       }
       Jmp(lbl) => {
-        let rel = self.get_rel(*lbl, code.len(), 5)?;
+        let rel = self.get_rel(*lbl, to_rva(code)?, 5)?;
         code.push(0xE9);
         code.extend_from_slice(&rel.to_le_bytes());
       }
       LeaRM(reg, mem) => {
         let size = self.inst_size(inst, 0)?;
-        let memory = self.memory(*mem, code.len(), size)?;
+        let memory = self.memory(*mem, to_rva(code)?, size)?;
         code.extend(memory.encode_romsd(vec![0x8D], *reg, true));
       }
       MovBB(operands) => self.encode_mov_b_b(code, **operands)?,
@@ -259,16 +279,16 @@ impl Assembler {
       (Reg(dst), Mem(src)) => {
         dst.guard_reg8()?;
         let size = size_of_mov_b_b(operands)?;
-        code.extend(self.memory(src, code.len(), size)?.encode_romsd(vec![0x8A], dst, false));
+        code.extend(self.memory(src, to_rva(code)?, size)?.encode_romsd(vec![0x8A], dst, false));
       }
       (Mem(dst), Reg(src)) => {
         src.guard_reg8()?;
         let size = size_of_mov_b_b(operands)?;
-        code.extend(self.memory(dst, code.len(), size)?.encode_romsd(vec![0x88], src, false));
+        code.extend(self.memory(dst, to_rva(code)?, size)?.encode_romsd(vec![0x88], src, false));
       }
       (Mem(mem), Imm(imm)) => {
         let size = size_of_mov_b_b(operands)?;
-        code.extend(self.memory(mem, code.len(), size)?.encode_romsd(vec![0xC6], Rax, false));
+        code.extend(self.memory(mem, to_rva(code)?, size)?.encode_romsd(vec![0xC6], Rax, false));
         code.extend_from_slice(&imm.to_le_bytes());
       }
       (Reg(dst), Imm(imm)) => {
@@ -277,9 +297,7 @@ impl Assembler {
         code.extend_from_slice(&imm.to_le_bytes());
       }
       _ => {
-        return Err(
-          format!("InternalError: Unsupported operand types: MovBB({operands:?})").into(),
-        );
+        return Err(InternalError(InvalidInst(format!("MovBB{operands:?}"))));
       }
     }
     Ok(())
@@ -301,15 +319,15 @@ impl Assembler {
       }
       (Reg(dst), Mem(src)) => {
         let size = size_of_mov_d_d(operands)?;
-        code.extend(self.memory(src, code.len(), size)?.encode_romsd(vec![0x8B], dst, false));
+        code.extend(self.memory(src, to_rva(code)?, size)?.encode_romsd(vec![0x8B], dst, false));
       }
       (Mem(dst), Reg(src)) => {
         let size = size_of_mov_d_d(operands)?;
-        code.extend(self.memory(dst, code.len(), size)?.encode_romsd(vec![0x89], src, false));
+        code.extend(self.memory(dst, to_rva(code)?, size)?.encode_romsd(vec![0x89], src, false));
       }
       (Mem(mem), Imm(imm)) => {
         let size = size_of_mov_d_d(operands)?;
-        code.extend(self.memory(mem, code.len(), size)?.encode_romsd(vec![0xC7], Rax, false));
+        code.extend(self.memory(mem, to_rva(code)?, size)?.encode_romsd(vec![0xC7], Rax, false));
         code.extend_from_slice(&imm.to_le_bytes());
       }
       (Reg(dst), Imm(imm)) => {
@@ -317,7 +335,7 @@ impl Assembler {
         code.extend_from_slice(&imm.to_le_bytes());
       }
       _ => {
-        return Err(format!("InternalError: Unsupported operand types: MovDD{operands:?}").into());
+        return Err(InternalError(InvalidInst(format!("MovDD{operands:?}"))));
       }
     }
     Ok(())
@@ -327,7 +345,16 @@ impl Assembler {
   ) -> ErrOR<()> {
     match operands {
       (Reg(dst), Args(offset)) => {
-        let mem = RM::Base(Rsp, Disp::Dword(i32::try_from(offset)?));
+        let mem = RM::Base(
+          Rsp,
+          if offset == 0 {
+            Disp::Zero
+          } else if let Ok(byte_offset) = i8::try_from(offset) {
+            Disp::Byte(byte_offset)
+          } else {
+            Disp::Dword(i32::try_from(offset)?)
+          },
+        );
         code.extend(mem.encode_romsd(vec![0x8B], dst, true));
       }
       (Reg(dst), Ref(src)) => {
@@ -339,7 +366,16 @@ impl Assembler {
         code.extend(mem.encode_romsd(vec![0x89], src, true));
       }
       (Args(offset), Reg(src)) => {
-        let mem = RM::Base(Rsp, Disp::Dword(i32::try_from(offset)?));
+        let mem = RM::Base(
+          Rsp,
+          if offset == 0 {
+            Disp::Zero
+          } else if let Ok(byte_offset) = i8::try_from(offset) {
+            Disp::Byte(byte_offset)
+          } else {
+            Disp::Dword(i32::try_from(offset)?)
+          },
+        );
         code.extend(mem.encode_romsd(vec![0x89], src, true));
       }
       (Reg(dst), Reg(src)) => {
@@ -347,34 +383,31 @@ impl Assembler {
       }
       (Reg(dst), Mem(src)) => {
         let size = size_of_mov_q_q(operands)?;
-        code.extend(self.memory(src, code.len(), size)?.encode_romsd(vec![0x8B], dst, true));
+        code.extend(self.memory(src, to_rva(code)?, size)?.encode_romsd(vec![0x8B], dst, true));
       }
       (Mem(dst), Reg(src)) => {
         let size = size_of_mov_q_q(operands)?;
-        code.extend(self.memory(dst, code.len(), size)?.encode_romsd(vec![0x89], src, true));
+        code.extend(self.memory(dst, to_rva(code)?, size)?.encode_romsd(vec![0x89], src, true));
       }
       (Reg(dst), Imm(imm)) => {
         code.extend(dst.mini_opcode(&[], 0xB8, true));
         code.extend_from_slice(&imm.to_le_bytes());
       }
       _ => {
-        return Err(
-          format!("InternalError: Unsupported operand types: MovQQ({operands:?})").into(),
-        );
+        return Err(InternalError(InvalidInst(format!("MovQQ{operands:?}"))));
       }
     }
     Ok(())
   }
-  fn get_rel(&self, lbl: u32, code_len: usize, inst_len: u32) -> ErrOR<i32> {
-    let next_rva = self.rva[&Sect::Text] + u32::try_from(code_len)? + inst_len;
-    let sect = self.addr_sect.get(&lbl).ok_or("unknown label for call")?;
-    let target = self.rva[sect] + *self.sym_addr.get(&lbl).ok_or("unknown label for call")?;
+  fn get_rel(&self, lbl: u32, code_len: u32, inst_len: u32) -> ErrOR<i32> {
+    let next_rva = self.rva[&Sect::Text] + code_len + inst_len;
+    let sect = self.addr_sect.get(&lbl).ok_or(InternalError(UnknownLabel))?;
+    let target = self.rva[sect] + *self.sym_addr.get(&lbl).ok_or(InternalError(UnknownLabel))?;
     Ok(i32::try_from(target)? - i32::try_from(next_rva)?)
   }
   fn inst_size(&mut self, inst: &Inst, text: u32) -> ErrOR<u32> {
     Ok(match inst {
-      Custom(bytes) => u32::try_from(bytes.len())?,
-      JmpSh(_) => 2,
+      Custom(bytes) => to_rva(bytes)?,
       NegR(_) | NotR(_) | LogicRR(..) | IncR(_) | DecR(_) | Shl1R(_) | IDivR(_) | SubRR(..)
       | AddRR(..) => 3,
       CMovCc(..) | SarRIb(..) | ShrRIb(..) | ShlRIb(..) | IMulRR(..) | CmpRIb(..) => 4,
@@ -399,7 +432,7 @@ impl Assembler {
       }
     })
   }
-  pub(crate) fn memory(&self, lbl: Memory, code_len: usize, len_inst: u32) -> ErrOR<RM> {
+  pub(crate) fn memory(&self, lbl: Memory, code_len: u32, len_inst: u32) -> ErrOR<RM> {
     Ok(match lbl {
       Global { id, disp } => RM::RipRel(self.get_rel(id, code_len, len_inst)? + disp),
       Local { offset } | Tmp { offset } => RM::Base(
@@ -412,14 +445,15 @@ impl Assembler {
     Self { sym_addr: HashMap::new(), addr_sect: HashMap::new(), rva: HashMap::new(), dlls }
   }
   pub(crate) fn resolve_address_rva(&self, dll_idx: u32, func_idx: u32) -> ErrOR<u32> {
-    let mut lookup_offset = (self.dlls.len() + 1) * 20;
-    for dll in &self.dlls[0..usize::try_from(dll_idx)?] {
-      let lookup_size = (dll.1.len() + 1) * 8;
+    let dll_index = usize::try_from(dll_idx)?;
+    let mut lookup_offset = (to_rva(&self.dlls)? + 1) * 20;
+    for dll in &self.dlls[0..dll_index] {
+      let lookup_size = (to_rva(&dll.1)? + 1) * 8;
       lookup_offset += lookup_size * 2;
     }
-    let lookup_size = (self.dlls[usize::try_from(dll_idx)?].1.len() + 1) * 8;
+    let lookup_size = (to_rva(&self.dlls[dll_index].1)? + 1) * 8;
     let address_offset = lookup_offset + lookup_size;
-    Ok(self.rva[&Sect::Idata] + u32::try_from(address_offset)? + func_idx * 8)
+    Ok(self.rva[&Sect::Idata] + address_offset + func_idx * 8)
   }
   pub(crate) fn resolve_iat_size(&self) -> usize {
     let mut iat_size = 0;
@@ -432,7 +466,7 @@ impl Assembler {
 impl Register {
   fn guard_reg8(self) -> ErrOR<()> {
     if Rdi >= self && self >= Rsp {
-      Err("InternalError: 8-bit registers spl, bpl ,sil and dil are not implemented".into())
+      Err(InternalError(InvalidInst("spl, bpl ,sil and dil".into())))
     } else {
       Ok(())
     }
@@ -466,21 +500,14 @@ impl RM {
         let (base_bits, rb) = base.reg_field();
         rex_b = rb;
         let mod_bits = match disp {
-          Disp::Zero => {
-            if base_bits == 5 {
-              0x40
-            } else {
-              0
-            }
-          }
           Disp::Byte(_) => 0x40,
           Disp::Dword(_) => 0x80,
+          Disp::Zero if base_bits == 5 => 0x40,
+          Disp::Zero => 0,
         };
-        if base_bits == 4 || base_bits == 12 {
-          opcode.push(mod_bits | (reg_bits << 3u8) | 4);
-          opcode.push((4 << 3u8) | (base_bits & 7));
-        } else {
-          opcode.push(mod_bits | (reg_bits << 3u8) | (base_bits & 7));
+        opcode.push(mod_bits | (reg_bits << 3u8) | base_bits);
+        if *base == Rsp || *base == R12 {
+          opcode.push((4 << 3u8) | base_bits);
         }
         #[expect(clippy::cast_sign_loss)]
         match disp {
@@ -504,13 +531,8 @@ impl RM {
           match disp {
             Disp::Byte(_) => 0x40,
             Disp::Dword(_) => 0x80,
-            Disp::Zero => {
-              if base_bits == 5 {
-                0x40
-              } else {
-                0
-              }
-            }
+            Disp::Zero if base_bits == 5 => 0x40,
+            Disp::Zero => 0,
           } | (reg_bits << 3u8)
             | 4,
         );
@@ -570,10 +592,18 @@ fn size_of_mov_q_q(operands: (Operand<u64>, Operand<u64>)) -> ErrOR<u32> {
       }
     }
     (Reg(_), Mem(mem)) | (Mem(mem), Reg(_)) => 2 + mem.size_of_mo_si_di(),
-    (Reg(_), Args(_)) | (Args(_), Reg(_)) => 8,
+    (Reg(_), Args(offset)) | (Args(offset), Reg(_)) => {
+      4 + if offset == 0 {
+        0
+      } else if i8::try_from(offset).is_ok() {
+        1
+      } else {
+        4
+      }
+    }
     (Reg(_), Imm(_)) => 10,
     _ => {
-      return Err(format!("InternalError: Unsupported operand types: MovQQ{operands:?}").into());
+      return Err(InternalError(InvalidInst(format!("MovQQ{operands:?}"))));
     }
   })
 }
@@ -584,7 +614,7 @@ fn size_of_mov_b_b(operands: (Operand<u8>, Operand<u8>)) -> ErrOR<u32> {
     (Mem(mem), Imm(_)) => 2 + mem.size_of_mo_si_di(),
     (Reg(reg), Imm(_)) => reg.rex_size() + 2,
     _ => {
-      return Err(format!("InternalError: Unsupported operand types: MovDD{operands:?}").into());
+      return Err(InternalError(InvalidInst(format!("MovBB{operands:?}"))));
     }
   })
 }
@@ -598,7 +628,10 @@ fn size_of_mov_d_d(operands: (Operand<u32>, Operand<u32>)) -> ErrOR<u32> {
     (Mem(mem), Imm(_)) => 5 + mem.size_of_mo_si_di(),
     (Reg(reg), Imm(_)) => reg.rex_size() + 5,
     _ => {
-      return Err(format!("InternalError: Unsupported operand types: MovDD{operands:?}").into());
+      return Err(InternalError(InvalidInst(format!("MovDD{operands:?}"))));
     }
   })
+}
+fn to_rva<T>(data: &[T]) -> ErrOR<u32> {
+  u32::try_from(data.len()).map_err(|_| InternalError(TooLargeSection))
 }

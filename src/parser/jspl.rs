@@ -1,4 +1,7 @@
-use crate::{Bind::Lit, ErrOR, Json, Parser, WithPos, parse_err};
+use crate::{
+  Bind::Lit, CompilationErrKind::*, ErrOR, Json, JsonpilerErr::*, Parser, TokenKind, WithPos,
+  parse_err,
+};
 impl Parser {
   pub(crate) fn parse_block(&mut self, is_top_level: bool) -> ErrOR<Json> {
     let pos = self.pos;
@@ -16,34 +19,30 @@ impl Parser {
       }
       let is_eof = is_eof_or_not_sep.is_err();
       if !entries.is_empty() && is_eof_or_not_sep.is_ok_and(|x| !x) {
-        return parse_err!(self, "expected newline or ';' between tokens");
+        return parse_err!(self, ExpectedTokenError(TokenKind::NewLineOrSemiColon));
       }
       if is_eof {
         if is_top_level {
           break;
         }
-        return parse_err!(self, pos, "Unexpected EOF");
+        return parse_err!(self, pos, UnexpectedTokenError(TokenKind::Eof));
       }
       let val = self.try_multi_tokens()?;
       if exist_non_call {
-        return parse_err!(
-          self,
-          val.pos,
-          "Except at the end of a sequence of function calls, values that are not function calls are not allowed."
-        );
+        return parse_err!(self, val.pos, UnexpectedLiteral);
       }
       match val {
         WithPos { value: Json::Object(Lit(vec)), .. } => entries.extend(vec),
         WithPos { value: Json::Array(Lit(_)), .. } => {
           exist_non_call = true;
           entries.push((
-            WithPos { pos: val.pos, value: String::from("value") },
+            WithPos { pos: val.pos, value: "value".into() },
             WithPos { pos: val.pos, value: Json::Array(Lit(vec![val])) },
           ));
         }
         value => {
           exist_non_call = true;
-          entries.push((WithPos { pos: value.pos, value: String::from("value") }, value));
+          entries.push((WithPos { pos: value.pos, value: "value".into() }, value));
         }
       }
     }
@@ -90,21 +89,21 @@ impl Parser {
       }
     }
     if pos.offset == self.pos.offset {
-      return parse_err!(self, pos, "Expected identifier. found {}", char::from(self.peek()));
+      return parse_err!(self, pos, InvalidIdentifier);
     }
     pos.extend_to(self.pos.offset);
     let Ok(ident) = String::from_utf8(self.source[pos.offset..self.pos.offset].to_vec()) else {
-      return parse_err!(self, pos, "Invalid UTF-8 in identifier.");
+      return parse_err!(self, pos, InvalidChar);
     };
     Ok(WithPos { pos, value: ident })
   }
-  fn parse_ident_expect_string(&mut self) -> ErrOR<WithPos<String>> {
+  fn parse_key(&mut self) -> ErrOR<WithPos<String>> {
     let ident = self.parse_ident()?;
-    if ident.value.chars().nth(0) == Some('$') {
-      parse_err!(self, ident.pos, "Invalid identifier")
+    if ident.value.starts_with('$') {
+      parse_err!(self, ident.pos, InvalidIdentifier)
     } else {
       match ident.value.as_str() {
-        "true" | "false" | "null" => parse_err!(self, ident.pos, "Invalid identifier"),
+        "true" | "false" | "null" => parse_err!(self, ident.pos, InvalidIdentifier),
         _ => Ok(ident),
       }
     }
@@ -144,7 +143,7 @@ impl Parser {
       }
       return Ok(true);
     }
-    parse_err!(self, "Unexpected EOF")
+    parse_err!(self, UnexpectedTokenError(TokenKind::Eof))
   }
   fn skip_space(&mut self) -> bool {
     while self.pos.offset < self.source.len() {
@@ -239,7 +238,7 @@ impl Parser {
   fn try_parse_ident(&mut self) -> Option<WithPos<String>> {
     let pos = self.pos;
     self.skip_ws_and_comment().ok()?;
-    if let Ok(res) = self.parse_ident_expect_string() {
+    if let Ok(res) = self.parse_key() {
       Some(res)
     } else {
       self.pos = pos;
@@ -282,7 +281,7 @@ impl Parser {
         if ident.value.chars().nth(0) == Some('$') {
           #[expect(clippy::string_slice)]
           Json::Object(Lit(vec![(
-            WithPos { pos: ident.pos, value: String::from("$") },
+            WithPos { pos: ident.pos, value: "$".into() },
             WithPos { pos: ident.pos, value: Json::String(Lit(ident.value[1..].to_owned())) },
           )]))
         } else {

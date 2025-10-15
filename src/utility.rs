@@ -1,15 +1,19 @@
 use crate::{
+  Arity::{self, *},
   Bind::{self, Lit, Var},
+  CompilationErrKind::*,
   ConditionCode::E,
   DataInst::*,
   ErrOR, FuncInfo,
   Inst::{self, *},
+  InternalErrKind::*,
   Json, Jsonpiler,
+  JsonpilerErr::{self, *},
   LogicByteOpcode::*,
   Memory::*,
   Operand, Parser,
   Register::{self, *},
-  ScopeInfo, take_arg,
+  ScopeInfo, WithPos, take_arg,
 };
 use std::{
   collections::HashMap,
@@ -18,16 +22,13 @@ use std::{
 impl Jsonpiler {
   pub(crate) const COMMON: (bool, bool) = (false, false);
   pub(crate) const CQO: &'static [u8] = &[0x48, 0x99];
-  pub(crate) const GDI32: &'static str = "gdi32.dll";
   pub(crate) const GUI_H: u32 = 0x200;
   pub(crate) const GUI_W: u32 = 0x200;
-  pub(crate) const KERNEL32: &'static str = "kernel32.dll";
   pub(crate) const REGS: [Register; 4] = [Rcx, Rdx, R8, R9];
   pub(crate) const RET: &'static [u8] = &[0xC3];
   pub(crate) const SCOPE: (bool, bool) = (true, false);
   pub(crate) const SPECIAL: (bool, bool) = (false, true);
   pub(crate) const SP_SCOPE: (bool, bool) = (true, true);
-  pub(crate) const USER32: &'static str = "user32.dll";
   pub(crate) fn call_api_check_null(&self, api: (u32, u32)) -> [Inst; 3] {
     [CallApi(api), LogicRR(Test, Rax, Rax), JCc(E, self.sym_table["WIN_HANDLER"])]
   }
@@ -81,8 +82,8 @@ impl Jsonpiler {
         self.import_table[outer_idx].1.len() - 1
       };
     Ok((
-      u32::try_from(outer_idx).or(Err("InternalError: Overflow"))?,
-      u32::try_from(inner_idx).or(Err("InternalError: Overflow"))?,
+      u32::try_from(outer_idx).or(Err(InternalError(Overflow)))?,
+      u32::try_from(inner_idx).or(Err(InternalError(Overflow)))?,
     ))
   }
   pub(crate) fn mov_str(&mut self, string: Bind<String>, dst: Register, scope: &mut ScopeInfo) {
@@ -120,34 +121,6 @@ impl Jsonpiler {
       user_defined: HashMap::new(),
     }
   }
-  pub(crate) fn take_bool(
-    &self, reg: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
-  ) -> ErrOR<()> {
-    let boolean = take_arg!(self, func, "Bool", Json::Bool(x) => x).value;
-    mov_bool(&boolean, reg, scope);
-    Ok(())
-  }
-  pub(crate) fn take_float(
-    &self, xmm: Register, reg: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
-  ) -> ErrOR<()> {
-    let float = take_arg!(self, func, "Float", Json::Float(x) => x).value;
-    mov_float_xmm(&float, xmm, reg, scope)?;
-    Ok(())
-  }
-  pub(crate) fn take_int(
-    &self, dst: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
-  ) -> ErrOR<()> {
-    let int = take_arg!(self, func, "Int", Json::Int(x) => x).value;
-    mov_int(&int, dst, scope);
-    Ok(())
-  }
-  pub(crate) fn take_len_c_a_d(
-    &mut self, dst: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
-  ) -> ErrOR<()> {
-    let string = take_arg!(self, func, "String", Json::String(x) => x).value;
-    mov_len_c_a_d(&string, dst, scope)?;
-    Ok(())
-  }
   pub(crate) fn take_str(
     &mut self, reg: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
   ) -> ErrOR<()> {
@@ -163,20 +136,20 @@ impl Jsonpiler {
   }
 }
 pub(crate) fn align_up(num: usize, align: usize) -> ErrOR<usize> {
-  num.div_ceil(align).checked_mul(align).ok_or("InternalError: Overflow".into())
+  num.div_ceil(align).checked_mul(align).ok_or(InternalError(Overflow))
 }
 pub(crate) fn align_up_32(value: u32, align: u32) -> ErrOR<u32> {
-  value.div_ceil(align).checked_mul(align).ok_or("InternalError: Overflow".into())
+  value.div_ceil(align).checked_mul(align).ok_or(InternalError(Overflow))
 }
 pub(crate) fn align_up_i32(value: i32, align: i32) -> ErrOR<i32> {
   (value + align - 1)
     .checked_div(align)
     .and_then(|x| x.checked_mul(align))
-    .ok_or("InternalError: Overflow".into())
+    .ok_or(InternalError(Overflow))
 }
 #[expect(clippy::cast_possible_truncation)]
-pub(crate) fn get_time_stamp() -> ErrOR<u32> {
-  Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as u32)
+pub(crate) fn get_time_stamp() -> u32 {
+  SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as u32
 }
 pub(crate) fn mov_bool(boolean: &Bind<bool>, dst: Register, scope: &mut ScopeInfo) {
   scope.push(match boolean {
@@ -258,4 +231,92 @@ pub(crate) fn mov_len_c_a_d(
     }
   }
   Ok(())
+}
+pub(crate) fn args_type_error(
+  nth: usize, name: &str, expected: &str, json: &WithPos<Json>,
+) -> JsonpilerErr {
+  let suffix = match nth % 100 {
+    11..=13 => "th",
+    _ => match nth % 10 {
+      1 => "st",
+      2 => "nd",
+      3 => "rd",
+      _ => "th",
+    },
+  };
+  let typ = json.value.type_name();
+  CompilationError {
+    kind: TypeError {
+      name: format!("{nth}{suffix} argument of `{name}`"),
+      expected: expected.to_owned(),
+      typ,
+    },
+    pos: json.pos,
+  }
+}
+pub(crate) fn take_bool(reg: Register, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<()> {
+  let boolean = take_arg!(self, func, "Bool", Json::Bool(x) => x).value;
+  mov_bool(&boolean, reg, scope);
+  Ok(())
+}
+pub(crate) fn take_float(
+  xmm: Register, reg: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
+) -> ErrOR<()> {
+  let float = take_arg!(self, func, "Float", Json::Float(x) => x).value;
+  mov_float_xmm(&float, xmm, reg, scope)?;
+  Ok(())
+}
+pub(crate) fn take_int(dst: Register, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<()> {
+  let int = take_arg!(self, func, "Int", Json::Int(x) => x).value;
+  mov_int(&int, dst, scope);
+  Ok(())
+}
+pub(crate) fn take_len_c_a_d(
+  dst: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
+) -> ErrOR<()> {
+  let string = take_arg!(self, func, "String", Json::String(x) => x).value;
+  mov_len_c_a_d(&string, dst, scope)?;
+  Ok(())
+}
+pub(crate) fn type_error(name: &str, expected: &str, json: &WithPos<Json>) -> JsonpilerErr {
+  let typ = json.value.type_name();
+  CompilationError {
+    pos: json.pos,
+    kind: TypeError { name: name.to_owned(), expected: expected.to_owned(), typ },
+  }
+}
+pub(crate) fn validate_args(func: &FuncInfo, expected: Arity) -> ErrOR<()> {
+  let supplied = func.len;
+  match expected {
+    Exactly(n) => {
+      if supplied == n {
+        return Ok(());
+      }
+    }
+    AtLeast(min) => {
+      if supplied >= min {
+        return Ok(());
+      }
+    }
+    AtMost(max) => {
+      if supplied <= max {
+        return Ok(());
+      }
+    }
+    Range(min, max) => {
+      if supplied >= min && supplied <= max {
+        return Ok(());
+      }
+    }
+    NoArgs => {
+      if supplied == 0 {
+        return Ok(());
+      }
+    }
+    Any => (),
+  }
+  Err(CompilationError {
+    kind: ArityError { name: func.name.clone(), expected, supplied },
+    pos: func.pos,
+  })
 }

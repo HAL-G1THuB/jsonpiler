@@ -1,28 +1,11 @@
 use crate::{
-  Arity::{self, Any, AtLeast, AtMost, Exactly, NoArgs, Range},
-  ErrOR, FuncInfo, Json, Parser, Position, WithPos,
+  Arity::{Any, AtLeast, AtMost, Exactly, NoArgs, Range},
+  CompilationErrKind::{self, *},
+  InternalErrKind::{self, *},
+  Parser, Position,
 };
+use std::fmt;
 impl Parser {
-  pub(crate) fn args_type_error(
-    &self, nth: usize, name: &str, expected: &str, json: &WithPos<Json>,
-  ) -> String {
-    let suffix = match nth % 100 {
-      11..=13 => "th",
-      _ => match nth % 10 {
-        1 => "st",
-        2 => "nd",
-        3 => "rd",
-        _ => "th",
-      },
-    };
-    let typ = json.value.type_name();
-    self.fmt_err(
-      &format!(
-        "TypeError: {nth}{suffix} argument of `{name}` expected type `{expected}`, but got `{typ}`.",
-      ),
-      json.pos,
-    )
-  }
   #[must_use]
   // No risk of overflow
   pub(crate) fn fmt_err(&self, err: &str, pos: Position) -> String {
@@ -48,80 +31,75 @@ impl Parser {
     let carets = "^".repeat(caret_len);
     gen_err(pos.offset - start, &format!("{line_str}\n{ws}{carets}"))
   }
-  pub(crate) fn fmt_require(&self, text: &str, count_desc: &str, func: &FuncInfo) -> String {
-    let plural = if func.len == 1 { "" } else { "s" };
-    let be = if func.len == 1 { "is" } else { "are" };
-    self.fmt_err(
-      &format!(
-        "ArityError: `{}` requires {text} {count_desc}, but {} argument{plural} {be} supplied.",
-        func.name, func.len
-      ),
-      func.pos,
-    )
-  }
-  pub(crate) fn type_error(&self, name: &str, expected: &str, json: &WithPos<Json>) -> String {
-    let typ = json.value.type_name();
-    self.fmt_err(
-      &format!("TypeError: `{name}` expected type `{expected}`, but got `{typ}`.",),
-      json.pos,
-    )
-  }
-  pub(crate) fn validate_args(&self, func: &FuncInfo, expected: Arity) -> ErrOR<()> {
-    let supplied = func.len;
-    match expected {
-      Exactly(n) => {
-        if supplied != n {
-          return Err(
-            self
-              .fmt_require(
-                "exactly",
-                &format!("{n} argument{}", if n == 1 { "" } else { "s" }),
-                func,
-              )
-              .into(),
-          );
-        }
+}
+impl fmt::Display for CompilationErrKind {
+  #[expect(clippy::min_ident_chars)]
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      UnexpectedLiteral => write!(f, "Unexpected literal in non-final position inside block"),
+      UnsupportedType(typ) => write!(f, "Unsupported type: {typ}"),
+      UnknownType(typ) => write!(f, "Unknown type: {typ}"),
+      InvalidUnicodeEsc => write!(f, "Invalid Unicode escape sequence"),
+      IntegerOutOfRange => write!(f, "Integer out of range"),
+      InvalidEsc(char) => write!(f, "Invalid escape sequence: \\{char}"),
+      UndefinedVar(var) => write!(f, "Undefined variable: {var}"),
+      UndefinedFn(func) => write!(f, "Undefined function: {func}"),
+      ExpectedTokenError(token) => write!(f, "Expected {token}"),
+      UnexpectedTokenError(token) => write!(f, "Unexpected {token}"),
+      UnterminatedLiteral => write!(f, "Unterminated string literal"),
+      RecursiveInclude(file) => write!(f, "Recursive include: {file}"),
+      InvalidIdentifier => write!(f, "Invalid identifier"),
+      ExistentBuiltin(name) => write!(f, "Builtin function `{name}` already exists"),
+      ExistentUserDefined(name) => write!(f, "User defined function `{name}` already exists"),
+      ExistentVar(name) => write!(f, "Variable `{name}` already exists"),
+      StartsWithZero => write!(f, "Number cannot start with zero"),
+      OutSideError { kind, place } => write!(f, "`{kind}` can only be used inside a {place}"),
+      TypeError { name, expected, typ } => {
+        write!(f, "`{name}` expected type `{expected}`, but got `{typ}`")
       }
-      AtLeast(min) => {
-        if supplied < min {
-          return Err(
-            self
-              .fmt_require(
-                "at least",
-                &format!("{min} argument{}", if min == 1 { "" } else { "s" }),
-                func,
-              )
-              .into(),
-          );
-        }
+      ArityError { name, expected, supplied } => {
+        let (text, cond) = match *expected {
+          Exactly(n) => ("exactly", format!("{n} argument{}", plural(n))),
+          AtLeast(min) => ("at least", format!("{min} argument{}", plural(min))),
+          AtMost(max) => ("at most", format!("{max} argument{}", plural(max))),
+          Range(min, max) => ("between", format!("{min} and {max} arguments")),
+          NoArgs => ("exactly", "0 arguments".to_owned()),
+          Any => ("any", "unreachable number of arguments".to_owned()),
+        };
+        let plural = plural(*supplied);
+        let be = if *supplied == 1 { "is" } else { "are" };
+        write!(f, "`{name}` requires {text} {cond}, but {supplied} argument{plural} {be} supplied")
       }
-      AtMost(max) => {
-        if supplied > max {
-          return Err(
-            self
-              .fmt_require(
-                "at most",
-                &format!("{max} argument{}", if max == 1 { "" } else { "s" }),
-                func,
-              )
-              .into(),
-          );
-        }
+      InvalidChar => write!(f, "Non-printable or invalid character"),
+      ParseError(typ) => write!(f, "Failed to parse `{typ}`"),
+      ZeroDivisionError => write!(f, "Division by zero"),
+      UnsupportedExtension => write!(f, "Input file must be .json or .jspl"),
+      IOError(err) => write!(f, "IOError: {err}"),
+      IncludeFuncNotFound(funcs) => {
+        write!(f, "IncludeError: function not found:\n- {}", funcs.join("\n- "))
       }
-      Range(min, max) => {
-        if supplied < min || supplied > max {
-          return Err(
-            self.fmt_require("between", &format!("{min} and {max} arguments"), func).into(),
-          );
-        }
-      }
-      NoArgs => {
-        if supplied != 0 {
-          return Err(self.fmt_require("exactly", "0 arguments", func).into());
-        }
-      }
-      Any => (),
+      TooLargeFile => write!(f, "Input file size exceeds 1GB. Please provide a smaller file."),
+      ParentDirNotFound => write!(f, "Parent directory not found"),
     }
-    Ok(())
   }
+}
+impl fmt::Display for InternalErrKind {
+  #[expect(clippy::min_ident_chars)]
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      Overflow => write!(f, "Overflow"),
+      Underflow => write!(f, "Underflow"),
+      UnknownLabel => write!(f, "Unknown label"),
+      InvalidInst(inst) => write!(f, "Invalid instruction: {inst}"),
+      InternalIOError(err) => write!(f, "IOError: {err}"),
+      TooLargeSection => write!(f, "Section too large"),
+      MismatchReassignment => write!(f, "Mismatch reassignment"),
+      NonExistentArg => write!(f, "Non-existent argument"),
+      InvalidScope => write!(f, "Invalid scope"),
+      CastError => write!(f, "Cast error"),
+    }
+  }
+}
+fn plural(num: usize) -> &'static str {
+  if num == 1 { "" } else { "s" }
 }

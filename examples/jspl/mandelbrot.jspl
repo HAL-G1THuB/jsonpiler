@@ -5,7 +5,7 @@ define(
     zi = 0.0
     i = 0
     while(
-      { $i < 50 } and { Int( { $zr * $zr } + { $zi * $zi } ) < 4 },
+      { $i < 64 } and { Int( { $zr * $zr } + { $zi * $zi } ) < 4 },
       {
         tmp = { { { $zr * $zr } - { $zi * $zi } } + $cr}
         zi = { { { 2.0 * $zr } * $zi } + $ci }
@@ -28,16 +28,16 @@ define(
         iter = mandelbrot($fx, $fy)
         str = " "
         if(
-        [$iter == 50, str = "#"],
-        [45 < $iter,  str = "@"],
-        [40 < $iter,  str = "%"],
-        [35 < $iter,  str = "&"],
-        [30 < $iter,  str = "$"],
-        [25 < $iter,  str = "*"],
-        [20 < $iter,  str = "+"],
-        [15 < $iter,  str = "="],
-        [10 < $iter,  str = "-"],
-        [5  < $iter,  str = "."]
+        [$iter == 64, str = "#"],
+        [60 < $iter,  str = "@"],
+        [56 < $iter,  str = "%"],
+        [48 < $iter,  str = "&"],
+        [40 < $iter,  str = "$"],
+        [32 < $iter,  str = "*"],
+        [24 < $iter,  str = "+"],
+        [16 < $iter,  str = "="],
+        [8 < $iter,  str = "-"],
+        [4  < $iter,  str = "."]
         )
         print($str)
         x = { $x + 1 }

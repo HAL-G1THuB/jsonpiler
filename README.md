@@ -211,7 +211,6 @@ Json::Object([
 ## Notes
 
 - Output is a native **PE executable** for Windows x64.
-- SEH is currently disabled and may be re-enabled in a future release.
 - If you see a non-zero exit code under Cargo, it likely reflects your program’s final value.
 
 ---

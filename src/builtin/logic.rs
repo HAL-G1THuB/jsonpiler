@@ -8,15 +8,14 @@ use crate::{
   LogicByteOpcode::{self, *},
   Register::*,
   ScopeInfo, built_in,
-  utility::{mov_bool, mov_d, mov_int, mov_q},
+  dll::*,
+  utility::{args_type_error, mov_bool, mov_d, mov_int, mov_q, take_bool, take_int},
 };
 built_in! {self, func, scope, logic;
-  and => {"and", COMMON, AtLeast(2), {
-    self.logic_template(And, func, scope)
-  }},
+  and => {"and", COMMON, AtLeast(2), {logic_template(And, func, scope)}},
   assert => {"assert", COMMON, Exactly(2), {
-    let message_box_w = self.import(Jsonpiler::USER32, "MessageBoxW")?;
-    self.take_bool(Rax, func, scope)?;
+    let message_box_w = self.import(USER32, "MessageBoxW")?;
+    take_bool(Rax, func, scope)?;
     scope.push(LogicRbRb(Test, Rax, Rax));
     let error_label = self.gen_id();
     let end_label = self.gen_id();
@@ -31,7 +30,7 @@ built_in! {self, func, scope, logic;
     scope.push(mov_d(R9, 0x10));
     scope.extend(&self.call_api_check_null(message_box_w));
     scope.push(mov_d(Rcx, 1));
-    scope.push(CallApi(self.import(Jsonpiler::KERNEL32, "ExitProcess")?));
+    scope.push(CallApi(self.import(KERNEL32, "ExitProcess")?));
     scope.push(Lbl(end_label));
     Ok(Json::Null)
   }},
@@ -46,37 +45,31 @@ built_in! {self, func, scope, logic;
       scope.push(NotR(Rax));
       Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
     } else {
-      Err(self.parser[arg.pos.file].args_type_error(1, &func.name, "Int` or `Bool", &arg).into())
+      Err(args_type_error(1, &func.name, "Int` or `Bool", &arg))
     }
   }},
-  or => {"or", COMMON, AtLeast(2), {
-    self.logic_template(Or, func, scope)
-  }},
-  xor => {"xor", COMMON, AtLeast(2), {
-    self.logic_template(Xor, func, scope)
-  }},
+  or => {"or", COMMON, AtLeast(2), {logic_template(Or, func, scope)}},
+  xor => {"xor", COMMON, AtLeast(2), {logic_template(Xor, func, scope)}},
 }
-impl Jsonpiler {
-  pub(crate) fn logic_template(
-    &self, logic_op: LogicByteOpcode, func: &mut FuncInfo, scope: &mut ScopeInfo,
-  ) -> ErrOR<Json> {
-    let arg = func.arg()?;
-    if let Json::Bool(boolean) = arg.value {
-      mov_bool(&boolean, Rax, scope);
-      for _ in 1..func.len {
-        self.take_bool(Rcx, func, scope)?;
-        scope.push(LogicRbRb(logic_op, Rax, Rcx));
-      }
-      scope.mov_tmp_bool(Rax)
-    } else if let Json::Int(int) = arg.value {
-      mov_int(&int, Rax, scope);
-      for _ in 1..func.len {
-        self.take_int(Rcx, func, scope)?;
-        scope.push(LogicRR(logic_op, Rax, Rcx));
-      }
-      Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
-    } else {
-      Err(self.parser[arg.pos.file].args_type_error(1, &func.name, "Int` or `Bool", &arg).into())
+pub(crate) fn logic_template(
+  logic_op: LogicByteOpcode, func: &mut FuncInfo, scope: &mut ScopeInfo,
+) -> ErrOR<Json> {
+  let arg = func.arg()?;
+  if let Json::Bool(boolean) = arg.value {
+    mov_bool(&boolean, Rax, scope);
+    for _ in 1..func.len {
+      take_bool(Rcx, func, scope)?;
+      scope.push(LogicRbRb(logic_op, Rax, Rcx));
     }
+    scope.mov_tmp_bool(Rax)
+  } else if let Json::Int(int) = arg.value {
+    mov_int(&int, Rax, scope);
+    for _ in 1..func.len {
+      take_int(Rcx, func, scope)?;
+      scope.push(LogicRR(logic_op, Rax, Rcx));
+    }
+    Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
+  } else {
+    Err(args_type_error(1, &func.name, "Int` or `Bool", &arg))
   }
 }

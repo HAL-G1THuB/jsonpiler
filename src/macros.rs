@@ -18,13 +18,19 @@ macro_rules! return_if {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! parse_err {
-  ($self:ident, $pos:expr, $($arg:tt)*) => {Err($self.fmt_err(&format!("ParseError: {}", &format!($($arg)*)), $pos).into())};
-  ($self:ident, $($arg:tt)*) => {Err($self.fmt_err(&format!("ParseError: {}", format!($($arg)*)), $self.pos).into())};
+  ($self:ident, $pos:expr, $kind:expr) => {
+    Err(CompilationError { kind: $kind, pos: $pos })
+  };
+  ($self:ident, $kind:expr) => {
+    Err(CompilationError { kind: $kind, pos: $self.pos })
+  };
 }
 #[macro_export]
 #[doc(hidden)]
 macro_rules! err {
-  ($self:ident, $pos:expr, $($arg:tt)*) => {Err($self.parser[$pos.file].fmt_err(&format!($($arg)*), $pos).into())};
+  ($self:ident, $pos:expr, $kind:expr) => {
+    Err(CompilationError { kind: $kind, pos: $pos })
+  };
 }
 #[macro_export]
 #[doc(hidden)]
@@ -38,7 +44,7 @@ macro_rules! get_target_mem {
     if let Some(json) = &$ref_label {
       match json {
         $pattern => $kind_expr,
-        _ => return Err("InternalError: Unexpected Json variant during reassignment".into()),
+        _ => return Err(InternalError(MismatchReassignment)),
       }
     } else if $is_global {
       Global { id: $self.get_bss_id($size, $size), disp: 0i32 }
@@ -60,11 +66,7 @@ macro_rules! unwrap_arg {
     if let $pat = $arg.value {
       $crate::WithPos { value: $body, pos: $arg.pos }
     } else {
-      return Err(
-        $self.parser[$arg.pos.file]
-          .args_type_error($func.nth, &$func.name, $expected, &$arg)
-          .into(),
-      );
+      return Err(args_type_error($func.nth, &$func.name, $expected, &$arg));
     }
   }};
 }
@@ -81,9 +83,7 @@ macro_rules! take_arg {
     if let $pat = arg.value {
       $crate::WithPos { value: $body, pos: arg.pos }
     } else {
-      return Err(
-        $self.parser[arg.pos.file].args_type_error($func.nth, &$func.name, $expected, &arg).into(),
-      );
+      return Err($crate::utility::args_type_error($func.nth, &$func.name, $expected, &arg).into());
     }
   }};
 }

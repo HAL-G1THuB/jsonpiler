@@ -1,0 +1,40 @@
+define(
+  print_digit, { d: Int }, Null,
+  {
+    if(
+			[$d == 0, print("0")],
+      [$d == 1, print("1")],
+      [$d == 2, print("2")],
+      [$d == 3, print("3")],
+      [$d == 4, print("4")],
+      [$d == 5, print("5")],
+      [$d == 6, print("6")],
+      [$d == 7, print("7")],
+      [$d == 8, print("8")],
+      [$d == 9, print("9")]
+		)
+  }
+)
+define(
+  print_int, { n: Int }, Null,
+  {
+    if([$n < 0, {
+      print("-")
+      n = -: $n
+    }])
+    div = 1
+    tmp = $n
+    while({$tmp >= 10}, {
+      tmp = {$tmp / 10}
+      div = {$div * 10}
+    })
+    tmp = $n
+    while($div > 0, {
+      digit = {$tmp / $div}
+      print_digit($digit)
+      tmp = {$tmp % $div}
+      div = {$div / 10}
+    })
+  print("\n")
+  }
+)

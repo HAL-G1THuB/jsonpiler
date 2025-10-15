@@ -1,64 +1,67 @@
 use crate::{
   Arity::Exactly,
   Bind::Lit,
+  CompilationErrKind::*,
   ConditionCode::*,
   DataInst::RDAlign,
   ErrOR, FuncInfo,
   Inst::*,
   Json, Jsonpiler,
+  JsonpilerErr::*,
   LogicByteOpcode::*,
   Memory::Global,
   Operand::Args,
   Register::*,
-  ScopeInfo, built_in, err, take_arg,
+  ScopeInfo, built_in,
+  dll::*,
+  err, take_arg,
   utility::{mov_b, mov_d, mov_q},
 };
 use core::mem::discriminant;
 built_in! {self, func, scope, gui;
 init_gui => {"GUI", COMMON, Exactly(1), {
+  const TITLE: &str = "J\0s\0o\0n\0p\0i\0l\0e\0r\0 \0G\0U\0I\0\0";
   let pixel_func_name = take_arg!(self, func, "String (Literal)", Json::String(Lit(x)) => x);
   let pixel_func_id;
   {
     let Some(pixel_func) = self.user_defined.get(&pixel_func_name.value) else {
       return err!(
         self, pixel_func_name.pos,
-        "Undefined function: `{}`", pixel_func_name.value
+        UndefinedFn(pixel_func_name.value)
       );
     };
     let int = discriminant(&Json::Int(Lit(0)));
     if pixel_func.params.len() != 5
-      || pixel_func.params.first().is_some_and(|x| discriminant(x) != int)
-      || pixel_func.params.get(1).is_some_and(|x| discriminant(x) != int)
-      || pixel_func.params.get(2).is_some_and(|x| discriminant(x) != int)
-      || pixel_func.params.get(3).is_some_and(|x| discriminant(x) != int)
-      || pixel_func.params.last().is_some_and(|x| discriminant(x) != int)
-      || discriminant(&pixel_func.ret) != int
     {
-      return err!(self, pixel_func_name.pos, "ArityError: `GUI` function must have 5 arguments (x, y, frame, mouse_x, mouse_y).");
+      return err!(self, pixel_func_name.pos, ArityError{name: "GUI".into(), expected: Exactly(5), supplied: pixel_func.params.len()})
+    }
+    for param in &pixel_func.params {
+      if discriminant(param) != int
+      {
+        return err!(self, pixel_func_name.pos,
+          TypeError { name: "GUI".into(), expected: "Int".into(), typ: param.type_name() }
+        );
+      }
     }
     pixel_func_id = pixel_func.id;
   };
   scope.update_stack_args(8);
-  let get_module_handle = self.import(Jsonpiler::KERNEL32, "GetModuleHandleW")?;
-  let load_icon_w = self.import(Jsonpiler::USER32, "LoadIconW")?;
-  let load_cursor_w = self.import(Jsonpiler::USER32, "LoadCursorW")?;
-  let register_class_ex_w = self.import(Jsonpiler::USER32, "RegisterClassExW")?;
-  let create_window_ex_w = self.import(Jsonpiler::USER32, "CreateWindowExW")?;
-  let adjust_window_rect_ex = self.import(Jsonpiler::USER32, "AdjustWindowRectEx")?;
-  let show_window = self.import(Jsonpiler::USER32, "ShowWindow")?;
-  let update_window = self.import(Jsonpiler::USER32, "UpdateWindow")?;
-  let get_message_w = self.import(Jsonpiler::USER32, "GetMessageW")?;
-  let translate_message = self.import(Jsonpiler::USER32, "TranslateMessage")?;
-  let dispatch_message_w = self.import(Jsonpiler::USER32, "DispatchMessageW")?;
+  let get_module_handle = self.import(KERNEL32, "GetModuleHandleW")?;
+  let load_icon_w = self.import(USER32, "LoadIconW")?;
+  let load_cursor_w = self.import(USER32, "LoadCursorW")?;
+  let register_class_ex_w = self.import(USER32, "RegisterClassExW")?;
+  let create_window_ex_w = self.import(USER32, "CreateWindowExW")?;
+  let adjust_window_rect_ex = self.import(USER32, "AdjustWindowRectEx")?;
+  let show_window = self.import(USER32, "ShowWindow")?;
+  let update_window = self.import(USER32, "UpdateWindow")?;
+  let get_message_w = self.import(USER32, "GetMessageW")?;
+  let translate_message = self.import(USER32, "TranslateMessage")?;
+  let dispatch_message_w = self.import(USER32, "DispatchMessageW")?;
   self.data_insts.push(RDAlign(2));
-  let class_name = self.global_str(String::from("J\0s\0o\0n\0p\0i\0l\0e\0r\0 \0G\0U\0I\0\0")).0;
+  let class_name = self.global_str(TITLE.into()).0;
   self.data_insts.push(RDAlign(2));
-  let window_name = self.global_str(String::from("J\0s\0o\0n\0p\0i\0l\0e\0r\0 \0G\0U\0I\0\0")).0;
-  let wnd_proc = if let Some(wnd_proc) = self.sym_table.get("WND_PROC").copied() {
-    wnd_proc
-  } else {
-    self.get_wnd_proc(pixel_func_id)?
-  };
+  let window_name = self.global_str(TITLE.into()).0;
+  let wnd_proc = self.get_wnd_proc(pixel_func_id)?;
   let wnd_class = self.get_bss_id(0x50, 8);
   let msg = self.get_bss_id(0x30, 8);
   let gui_handle = self.get_bss_id(8, 8);

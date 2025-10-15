@@ -10,7 +10,7 @@ define(
     i = 0
     zxn = $zx
     zyn = $zy
-    while ({ $i < 256 } and { Int({ { $zxn * $zxn } + { $zyn * $zyn } }) < 4 },
+    while ({ $i < 256 } and { Int({ $zxn * $zxn } + { $zyn * $zyn }) < 4 },
       {
         tmp = { { { $zxn * $zxn } - { $zyn * $zyn } } + $cx }
         zyn = { { 2.0 * $zxn * $zyn } + $cy }

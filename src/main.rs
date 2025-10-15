@@ -4,16 +4,16 @@ use std::{
   path::Path,
   process::{Command, exit},
 };
-fn main() {
-  macro_rules! exit {($($arg:tt)*) =>{{eprintln!($($arg)*);exit(1i32)}}}
-  macro_rules! unwrap_exit {
+macro_rules! exit {($($arg:tt)*) =>{{eprintln!($($arg)*);exit(1i32)}}}
+macro_rules! unwrap_exit {
   ($result:expr, $($arg:tt)*) => {
     match $result {
       Ok(value) => value,
       Err(err) => exit!("{err}: {}", format!($($arg)*)),
     }
   };
-  }
+}
+fn main() {
   if !is_x86_feature_detected!("sse2") {
     exit!("Error: SSE2 not supported on this CPU. CPU may not be x86_64.");
   }
@@ -38,7 +38,7 @@ fn main() {
   let exe = file.with_extension("exe").to_string_lossy().to_string();
   let mut jsonpiler = Jsonpiler::setup(source, input_file);
   if let Err(err) = jsonpiler.run(&exe, is_jspl) {
-    exit!("Compilation error: {err}");
+    exit!("{err}");
   }
   let cwd = unwrap_exit!(env::current_dir(), "Failed to get current directory").join(&exe);
   let exe_status =

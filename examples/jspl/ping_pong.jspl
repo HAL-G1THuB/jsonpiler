@@ -12,11 +12,11 @@ paddle_w global 8.0
 paddle_h global 64.0
 ball_r global 20.0
 square_r global Int($ball_r * $ball_r)
-left_x global -256.0
-right_x global 256.0
+left_x global { $width / -2.0 }
+right_x global { $width / 2.0 }
 score_per_line global 5
 paddle_h_half global { $paddle_h / 2.0 }
-collision_x global 236
+collision_x global Int($right_x - $ball_r)
 p1_surface global { $left_x + $paddle_w }
 p2_surface global { $right_x - $paddle_w }
 
@@ -24,15 +24,14 @@ p1_bottom global { $pos_p1 - $paddle_h_half }
 p1_top global { $pos_p1 + $paddle_h_half }
 p2_bottom global -: $paddle_h_half
 p2_top global $paddle_h_half
+include("print_int.jspl", print_int)
 define(
-  square, {n: Float}, Float,
+  square, { n: Float }, Float,
   $n * $n
 )
 define(
   rgb, { r: Int; g: Int; b: Int }, Int,
-
   { $r * 256 * 256 } + { $g * 256 } + $b
-
 )
 define(
   in_score_cell,
@@ -119,7 +118,7 @@ define(update, { x: Int; y: Int; frame: Int; mx: Int; my: Int }, Null,
 				vy = { { $hit_pos / $paddle_h_half } * abs($vx) }
 			}
 		])
-		if([ Int($bx) < {Int($left_x) - 10},
+		if([ Int($bx) < Int($left_x - $ball_r),
 			{
 				score_p2 global { $score_p2 + 1 }
 				bx = 0.0
@@ -128,7 +127,7 @@ define(update, { x: Int; y: Int; frame: Int; mx: Int; my: Int }, Null,
 				vy = 18.0
 			}
 		])
-		if([ Int($bx) > {Int($right_x) + 10},
+		if([ Int($bx) > Int($right_x + $ball_r),
 			{
 				score_p1 global { $score_p1 + 1 }
 				bx = 0.0
@@ -171,3 +170,9 @@ define(ping_pong, { x: Int; y: Int; frame: Int; mx: Int; my: Int }, Int,
   }
 )
 GUI(ping_pong)
+print("CPU Score: ")
+
+print_int($score_p1)
+print("Player Score: ")
+
+print_int($score_p2)

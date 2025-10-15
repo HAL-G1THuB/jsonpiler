@@ -3,12 +3,12 @@ define(
   {
     if([$n <= 1, ret(false)])
     if([$n <= 3, ret(true)])
-    if([{{$n % 2} == 0} or {{$n % 3} == 0}, ret(false)])
+    if([{ { $n % 2 } == 0 } or { { $n % 3 } == 0 }, ret(false)])
 
     i = 5
     while({$i * $i} <= $n, {
-      if([{{$n % $i} == 0} or {{$n % {$i + 2}} == 0}, ret(false)])
-      i = {$i + 6}
+      if([{ { $n % $i } == 0 } or { { $n % { $i + 2 } } == 0 }, ret(false)])
+      i = { $i + 6 }
     })
 
     true

@@ -34,15 +34,17 @@ mod parser;
 mod portable_executable;
 mod scope_info;
 mod utility;
-use core::error::Error;
+mod dll {
+  pub(crate) const GDI32: &str = "gdi32.dll";
+  pub(crate) const KERNEL32: &str = "kernel32.dll";
+  pub(crate) const USER32: &str = "user32.dll";
+}
 use parser::Parser;
 use scope_info::ScopeInfo;
-use std::{collections::HashMap, vec::IntoIter};
+use std::{collections::HashMap, io, vec::IntoIter};
 type BuiltinPtr = fn(&mut Jsonpiler, &mut FuncInfo, &mut ScopeInfo) -> ErrOR<Json>;
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[expect(clippy::allow_attributes)]
 enum Disp {
-  #[allow(dead_code)]
   Byte(i8),
   Dword(i32),
   Zero,
@@ -94,11 +96,13 @@ struct Sib {
 #[repr(u8)]
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash)]
 enum Sect {
-  Bss,
-  Data,
-  Idata,
   Text,
+  Data,
   Rdata,
+  Pdata,
+  Xdata,
+  Bss,
+  Idata,
 }
 struct Assembler {
   addr_sect: HashMap<u32, Sect>,
@@ -146,9 +150,11 @@ enum DataInst {
   Bytes(u32, Box<String>),
   Quad(u32, u64),
   RDAlign(usize),
+  Seh(u32, u32, u32),
 }
 #[derive(Clone, Debug)]
 enum Inst {
+  #[expect(dead_code)]
   AddRId(Register, u32),
   AddRR(Register, Register),
   AddSd(Register, Register),
@@ -167,8 +173,6 @@ enum Inst {
   IncR(Register),
   JCc(ConditionCode, u32),
   Jmp(u32),
-  #[expect(dead_code)]
-  JmpSh(u32),
   Lbl(u32),
   LeaRM(Register, Memory),
   LogicRR(LogicByteOpcode, Register, Register),
@@ -233,7 +237,7 @@ struct Builtin {
   scoped: bool,
   skip_eval: bool,
 }
-type ErrOR<T> = Result<T, Box<dyn Error>>;
+type ErrOR<T> = Result<T, JsonpilerErr>;
 struct FuncInfo {
   args: IntoIter<WithPos<Json>>,
   free_list: Vec<(i32, i32)>,
@@ -290,4 +294,55 @@ enum Memory {
 struct WithPos<T> {
   pos: Position,
   value: T,
+}
+enum JsonpilerErr {
+  CompilationError { kind: CompilationErrKind, pos: Position },
+  InternalError(InternalErrKind),
+}
+enum CompilationErrKind {
+  ArityError { name: String, expected: Arity, supplied: usize },
+  ExistentBuiltin(String),
+  ExistentUserDefined(String),
+  ExistentVar(String),
+  ExpectedTokenError(TokenKind),
+  IOError(io::Error),
+  IncludeFuncNotFound(Vec<String>),
+  IntegerOutOfRange,
+  InvalidChar,
+  InvalidEsc(char),
+  InvalidIdentifier,
+  InvalidUnicodeEsc,
+  OutSideError { kind: &'static str, place: &'static str },
+  ParentDirNotFound,
+  ParseError(&'static str),
+  RecursiveInclude(String),
+  StartsWithZero,
+  TooLargeFile,
+  TypeError { name: String, expected: String, typ: String },
+  UndefinedFn(String),
+  UndefinedVar(String),
+  UnexpectedLiteral,
+  UnexpectedTokenError(TokenKind),
+  UnknownType(String),
+  UnsupportedExtension,
+  UnsupportedType(String),
+  UnterminatedLiteral,
+  ZeroDivisionError,
+}
+enum TokenKind {
+  Char(char),
+  Eof,
+  NewLineOrSemiColon,
+}
+enum InternalErrKind {
+  CastError,
+  InternalIOError(io::Error),
+  InvalidInst(String),
+  InvalidScope,
+  MismatchReassignment,
+  NonExistentArg,
+  Overflow,
+  TooLargeSection,
+  Underflow,
+  UnknownLabel,
 }

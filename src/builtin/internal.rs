@@ -1,12 +1,14 @@
 use crate::{
   ConditionCode::*,
+  DataInst::Seh,
   ErrOR,
-  Inst::*,
+  Inst::{self, *},
   Jsonpiler,
   LogicByteOpcode::*,
   Memory::*,
   Operand::{Args, Ref},
   Register::*,
+  dll::*,
   utility::{mov_d, mov_q},
 };
 impl Jsonpiler {
@@ -14,8 +16,7 @@ impl Jsonpiler {
     if let Some(id) = self.sym_table.get("CRITICAL_SECTION") {
       return Ok(*id);
     }
-    let initialize_critical_section =
-      self.import(Jsonpiler::KERNEL32, "InitializeCriticalSection")?;
+    let initialize_critical_section = self.import(KERNEL32, "InitializeCriticalSection")?;
     let critical_section = self.get_bss_id(40, 8);
     self.sym_table.insert("CRITICAL_SECTION", critical_section);
     self.startup.extend_from_slice(&[
@@ -29,8 +30,8 @@ impl Jsonpiler {
       return Ok(*id);
     }
     let err_msg_id = self.global_str(err_msg.to_owned()).0;
-    let message_box = self.import(Jsonpiler::USER32, "MessageBoxA")?;
-    let exit_process = self.import(Jsonpiler::KERNEL32, "ExitProcess")?;
+    let message_box = self.import(USER32, "MessageBoxA")?;
+    let exit_process = self.import(KERNEL32, "ExitProcess")?;
     let id = self.gen_id();
     self.sym_table.insert(err_msg, id);
     self.insts.extend_from_slice(&[
@@ -50,11 +51,12 @@ impl Jsonpiler {
     }
     let heap = Global { id: self.sym_table["HEAP"], disp: 0i32 };
     let u8_to_16 = self.get_u8_to_16()?;
-    let heap_free = self.import(Jsonpiler::KERNEL32, "HeapFree")?;
-    let message_box_w = self.import(Jsonpiler::USER32, "MessageBoxW")?;
+    let heap_free = self.import(KERNEL32, "HeapFree")?;
+    let message_box_w = self.import(USER32, "MessageBoxW")?;
     let msg_box_insts = self.call_api_check_null(message_box_w);
     let heap_free_insts = self.call_api_check_null(heap_free);
     let id = self.gen_id();
+    let end = self.gen_id();
     self.sym_table.insert("MSG_BOX", id);
     self.insts.extend_from_slice(&[
       Lbl(id),
@@ -85,17 +87,20 @@ impl Jsonpiler {
       Pop(Rsi),
       Pop(Rdi),
       Custom(&Jsonpiler::RET),
+      Lbl(end),
     ]);
+    self.data_insts.extend_from_slice(&[Seh(id, end, 20)]);
     Ok(id)
   }
   pub(crate) fn get_random(&mut self) -> ErrOR<u32> {
     if let Some(id) = self.sym_table.get("RANDOM") {
       return Ok(*id);
     }
-    let query_perf_cnt = self.import(Jsonpiler::KERNEL32, "QueryPerformanceCounter")?;
-    let random_seed = self.get_bss_id(8, 8);
+    let query_perf_cnt = self.import(KERNEL32, "QueryPerformanceCounter")?;
+    let random_seed = Global { id: self.get_bss_id(8, 8), disp: 0i32 };
     let id = self.gen_id();
-    self.startup.push(LeaRM(Rcx, Global { id: random_seed, disp: 0i32 }));
+    let end = self.gen_id();
+    self.startup.push(LeaRM(Rcx, random_seed));
     self.startup.extend_from_slice(&self.call_api_check_null(query_perf_cnt));
     self.startup.push(Call(id));
     self.sym_table.insert("RANDOM", id);
@@ -104,7 +109,7 @@ impl Jsonpiler {
       Push(Rbp),
       mov_q(Rbp, Rsp),
       SubRId(Rsp, 8),
-      mov_q(Rax, Global { id: random_seed, disp: 0i32 }),
+      mov_q(Rax, random_seed),
       mov_q(Rcx, Rax),
       ShlRIb(Rcx, 7),
       LogicRR(Xor, Rax, Rcx),
@@ -114,21 +119,24 @@ impl Jsonpiler {
       mov_q(Rcx, Rax),
       ShlRIb(Rcx, 13),
       LogicRR(Xor, Rax, Rcx),
-      mov_q(Global { id: random_seed, disp: 0i32 }, Rax),
+      mov_q(random_seed, Rax),
       mov_q(Rsp, Rbp),
       Pop(Rbp),
       Custom(&Jsonpiler::RET),
+      Lbl(end),
     ]);
+    self.data_insts.extend_from_slice(&[Seh(id, end, 20)]);
     Ok(id)
   }
   pub(crate) fn get_u8_to_16(&mut self) -> ErrOR<u32> {
     if let Some(id) = self.sym_table.get("U8TO16") {
       return Ok(*id);
     }
-    let heap = self.sym_table["HEAP"];
-    let multi_byte_to_wide_char = self.import(Jsonpiler::KERNEL32, "MultiByteToWideChar")?;
-    let heap_alloc = self.import(Jsonpiler::KERNEL32, "HeapAlloc")?;
+    let heap = Global { id: self.sym_table["HEAP"], disp: 0i32 };
+    let multi_byte_to_wide_char = self.import(KERNEL32, "MultiByteToWideChar")?;
+    let heap_alloc = self.import(KERNEL32, "HeapAlloc")?;
     let id = self.gen_id();
+    let end = self.gen_id();
     self.sym_table.insert("U8TO16", id);
     self.insts.extend_from_slice(&[
       Lbl(id),
@@ -151,7 +159,7 @@ impl Jsonpiler {
     self.insts.extend_from_slice(&[
       Shl1R(Rax),
       mov_q(Rsi, Rax),
-      mov_q(Rcx, Global { id: heap, disp: 0i32 }),
+      mov_q(Rcx, heap),
       Clear(Rdx),
       mov_q(R8, Rsi),
     ]);
@@ -174,24 +182,26 @@ impl Jsonpiler {
       Pop(Rsi),
       Pop(Rdi),
       Custom(&Jsonpiler::RET),
+      Lbl(end),
     ]);
+    self.data_insts.extend_from_slice(&[Seh(id, end, 20)]);
     Ok(id)
   }
   #[expect(clippy::too_many_lines)]
   pub(crate) fn get_wnd_proc(&mut self, pixel_func: u32) -> ErrOR<u32> {
-    let def_window_proc = self.import(Jsonpiler::USER32, "DefWindowProcW")?;
-    let post_quit_message = self.import(Jsonpiler::USER32, "PostQuitMessage")?;
-    let set_timer = self.import(Jsonpiler::USER32, "SetTimer")?;
-    let kill_timer = self.import(Jsonpiler::USER32, "KillTimer")?;
-    let begin_paint = self.import(Jsonpiler::USER32, "BeginPaint")?;
-    let end_paint = self.import(Jsonpiler::USER32, "EndPaint")?;
-    let heap_alloc = self.import(Jsonpiler::KERNEL32, "HeapAlloc")?;
-    let heap_free = self.import(Jsonpiler::KERNEL32, "HeapFree")?;
-    let invalidate_rect = self.import(Jsonpiler::USER32, "InvalidateRect")?;
-    let get_cursor_pos = self.import(Jsonpiler::USER32, "GetCursorPos")?;
-    let screen_to_client = self.import(Jsonpiler::USER32, "ScreenToClient")?;
-    let get_client_rect = self.import(Jsonpiler::USER32, "GetClientRect")?;
-    let stretch_di_bits = self.import(Jsonpiler::GDI32, "StretchDIBits")?;
+    let def_window_proc = self.import(USER32, "DefWindowProcW")?;
+    let post_quit_message = self.import(USER32, "PostQuitMessage")?;
+    let set_timer = self.import(USER32, "SetTimer")?;
+    let kill_timer = self.import(USER32, "KillTimer")?;
+    let begin_paint = self.import(USER32, "BeginPaint")?;
+    let end_paint = self.import(USER32, "EndPaint")?;
+    let heap_alloc = self.import(KERNEL32, "HeapAlloc")?;
+    let heap_free = self.import(KERNEL32, "HeapFree")?;
+    let invalidate_rect = self.import(USER32, "InvalidateRect")?;
+    let get_cursor_pos = self.import(USER32, "GetCursorPos")?;
+    let screen_to_client = self.import(USER32, "ScreenToClient")?;
+    let get_client_rect = self.import(USER32, "GetClientRect")?;
+    let stretch_di_bits = self.import(GDI32, "StretchDIBits")?;
     let gui_frame = self.get_bss_id(8, 8);
     let hwnd = self.get_bss_id(8, 8);
     let heap = self.sym_table["HEAP"];
@@ -199,7 +209,8 @@ impl Jsonpiler {
     let bm_info = self.get_bss_id(44, 8);
     let paint_struct = self.get_bss_id(72, 8);
     let hdc = self.get_bss_id(8, 8);
-    let wnd_proc = self.gen_id();
+    let id = self.gen_id();
+    let end = self.gen_id();
     let handle_wm_destroy = self.gen_id();
     let handle_wm_timer = self.gen_id();
     let handle_wm_paint = self.gen_id();
@@ -213,8 +224,10 @@ impl Jsonpiler {
     let while_y = self.gen_id();
     let while_end_x = self.gen_id();
     let while_end_y = self.gen_id();
+    let cursor_pos = Local { offset: 0x10i32 };
+    let client_rect = Local { offset: 0x20i32 };
     self.insts.extend_from_slice(&[
-      Lbl(wnd_proc),
+      Lbl(id),
       Push(Rbp),
       mov_q(Rbp, Rsp),
       SubRId(Rsp, 0x90),
@@ -231,7 +244,7 @@ impl Jsonpiler {
       CallApi(def_window_proc),
       Jmp(end_wnd_proc),
       Lbl(handle_wm_destroy),
-      mov_q(Rdx, 1),
+      mov_d(Rdx, 1),
     ]);
     self.insts.extend_from_slice(&self.call_api_check_null(kill_timer));
     self.insts.extend_from_slice(&[
@@ -268,41 +281,39 @@ impl Jsonpiler {
       Clear(Rax),
       Jmp(end_wnd_proc),
       Lbl(handle_wm_paint),
-      LeaRM(Rcx, Local { offset: 0x10i32 }),
+      LeaRM(Rcx, cursor_pos),
     ]);
     self.insts.extend_from_slice(&self.call_api_check_null(get_cursor_pos));
-    self.insts.extend_from_slice(&[
-      mov_q(Rcx, Global { id: hwnd, disp: 0i32 }),
-      LeaRM(Rdx, Local { offset: 0x10i32 }),
-    ]);
+    self
+      .insts
+      .extend_from_slice(&[mov_q(Rcx, Global { id: hwnd, disp: 0i32 }), LeaRM(Rdx, cursor_pos)]);
     self.insts.extend_from_slice(&self.call_api_check_null(screen_to_client));
-    self.insts.extend_from_slice(&[
-      mov_q(Rcx, Global { id: hwnd, disp: 0i32 }),
-      LeaRM(Rdx, Local { offset: 0x20i32 }),
-    ]);
+    self
+      .insts
+      .extend_from_slice(&[mov_q(Rcx, Global { id: hwnd, disp: 0i32 }), LeaRM(Rdx, client_rect)]);
     self.insts.extend_from_slice(&self.call_api_check_null(get_client_rect));
     self.insts.extend_from_slice(&[
-      mov_d(Rax, Local { offset: 0x10i32 }),
+      mov_d(Rax, cursor_pos),
       mov_d(Rcx, Jsonpiler::GUI_W),
       IMulRR(Rax, Rcx),
-      mov_d(Rcx, Local { offset: 0x18i32 }),
-      mov_d(Rdx, Local { offset: 0x20i32 }),
+      mov_d(Rcx, client_rect.advanced(-8)),
+      mov_d(Rdx, client_rect),
       SubRR(Rcx, Rdx),
       Clear(Rdx),
       LogicRR(Cmp, Rcx, Rdx),
-      JCc(Le, idiv_zero_h),
+      JCc(Le, idiv_zero_w),
       Custom(&Jsonpiler::CQO),
       IDivR(Rcx),
       Jmp(idiv_end_w),
       Lbl(idiv_zero_w),
       Clear(Rax),
       Lbl(idiv_end_w),
-      mov_d(Local { offset: 0x10i32 }, Rax),
-      mov_d(Rax, Local { offset: 0xCi32 }),
+      mov_d(cursor_pos, Rax),
+      mov_d(Rax, cursor_pos.advanced(-4)),
       mov_d(Rcx, Jsonpiler::GUI_H),
       IMulRR(Rax, Rcx),
-      mov_d(Rcx, Local { offset: 0x14i32 }),
-      mov_d(Rdx, Local { offset: 0x1Ci32 }),
+      mov_d(Rcx, client_rect.advanced(-0xC)),
+      mov_d(Rdx, client_rect.advanced(-4)),
       SubRR(Rcx, Rdx),
       Clear(Rdx),
       LogicRR(Cmp, Rcx, Rdx),
@@ -313,55 +324,55 @@ impl Jsonpiler {
       Lbl(idiv_zero_h),
       Clear(Rax),
       Lbl(idiv_end_h),
-      mov_d(Local { offset: 0xCi32 }, Rax),
-      mov_d(Local { offset: 4i32 }, 0),
+      mov_d(cursor_pos.advanced(-4), Rax),
+      mov_d(cursor_pos.advanced(-0xC), 0),
       Lbl(while_y),
-      mov_d(Rcx, Local { offset: 4i32 }),
+      mov_d(Rcx, cursor_pos.advanced(-0xC)),
       mov_d(Rdx, Jsonpiler::GUI_H),
       LogicRR(Cmp, Rcx, Rdx),
       JCc(E, while_end_y),
-      mov_d(Local { offset: 8i32 }, 0),
+      mov_d(cursor_pos.advanced(-8), 0),
       Lbl(while_x),
-      mov_d(Rcx, Local { offset: 8i32 }),
+      mov_d(Rcx, cursor_pos.advanced(-8)),
       mov_d(Rdx, Jsonpiler::GUI_W),
       LogicRR(Cmp, Rcx, Rdx),
       JCc(E, while_end_x),
-      mov_d(Rcx, Local { offset: 8i32 }),
+      mov_d(Rcx, cursor_pos.advanced(-8)),
       SubRId(Rcx, Jsonpiler::GUI_W >> 1),
-      mov_d(Rdx, Local { offset: 4i32 }),
+      mov_d(Rdx, cursor_pos.advanced(-0xC)),
       SubRId(Rdx, Jsonpiler::GUI_H >> 1),
       mov_q(R8, Global { id: gui_frame, disp: 0i32 }),
-      mov_d(R9, Local { offset: 0xCi32 }),
-      mov_d(Rax, Jsonpiler::GUI_W),
-      LogicRR(Cmp, R9, Rax),
-      CMovCc(G, R9, Rax),
-      SubRId(R9, Jsonpiler::GUI_W >> 1),
-      NegR(R9),
-      mov_q(Args(0x20), R9),
-      mov_d(R9, Local { offset: 0x10i32 }),
+      mov_d(R9, cursor_pos.advanced(-4)),
       mov_d(Rax, Jsonpiler::GUI_H),
       LogicRR(Cmp, R9, Rax),
       CMovCc(G, R9, Rax),
       SubRId(R9, Jsonpiler::GUI_H >> 1),
+      NegR(R9),
+      mov_q(Args(0x20), R9),
+      mov_d(R9, cursor_pos),
+      mov_d(Rax, Jsonpiler::GUI_W),
+      LogicRR(Cmp, R9, Rax),
+      CMovCc(G, R9, Rax),
+      SubRId(R9, Jsonpiler::GUI_W >> 1),
       Call(pixel_func),
-      mov_d(Rcx, Local { offset: 4i32 }),
+      mov_d(Rcx, cursor_pos.advanced(-0xC)),
       mov_d(Rdx, Jsonpiler::GUI_W),
       IMulRR(Rcx, Rdx),
-      mov_d(R8, Local { offset: 8i32 }),
+      mov_d(R8, cursor_pos.advanced(-8)),
       AddRR(R8, Rcx),
       mov_d(Rdx, 4),
       IMulRR(R8, Rdx),
       mov_q(Rcx, Global { id: gui_pixels, disp: 0i32 }),
       AddRR(Rcx, R8),
       mov_d(Ref(Rcx), Rax),
-      mov_d(Rcx, Local { offset: 8i32 }),
+      mov_d(Rcx, cursor_pos.advanced(-8)),
       IncR(Rcx),
-      mov_d(Local { offset: 8i32 }, Rcx),
+      mov_d(cursor_pos.advanced(-8), Rcx),
       Jmp(while_x),
       Lbl(while_end_x),
-      mov_d(Rcx, Local { offset: 4i32 }),
+      mov_d(Rcx, cursor_pos.advanced(-0xC)),
       IncR(Rcx),
-      mov_d(Local { offset: 4i32 }, Rcx),
+      mov_d(cursor_pos.advanced(-0xC), Rcx),
       Jmp(while_y),
       Lbl(while_end_y),
       mov_q(Rcx, Global { id: hwnd, disp: 0i32 }),
@@ -416,8 +427,79 @@ impl Jsonpiler {
       mov_q(Rsp, Rbp),
       Pop(Rbp),
       Custom(&Jsonpiler::RET),
+      Lbl(end),
     ]);
-    self.sym_table.insert("WND_PROC", wnd_proc);
-    Ok(wnd_proc)
+    self.data_insts.extend_from_slice(&[Seh(id, end, 20)]);
+    Ok(id)
+  }
+  pub(crate) fn seh_handler(&mut self) -> ErrOR<[Inst; 23]> {
+    let exit_process = self.import(KERNEL32, "ExitProcess")?;
+    let exception_match_end = self.gen_id();
+    let id = self.sym_table["SEH_HANDLER"];
+    let exit = self.gen_id();
+    let end = self.gen_id();
+    self.data_insts.push(Seh(id, end, 20));
+    Ok([
+      Lbl(id),
+      Push(Rbp),
+      mov_q(Rbp, Rsp),
+      SubRId(Rsp, 0x20),
+      mov_q(Rdi, Ref(Rcx)),
+      mov_d(Rax, 0xC000_0094),
+      LeaRM(Rcx, Global { id: self.global_str("ZeroDivisionError".to_owned()).0, disp: 0 }),
+      LogicRR(Cmp, Rdi, Rax),
+      CMovCc(E, Rdx, Rcx),
+      JCc(E, exception_match_end),
+      mov_d(Rax, 0xC000_00FD),
+      LogicRR(Cmp, Rdi, Rax),
+      JCc(E, exit),
+      LeaRM(Rdx, Global { id: self.global_str("An exception occurred!".to_owned()).0, disp: 0 }),
+      Lbl(exception_match_end),
+      Clear(Rcx),
+      Clear(R8),
+      mov_d(R9, 0x10),
+      CallApi(self.import(USER32, "MessageBoxA")?),
+      Lbl(exit),
+      mov_q(Rcx, Rdi),
+      CallApi(exit_process),
+      Lbl(end),
+    ])
+  }
+  pub(crate) fn win_handler(&mut self) -> ErrOR<[Inst; 26]> {
+    let exit_process = self.import(KERNEL32, "ExitProcess")?;
+    let format_message = self.import(KERNEL32, "FormatMessageW")?;
+    let get_last_error = self.import(KERNEL32, "GetLastError")?;
+    let message_box = self.import(USER32, "MessageBoxW")?;
+    let local_free = self.import(KERNEL32, "LocalFree")?;
+    let win_handler_exit = self.gen_id();
+    let msg = Local { offset: 8i32 };
+    Ok([
+      Lbl(self.sym_table["WIN_HANDLER"]),
+      SubRId(Rsp, 0x40),
+      CallApi(get_last_error),
+      mov_q(Rdi, Rax),
+      mov_d(Rcx, 0x1300),
+      Clear(Rdx),
+      mov_q(R8, Rdi),
+      Clear(R9),
+      LeaRM(Rax, msg),
+      mov_q(Args(0x20), Rax),
+      Clear(Rax),
+      mov_q(Args(0x28), Rax),
+      mov_q(Args(0x30), Rax),
+      CallApi(format_message),
+      TestRdRd(Rax, Rax),
+      JCc(E, win_handler_exit),
+      Clear(Rcx),
+      mov_q(Rdx, msg),
+      Clear(R8),
+      mov_d(R9, 0x10),
+      CallApi(message_box),
+      Lbl(win_handler_exit),
+      mov_q(Rcx, msg),
+      CallApi(local_free),
+      mov_q(Rcx, Rdi),
+      CallApi(exit_process),
+    ])
   }
 }
