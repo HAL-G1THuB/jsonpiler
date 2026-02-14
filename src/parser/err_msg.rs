@@ -63,8 +63,8 @@ impl fmt::Display for CompilationErrKind {
           AtLeast(min) => ("at least", format!("{min} argument{}", plural(min))),
           AtMost(max) => ("at most", format!("{max} argument{}", plural(max))),
           Range(min, max) => ("between", format!("{min} and {max} arguments")),
-          NoArgs => ("exactly", "0 arguments".to_owned()),
-          Any => ("any", "unreachable number of arguments".to_owned()),
+          NoArgs => ("exactly", "0 arguments".into()),
+          Any => ("any", "unreachable number of arguments".into()),
         };
         let plural = plural(*supplied);
         let be = if *supplied == 1 { "is" } else { "are" };

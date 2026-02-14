@@ -15,7 +15,7 @@ use crate::{
   Operand::Args,
   Position,
   Register::*,
-  ScopeInfo, WithPos, built_in, err, take_arg, unwrap_arg,
+  ScopeInfo, WithPos, built_in, err, take_arg, take_arg_custom, unwrap_arg,
   utility::{args_type_error, mov_b, mov_q, type_error},
   warn,
 };
@@ -23,14 +23,14 @@ use core::mem::{discriminant, replace, take};
 built_in! {self, func, scope, control;
   define => {"define", SPECIAL, Exactly(4), {
     let old_scope = replace(scope, ScopeInfo::new());
-    let WithPos { value, pos } = take_arg!(self, func, "String (Literal)", Json::String(Lit(x)) => x);
+    let WithPos { value, pos } = take_arg!(self, func, (String(Lit(x))) => x);
     if self.builtin.contains_key(&value) {
       return err!(self, pos, ExistentBuiltin(value));
     }
     if self.user_defined.contains_key(&value) {
       return err!(self, pos, ExistentUserDefined(value));
     }
-    let type_annotations = take_arg!(self, func, "TypeAnnotations", Json::Object(Lit(x)) => x);
+    let type_annotations = take_arg_custom!(self, func, "TypeAnnotations", (Object(Lit(x))) => x);
     let mut params = vec![];
     let mut args = vec![];
     for (param_name, param_jwp) in type_annotations.value {
@@ -45,18 +45,18 @@ built_in! {self, func, scope, control;
       args.push(local);
       params.push(json_type);
     }
-    let ret_str = take_arg!(self, func, "String (Literal)", Json::String(Lit(x)) => x);
+    let ret_str = take_arg!(self, func, (String(Lit(x))) => x);
     let ret_val = json_from_string(&ret_str.value, ret_str.pos, scope.local(8, 8)?)?;
     let id = self.gen_id();
     let epilogue = self.gen_id();
     scope.set_epilogue(Some((epilogue, ret_val.clone())));
     self.user_defined.insert(value.clone(), AsmFunc { id, params, ret: ret_val.clone(), file: func.pos.file });
-    let object = take_arg!(self, func, "Block", Json::Object(Lit(x)) => x);
+    let object = take_arg_custom!(self, func, "Block", (Object(Lit(x))) => x);
     let ret_jwp = WithPos { value: self.eval_object(object.value, scope)?, pos: object.pos };
     if discriminant(&ret_val) != discriminant(&ret_jwp.value){
       return Err(type_error(
-            &format!("Return value of function `{value}`"),
-            &ret_val.type_name(),
+            format!("Return value of function `{value}`"),
+            ret_val.type_name(),
             &ret_jwp,
           )
         );
@@ -106,7 +106,7 @@ built_in! {self, func, scope, control;
     let if_end_label = self.gen_id();
     for nth in 1..=func.len {
       let mut cond_then =
-        take_arg!(self, func, "Array[Bool, Any] (Literal)", Json::Array(Lit(x)) => x);
+        take_arg_custom!(self, func, "Array[Bool, Any] (Literal)", (Array(Lit(x))) => x);
       if used_true {
         warn!(self, cond_then.pos, "Blocks in subsequent clauses are not evaluated");
         scope.push(Lbl(if_end_label));
@@ -114,16 +114,16 @@ built_in! {self, func, scope, control;
       }
       if cond_then.value.len() != 2 {
         return Err(type_error(
-          "Each `if` clause",
-          "Array[Bool, Any] (Literal)",
-          &WithPos { pos: cond_then.pos, value:Json::Array(Lit(cond_then.value)) }
+          "Each `if` clause".into(),
+          "Array[Bool, Any] (Literal)".into(),
+          &WithPos { pos: cond_then.pos, value: Json::Array(Lit(cond_then.value)) }
         ));
       }
       let mut cond_jwp = cond_then.value.remove(0);
       let then_jwp = cond_then.value.remove(0);
       let cond = WithPos{ pos: cond_jwp.pos, value: self.eval(take(&mut cond_jwp), scope)? };
-      let cond_bool = unwrap_arg!(self, cond, func, "Bool", Json::Bool(x) => x).value;
-      let object = unwrap_arg!(self, then_jwp, func, "Block", Json::Object(Lit(x)) => x).value;
+      let cond_bool = unwrap_arg!(self, cond, func, "Bool", (Bool(x)) => x).value;
+      let object = unwrap_arg!(self, then_jwp, func, "Block", (Object(Lit(x))) => x).value;
       match cond_bool {
         Lit(l_bool) => {
           if l_bool {
@@ -135,7 +135,7 @@ built_in! {self, func, scope, control;
           if nth == func.len { scope.push(Lbl(if_end_label)); }
         }
         Var(cond_label) => {
-          func.sched_free_tmp(&cond_label);
+          func.push_free_tmp(&cond_label);
           scope.push(mov_b(Rax, cond_label.mem));
           scope.push(LogicRbRb(Test, Rax, Rax));
           let next_label = if nth == func.len { if_end_label } else { self.gen_id() };
@@ -152,13 +152,13 @@ built_in! {self, func, scope, control;
   f_while => {"while", SP_SCOPE, Exactly(2), {
     let mut cond_jwp = func.arg()?;
     let body =
-    take_arg!(self, func, "Block", Json::Object(Lit(x)) => x);
+    take_arg_custom!(self, func, "Block", (Object(Lit(x))) => x);
     let while_start = self.gen_id();
     let while_end   = self.gen_id();
     scope.loop_enter(while_start, while_end);
     scope.push(Lbl(while_start));
     let cond = WithPos { pos: cond_jwp.pos, value: self.eval(take(&mut cond_jwp), scope)? };
-    let cond_bool = unwrap_arg!(self, cond, func, "Bool", Json::Bool(x) => x).value;
+    let cond_bool = unwrap_arg!(self, cond, func, "Bool", (Bool(x)) => x).value;
     match cond_bool {
       Lit(l_bool) => {
         if l_bool {
@@ -172,7 +172,7 @@ built_in! {self, func, scope, control;
         }
       }
       Var(cond_label) => {
-        func.sched_free_tmp(&cond_label);
+        func.push_free_tmp(&cond_label);
         scope.push(mov_b(Rax, cond_label.mem));
         scope.push(LogicRbRb(Test, Rax, Rax));
         scope.push(JCc(E, while_end));
@@ -193,8 +193,8 @@ built_in! {self, func, scope, control;
     };
     if discriminant(json) != discriminant(&ret_jwp.value){
       return Err(type_error(
-            &format!("Return value of function `{}`", func.name),
-            &json.type_name(),
+            format!("Return value of function `{}`", func.name),
+            json.type_name(),
             &ret_jwp,
           ));
     }
@@ -210,7 +210,7 @@ impl Jsonpiler {
           let inst = match string {
             Lit(l_str) => {
               let id = self.global_str(l_str.clone()).0;
-              LeaRM(Rax, Global { id, disp: 0i32 })
+              LeaRM(Rax, Global { id })
             }
             Var(str_label) => mov_q(Rax, str_label.mem),
           };
@@ -241,7 +241,7 @@ fn json_from_string(name: &str, pos: Position, local: Label) -> ErrOR<Json> {
     "Float" => Ok(Json::Float(Var(local))),
     "Null" => Ok(Json::Null),
     "Bool" => Ok(Json::Bool(Var(local))),
-    "Object" | "Array" => err!(self, pos, UnsupportedType(name.to_owned())),
-    unknown => err!(self, pos, UnknownType(unknown.to_owned())),
+    "Object" | "Array" => err!(self, pos, UnsupportedType(name.into())),
+    unknown => err!(self, pos, UnknownType(unknown.into())),
   }
 }

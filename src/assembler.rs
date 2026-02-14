@@ -5,7 +5,7 @@ use crate::{
   Inst::{self, *},
   InternalErrKind::*,
   JsonpilerErr::*,
-  Memory::{self, Global, Local, Tmp},
+  Memory::{self, Global, GlobalD, Local, Tmp},
   Operand::{self, *},
   RM,
   Register::{self, *},
@@ -434,7 +434,8 @@ impl Assembler {
   }
   pub(crate) fn memory(&self, lbl: Memory, code_len: u32, len_inst: u32) -> ErrOR<RM> {
     Ok(match lbl {
-      Global { id, disp } => RM::RipRel(self.get_rel(id, code_len, len_inst)? + disp),
+      Global { id } => RM::RipRel(self.get_rel(id, code_len, len_inst)?),
+      GlobalD { id, disp } => RM::RipRel(self.get_rel(id, code_len, len_inst)? + disp),
       Local { offset } | Tmp { offset } => RM::Base(
         Rbp,
         if let Ok(l_i8) = i8::try_from(-offset) { Disp::Byte(l_i8) } else { Disp::Dword(-offset) },

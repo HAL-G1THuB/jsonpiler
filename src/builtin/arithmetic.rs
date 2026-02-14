@@ -30,7 +30,7 @@ built_in! {self, _func, scope, arithmetic;
       scope.push(Custom(&BTR_RAX_63));
       Ok(Json::Float(Var(scope.mov_tmp(Rax)?)))
     } else {
-      Err(args_type_error(1, &_func.name, "Int` or `Float", &arg))
+      Err(args_type_error(1, &_func.name, "Int` or `Float".into(), &arg))
   }  }},
   add => {"+", COMMON, AtLeast(2), {
     arithmetic_template(
@@ -70,7 +70,7 @@ built_in! {self, _func, scope, arithmetic;
         Ok(Json::Float(Var(scope.mov_tmp(Rax)?)))
       }
       other => {
-        Err(args_type_error(1, &_func.name, "Int` or `Float", &other))
+        Err(args_type_error(1, &_func.name, "Int` or `Float".into(), &other))
       }
     }
     } else {
@@ -85,8 +85,8 @@ built_in! {self, _func, scope, arithmetic;
     Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
   }},
   rem => {"%", COMMON, Exactly(2), {
-    let int1 = take_arg!(self, _func, "Int", Json::Int(x) => x);
-    let int2 = take_arg!(self, _func, "Int", Json::Int(x) => x);
+    let int1 = take_arg!(self, _func, (Int(x)) => x);
+    let int2 = take_arg!(self, _func, (Int(x)) => x);
     if let (Lit(l_int1), Lit(l_int2)) = (&int1.value, &int2.value) {
       if *l_int2 == 0 {
         return err!(self, int2.pos, ZeroDivisionError);
@@ -120,7 +120,7 @@ fn arithmetic_template(
     WithPos { value: Json::Int(int), .. } => {
       let mut int_vec = vec![];
       for _ in 1..func.len {
-        int_vec.push(take_arg!(self, func, "Int", Json::Int(x) => x).value);
+        int_vec.push(take_arg!(self, func, (Int(x)) => x).value);
       }
       let (first, vars, acc) =
         constant_fold(&int, int_vec, ops, ident_elem, &|| case_zero(func.pos))?;
@@ -160,7 +160,7 @@ fn arithmetic_template(
       }
       scope.mov_tmp_xmm(Rax)
     }
-    other => Err(args_type_error(1, &func.name, "Int` or `Float", &other)),
+    other => Err(args_type_error(1, &func.name, "Int` or `Float".into(), &other)),
   }
 }
 fn constant_fold(

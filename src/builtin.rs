@@ -87,7 +87,7 @@ impl Jsonpiler {
     insts.extend_from_slice(&self.get_std_any(get_std_handle, -11, std_o));
     insts.extend_from_slice(&self.get_std_any(get_std_handle, -12, std_e));
     insts.extend_from_slice(&self.call_api_check_null(get_process_heap));
-    insts.push(mov_q(Global { id: heap, disp: 0i32 }, Rax));
+    insts.push(mov_q(Global { id: heap }, Rax));
     insts.extend_from_slice(&take(&mut self.startup));
     if let Json::Int(int) = result {
       mov_int(&int, Rcx, &mut scope);
@@ -185,7 +185,7 @@ impl Jsonpiler {
       for param in &params {
         let jwp = func.arg()?;
         if discriminant(&jwp.value) != discriminant(param) {
-          return Err(args_type_error(func.nth, &func.name, &param.type_name(), &jwp));
+          return Err(args_type_error(func.nth, &func.name, param.type_name(), &jwp));
         }
         self.mov_to_args(&jwp, func.nth - 1, scope)?;
       }
@@ -224,7 +224,7 @@ impl Jsonpiler {
       CallApi(get_std_handle),
       CmpRIb(Rax, -1i8),
       JCc(E, self.sym_table["WIN_HANDLER"]),
-      mov_q(Global { id, disp: 0i32 }, Rax),
+      mov_q(Global { id }, Rax),
     ]
   }
   fn mov_to_args(&mut self, jwp: &WithPos<Json>, idx: usize, scope: &mut ScopeInfo) -> ErrOR<()> {
@@ -232,7 +232,7 @@ impl Jsonpiler {
     match &jwp.value {
       Json::String(Lit(l_str)) => {
         let id = self.global_str(l_str.clone()).0;
-        scope.push(LeaRM(reg, Global { id, disp: 0i32 }));
+        scope.push(LeaRM(reg, Global { id }));
       }
       Json::String(Var(label)) | Json::Float(Var(label)) | Json::Int(Var(label)) => {
         scope.push(mov_q(reg, label.mem));
@@ -256,7 +256,7 @@ impl Jsonpiler {
     &mut self, name: &str, (scoped, skip_eval): (bool, bool), builtin_ptr: BuiltinPtr,
     arg_len: Arity,
   ) {
-    self.builtin.insert(name.to_owned(), Builtin { arg_len, ptr: builtin_ptr, scoped, skip_eval });
+    self.builtin.insert(name.into(), Builtin { arg_len, ptr: builtin_ptr, scoped, skip_eval });
   }
   #[inline]
   pub fn run(&mut self, exe: &str, is_jspl: bool) -> Result<(), String> {

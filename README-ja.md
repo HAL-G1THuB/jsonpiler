@@ -31,11 +31,9 @@ Jsonpilerに GUI をサポートする関数が追加されました。
 
 ## 更新情報
 
-### 0.7.2
+### 0.7.4
 
-- 整数格納やローカルメモリ参照の最適化により、生成 .exe の機械語部を削減(例として 9KB → 6KB 程度)
-- 関数の途中リターン機構を追加: `ret`
-- ループ制御機構を追加: `break`, `continue`
+- エラーチェックおよびエラー文生成の改良
 
 詳細は **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG-ja.md)** を参照してください。
 

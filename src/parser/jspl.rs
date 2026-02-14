@@ -282,7 +282,7 @@ impl Parser {
           #[expect(clippy::string_slice)]
           Json::Object(Lit(vec![(
             WithPos { pos: ident.pos, value: "$".into() },
-            WithPos { pos: ident.pos, value: Json::String(Lit(ident.value[1..].to_owned())) },
+            WithPos { pos: ident.pos, value: Json::String(Lit(ident.value[1..].into())) },
           )]))
         } else {
           let before_jspl_skip_ws = self.pos;

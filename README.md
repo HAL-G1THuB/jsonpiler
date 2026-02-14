@@ -30,11 +30,9 @@ Jsonpiler now has a function to support GUI.
 
 ## What’s New
 
-### 0.7.2
+### 0.7.4
 
-- Reduced machine language part of generated .exe by optimizing integer storage and local memory references (e.g., 9KB → 6KB)
-- Add function return mechanism: `ret`.
-- Add loop control mechanism: `break`, `continue`.
+- Improvements to error checking and error message generation
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 
@@ -124,7 +122,7 @@ message($a, "345")
 | **Curly braces `{}`**         | Required                              | Optional for top-level blocks                 |
 | **Function call syntax**      | Explicit form like `{"sum": [1,2,3]}` | Natural syntax like `sum(1, 2, 3)`            |
 | **Identifier notation**       | All keys must be quoted `"string"`    | Unquoted identifiers are allowed              |
-| **Infix notation**      | Not supported                         | `1 + 10` → expanded to `{ "+": [1, 10] }`     |
+| **Infix notation**            | Not supported                         | `1 + 10` → expanded to `{ "+": [1, 10] }`     |
 | **Variable reference syntax** | Explicit form like `{"$": "name"}`    | Can be written as `$name`                     |
 | **Comments**                  | Not allowed (by spec)                 | Supported via `# comment`                     |
 

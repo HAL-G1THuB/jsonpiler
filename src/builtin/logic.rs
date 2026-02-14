@@ -45,7 +45,7 @@ built_in! {self, func, scope, logic;
       scope.push(NotR(Rax));
       Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
     } else {
-      Err(args_type_error(1, &func.name, "Int` or `Bool", &arg))
+      Err(args_type_error(1, &func.name, "Int` or `Bool".into(), &arg))
     }
   }},
   or => {"or", COMMON, AtLeast(2), {logic_template(Or, func, scope)}},
@@ -70,6 +70,6 @@ pub(crate) fn logic_template(
     }
     Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
   } else {
-    Err(args_type_error(1, &func.name, "Int` or `Bool", &arg))
+    Err(args_type_error(1, &func.name, "Int` or `Bool".into(), &arg))
   }
 }

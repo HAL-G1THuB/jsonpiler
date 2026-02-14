@@ -10,6 +10,7 @@ use crate::{
   Json, Jsonpiler,
   JsonpilerErr::{self, *},
   LogicByteOpcode::*,
+  Memory,
   Memory::*,
   Operand, Parser,
   Register::{self, *},
@@ -31,6 +32,9 @@ impl Jsonpiler {
   pub(crate) const SP_SCOPE: (bool, bool) = (true, true);
   pub(crate) fn call_api_check_null(&self, api: (u32, u32)) -> [Inst; 3] {
     [CallApi(api), LogicRR(Test, Rax, Rax), JCc(E, self.sym_table["WIN_HANDLER"])]
+  }
+  pub(crate) fn g_symbol(&mut self, key: &str) -> Memory {
+    Global { id: self.sym_table[key] }
   }
   // Overflow is unlikely.
   pub(crate) fn gen_id(&mut self) -> u32 {
@@ -89,7 +93,7 @@ impl Jsonpiler {
   pub(crate) fn mov_str(&mut self, string: Bind<String>, dst: Register, scope: &mut ScopeInfo) {
     match string {
       Lit(l_str) => {
-        let lbl = Global { id: self.global_str(l_str).0, disp: 0i32 };
+        let lbl = Global { id: self.global_str(l_str).0 };
         scope.push(LeaRM(dst, lbl));
       }
       Var(label) => scope.push(mov_q(dst, label.mem)),
@@ -124,14 +128,14 @@ impl Jsonpiler {
   pub(crate) fn take_str(
     &mut self, reg: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
   ) -> ErrOR<()> {
-    let string = take_arg!(self, func, "String", Json::String(x) => x).value;
+    let string = take_arg!(self, func, (String(x)) => x).value;
     self.mov_str(string, reg, scope);
     Ok(())
   }
   pub(crate) fn take_str_len_c_a_d(
     &mut self, str_reg: Register, len_reg: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
   ) -> ErrOR<()> {
-    let string = take_arg!(self, func, "String", Json::String(x) => x).value;
+    let string = take_arg!(self, func, (String(x)) => x).value;
     self.mov_str_len_c_a_d(string, str_reg, len_reg, scope)
   }
 }
@@ -153,20 +157,20 @@ pub(crate) fn get_time_stamp() -> u32 {
 }
 pub(crate) fn mov_bool(boolean: &Bind<bool>, dst: Register, scope: &mut ScopeInfo) {
   scope.push(match boolean {
-    Bind::Lit(l_bool) => mov_b(dst, if *l_bool { 0xFF } else { 0 }),
-    Bind::Var(label) => mov_b(dst, label.mem),
+    Lit(l_bool) => mov_b(dst, if *l_bool { 0xFF } else { 0 }),
+    Var(label) => mov_b(dst, label.mem),
   });
 }
 pub(crate) fn mov_float_reg(float: &Bind<f64>, dst: Register, scope: &mut ScopeInfo) {
   scope.push(match float {
-    Bind::Lit(l_float) => mov_q(dst, l_float.to_bits()),
-    Bind::Var(label) => mov_q(dst, label.mem),
+    Lit(l_float) => mov_q(dst, l_float.to_bits()),
+    Var(label) => mov_q(dst, label.mem),
   });
 }
 pub(crate) fn mov_int(int: &Bind<i64>, dst: Register, scope: &mut ScopeInfo) {
   #[expect(clippy::cast_sign_loss)]
   scope.push(match int {
-    Bind::Lit(l_int) => {
+    Lit(l_int) => {
       if *l_int == 0 {
         Clear(dst)
       } else if let Ok(l_i32) = i32::try_from(*l_int)
@@ -177,7 +181,7 @@ pub(crate) fn mov_int(int: &Bind<i64>, dst: Register, scope: &mut ScopeInfo) {
         mov_q(dst, *l_int as u64)
       }
     }
-    Bind::Var(label) => mov_q(dst, label.mem),
+    Var(label) => mov_q(dst, label.mem),
   });
 }
 pub(crate) fn mov_q<T: Into<Operand<u64>>, U: Into<Operand<u64>>>(dst: T, src: U) -> Inst {
@@ -193,14 +197,14 @@ pub(crate) fn mov_float_xmm(
   float: &Bind<f64>, xmm: Register, reg: Register, scope: &mut ScopeInfo,
 ) -> ErrOR<()> {
   let addr = match float {
-    Bind::Lit(l_float) => {
+    Lit(l_float) => {
       scope.push(mov_q(reg, l_float.to_bits()));
-      let tmp = scope.alloc(8, 8)?;
-      scope.push(mov_q(Tmp { offset: tmp }, reg));
-      scope.free(tmp, 8)?;
-      Tmp { offset: tmp }
+      let offset = scope.alloc(8, 8)?;
+      scope.push(mov_q(Tmp { offset }, reg));
+      scope.free(offset, 8)?;
+      Tmp { offset }
     }
-    Bind::Var(label) => label.mem,
+    Var(label) => label.mem,
   };
   scope.push(MovSdXM(xmm, addr));
   Ok(())
@@ -213,10 +217,10 @@ pub(crate) fn mov_len_c_a_d(
     Lit(l_str) => mov_int(&Lit(l_str.len() as i64), dst, scope),
     Var(label) => {
       const CLD_REPNE_SCASB: &[u8] = &[0xFC, 0xF2, 0xAE];
-      let tmp = scope.alloc(8, 8)?;
+      let offset = scope.alloc(8, 8)?;
       scope.push(mov_q(dst, label.mem));
       scope.extend(&[
-        mov_q(Tmp { offset: tmp }, Rdi),
+        mov_q(Tmp { offset }, Rdi),
         mov_q(Rdx, label.mem),
         mov_q(Rdi, Rdx),
         Clear(Rcx),
@@ -226,14 +230,14 @@ pub(crate) fn mov_len_c_a_d(
         SubRR(Rdi, Rdx),
         DecR(Rdi),
         mov_q(dst, Rdi),
-        mov_q(Rdi, Tmp { offset: tmp }),
+        mov_q(Rdi, Tmp { offset }),
       ]);
     }
   }
   Ok(())
 }
 pub(crate) fn args_type_error(
-  nth: usize, name: &str, expected: &str, json: &WithPos<Json>,
+  nth: usize, name: &str, expected: String, json: &WithPos<Json>,
 ) -> JsonpilerErr {
   let suffix = match nth % 100 {
     11..=13 => "th",
@@ -246,73 +250,47 @@ pub(crate) fn args_type_error(
   };
   let typ = json.value.type_name();
   CompilationError {
-    kind: TypeError {
-      name: format!("{nth}{suffix} argument of `{name}`"),
-      expected: expected.to_owned(),
-      typ,
-    },
+    kind: TypeError { name: format!("{nth}{suffix} argument of `{name}`"), expected, typ },
     pos: json.pos,
   }
 }
 pub(crate) fn take_bool(reg: Register, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<()> {
-  let boolean = take_arg!(self, func, "Bool", Json::Bool(x) => x).value;
+  let boolean = take_arg!(self, func, (Bool(x)) => x).value;
   mov_bool(&boolean, reg, scope);
   Ok(())
 }
 pub(crate) fn take_float(
   xmm: Register, reg: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
 ) -> ErrOR<()> {
-  let float = take_arg!(self, func, "Float", Json::Float(x) => x).value;
+  let float = take_arg!(self, func, (Float(x)) => x).value;
   mov_float_xmm(&float, xmm, reg, scope)?;
   Ok(())
 }
 pub(crate) fn take_int(dst: Register, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<()> {
-  let int = take_arg!(self, func, "Int", Json::Int(x) => x).value;
+  let int = take_arg!(self, func, (Int(x)) => x).value;
   mov_int(&int, dst, scope);
   Ok(())
 }
 pub(crate) fn take_len_c_a_d(
   dst: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
 ) -> ErrOR<()> {
-  let string = take_arg!(self, func, "String", Json::String(x) => x).value;
+  let string = take_arg!(self, func, (String(x)) => x).value;
   mov_len_c_a_d(&string, dst, scope)?;
   Ok(())
 }
-pub(crate) fn type_error(name: &str, expected: &str, json: &WithPos<Json>) -> JsonpilerErr {
+pub(crate) fn type_error(name: String, expected: String, json: &WithPos<Json>) -> JsonpilerErr {
   let typ = json.value.type_name();
-  CompilationError {
-    pos: json.pos,
-    kind: TypeError { name: name.to_owned(), expected: expected.to_owned(), typ },
-  }
+  CompilationError { pos: json.pos, kind: TypeError { name, expected, typ } }
 }
+#[rustfmt::skip]
 pub(crate) fn validate_args(func: &FuncInfo, expected: Arity) -> ErrOR<()> {
   let supplied = func.len;
   match expected {
-    Exactly(n) => {
-      if supplied == n {
-        return Ok(());
-      }
-    }
-    AtLeast(min) => {
-      if supplied >= min {
-        return Ok(());
-      }
-    }
-    AtMost(max) => {
-      if supplied <= max {
-        return Ok(());
-      }
-    }
-    Range(min, max) => {
-      if supplied >= min && supplied <= max {
-        return Ok(());
-      }
-    }
-    NoArgs => {
-      if supplied == 0 {
-        return Ok(());
-      }
-    }
+    Exactly(n) => if supplied == n { return Ok(()); }
+    AtLeast(min) => if supplied >= min { return Ok(()); }
+    AtMost(max) => if supplied <= max { return Ok(()); }
+    Range(min, max) => if min <= supplied && supplied <= max { return Ok(()); }
+    NoArgs => if supplied == 0 { return Ok(()); }
     Any => (),
   }
   Err(CompilationError {

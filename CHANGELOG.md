@@ -12,6 +12,10 @@
 
 ### jsonpiler 0.7
 
+#### 0.7.4
+
+- Improvements to error checking and error message generation
+
 #### 0.7.3
 
 - Systematized compile error propagation with Enum. Changed the format of error messages accordingly.

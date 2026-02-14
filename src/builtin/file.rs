@@ -6,10 +6,10 @@ use core::mem::{replace, take};
 use std::{collections::HashMap, env, fs, path::Path};
 built_in! {self, func, scope, file;
   include => {"include", SCOPE, AtLeast(1), {
-    let path = take_arg!(self, func, "String (Literal)", Json::String(Lit(x)) => x);
+    let path = take_arg!(self, func, (String(Lit(x))) => x);
     let mut includes = vec![];
     for _ in 1..func.len {
-      includes.push(take_arg!(self, func, "String (Literal)", Json::String(Lit(x)) => x).value);
+      includes.push(take_arg!(self, func, (String(Lit(x))) => x).value);
     }
     let old_locals = scope.replace_locals(vec![HashMap::new()]);
     let globals = take(&mut self.globals);

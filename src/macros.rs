@@ -40,14 +40,14 @@ macro_rules! warn {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! get_target_mem {
-  ($self:expr, $scope:expr, $is_global:expr, $size:expr, $ref_label:expr, $pattern:pat => $kind_expr:expr) => {
+  ($self:expr, $scope:expr, $is_global:expr, $size:expr, $ref_label:expr, ($($kind:tt)+) => $kind_expr:ident) => {
     if let Some(json) = &$ref_label {
       match json {
-        $pattern => $kind_expr,
+        Json::$($kind)+ => $kind_expr.mem,
         _ => return Err(InternalError(MismatchReassignment)),
       }
     } else if $is_global {
-      Global { id: $self.get_bss_id($size, $size), disp: 0i32 }
+      Global { id: $self.get_bss_id($size, $size) }
     } else {
       $scope.local($size, $size)?.mem
     }
@@ -61,12 +61,12 @@ macro_rules! unwrap_arg {
     $arg:expr,
     $func:expr,
     $expected:literal,
-    $pat:pat => $body:expr
+    ($($kind:tt)+) => $body:ident
   ) => {{
-    if let $pat = $arg.value {
+    if let Json::$($kind)+ = $arg.value {
       $crate::WithPos { value: $body, pos: $arg.pos }
     } else {
-      return Err(args_type_error($func.nth, &$func.name, $expected, &$arg));
+      return Err(args_type_error($func.nth, &$func.name, $expected.into(), &$arg));
     }
   }};
 }
@@ -76,14 +76,36 @@ macro_rules! take_arg {
   (
     $self:ident,
     $func:expr,
-    $expected:literal,
-    $pat:pat => $body:expr
+    ($($kind:tt)+) => $body:ident
   ) => {{
     let arg = $func.arg()?;
-    if let $pat = arg.value {
+    if let Json::$($kind)+ = arg.value {
       $crate::WithPos { value: $body, pos: arg.pos }
     } else {
-      return Err($crate::utility::args_type_error($func.nth, &$func.name, $expected, &arg).into());
+      let $body = Default::default();
+      let expected = Json::$($kind)+.type_name();
+      return Err(
+        $crate::utility::args_type_error($func.nth, &$func.name, expected, &arg).into(),
+      );
+    }
+  }};
+}
+#[macro_export]
+#[doc(hidden)]
+macro_rules! take_arg_custom {
+  (
+    $self:ident,
+    $func:expr,
+    $expected:literal,
+    ($($kind:tt)+) => $body:ident
+  ) => {{
+    let arg = $func.arg()?;
+    if let Json::$($kind)+ = arg.value {
+      $crate::WithPos { value: $body, pos: arg.pos }
+    } else {
+      return Err(
+        $crate::utility::args_type_error($func.nth, &$func.name, $expected.into(), &arg).into(),
+      );
     }
   }};
 }
@@ -102,13 +124,7 @@ macro_rules! built_in {
     #[allow(clippy::allow_attributes, clippy::single_call_fn, clippy::unnecessary_wraps)]
     impl Jsonpiler {
     $(
-      fn $name(
-        &mut $self,
-        $func: &mut FuncInfo,
-        $scope: &mut ScopeInfo
-      ) -> ErrOR<Json> {
-        $block
-      }
+      fn $name(&mut $self, $func: &mut FuncInfo, $scope: &mut ScopeInfo) -> ErrOR<Json> { $block }
     )+
   }};
 }

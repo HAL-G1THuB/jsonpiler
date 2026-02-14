@@ -272,7 +272,7 @@ pub struct Jsonpiler {
   sym_table: HashMap<&'static str, u32>,
   user_defined: HashMap<String, AsmFunc>,
 }
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 struct Label {
   mem: Memory,
   size: i32,
@@ -286,7 +286,8 @@ struct Position {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Memory {
-  Global { id: u32, disp: i32 },
+  Global { id: u32 },
+  GlobalD { id: u32, disp: i32 },
   Local { offset: i32 },
   Tmp { offset: i32 },
 }

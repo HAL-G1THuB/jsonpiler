@@ -1,14 +1,14 @@
 # GUI
 
 ```json
-{"GUI": {"pixel_func": "String (Literal)"}}
+{"GUI": {"render": "String (Literal)"}}
 ```
 
 ```jspl
-GUI(pixel_func)
+GUI(render)
 ```
 
-This `pixel_func` specifies the name of the function to be called to draw each pixel in the GUI window.
+This `render` specifies the name of the function to be called to draw each pixel in the GUI window.
 The function takes the x coordinate, the y coordinate, the current frame number,
 and the mouse y coordinate, and mouse x coordinate of the pixel as arguments
 and returns an integer value representing the color of the pixel (0xRR_GG_BB).
