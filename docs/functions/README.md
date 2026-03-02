@@ -6,7 +6,7 @@ This directory contains detailed documentation for each function available in Js
 
 - `-> T` - Returns a value of type `T`  
 - `=> V` - Evaluates to the value `V`  
-- `"..."` - Zero or more arguments matching the previous pattern  
+- `...` - Zero or more arguments matching the previous pattern  
 
 ## Functions
 
@@ -22,7 +22,7 @@ This directory contains detailed documentation for each function available in Js
 
 [Evaluation and List](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions/eval.md)
 
-[String](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions/string.md)
+[Str](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions/string.md)
 
 [GUI](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions/gui.md)
 

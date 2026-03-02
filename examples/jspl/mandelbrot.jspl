@@ -1,64 +1,48 @@
-define(
-  mandelbrot, { cr: Float; ci: Float }, Int,
-  {
-    zr = 0.0
-    zi = 0.0
-    i = 0
-    while(
-      { $i < 64 } and { Int( { $zr * $zr } + { $zi * $zi } ) < 4 },
-      {
-        tmp = { { { $zr * $zr } - { $zi * $zi } } + $cr}
-        zi = { { { 2.0 * $zr } * $zi } + $ci }
-        zr = $tmp
-        i = { $i + 1 }
-      }
+define(square, { x: Float }, Float, $x * $x )
+define(mandelbrot, { cr: Float; ci: Float }, Int, {
+  zr = 0.0
+  zi = 0.0
+  i = 0
+  while({ $i < 48 } and { Int(square($zr) + square($zi)) < 4 }, {
+    tmp = { { square($zr) - square($zi) } + $cr }
+    zi *= { 2.0 * $zr }
+    zi += $ci
+    zr  = $tmp
+    i  += 1
+  })
+  $i
+})
+define(render_row, { y: Int }, Null, {
+  x = -70
+  while($x < 20, {
+    fx = {Float($x) * 0.03}
+    fy = {Float($y) * 0.06}
+    iter = mandelbrot($fx, $fy)
+    str = " "
+    if(
+      [$iter == 48, str = "#"],
+      [42 < $iter,  str = "@"],
+      [36 < $iter,  str = "%"],
+      [30 < $iter,  str = "&"],
+      [24 < $iter,  str = "$"],
+      [18 < $iter,  str = "*"],
+      [12 < $iter,  str = "+"],
+      [8 < $iter,   str = "="],
+      [6  < $iter,  str = "-"],
+      [4  < $iter,  str = "."]
     )
-    $i
-  }
-)
-define(
-  render_row, { y: Int }, Null,
-  {
-    x = -80
-    while(
-      $x < 20,
-      {
-        fx = {Float($x) * 0.03}
-        fy = {Float($y) * 0.06}
-        iter = mandelbrot($fx, $fy)
-        str = " "
-        if(
-        [$iter == 64, str = "#"],
-        [60 < $iter,  str = "@"],
-        [56 < $iter,  str = "%"],
-        [48 < $iter,  str = "&"],
-        [40 < $iter,  str = "$"],
-        [32 < $iter,  str = "*"],
-        [24 < $iter,  str = "+"],
-        [16 < $iter,  str = "="],
-        [8 < $iter,  str = "-"],
-        [4  < $iter,  str = "."]
-        )
-        print($str)
-        x = { $x + 1 }
-      }
-    )
-    print("\n")
-  }
-)
+    print($str)
+    x += 1
+  })
+  print("\n")
+})
 
-define(
-  main, {}, Null,
-  {
-    y = -20
-    while(
-      $y < 20,
-      {
-        render_row($y)
-        y = { $y + 1 }
-      }
-    )
-  }
-)
+define(main, {}, Null, {
+  y = -20
+  while($y < 20, {
+    render_row($y)
+    y += 1
+  })
+})
 
 main()

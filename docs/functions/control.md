@@ -2,19 +2,13 @@
 
 ## define
 
-```json
-{
-  "define": [
-    {"name": "String (Literal)"},
-    {"params": "TypeAnnotations"},
-    {"return_type": "String (Literal)"},
-    {"body": "Block"}
-  ]
-} -> "Null"
-```
-
 ```jspl
-define(name, params, return_type, body)
+define(
+  name: Str (Literal),
+  params: TypeAnnotations,
+  return_type: Str (Literal),
+  body: Block
+) -> "Null"
 ```
 
 Registers a user-defined function with the following parameters:
@@ -26,14 +20,15 @@ Registers a user-defined function with the following parameters:
 
 The `define` keyword also introduces a new scope.
 
-```json
-{"define": ["*2", {"n": "Int"}, {"+": [{"$": "n"}, {"$": "n"}]}]}
+```jspl
+define(by_two, {n: Int}, Int, $n + $n)
+by_two(2) => 4
 ```
 
 **Types that can be assigned to arguments**:
 
 - `Int`
-- `String`
+- `Str`
 - `Bool`
 - `Null`
 - `Float`
@@ -41,88 +36,52 @@ The `define` keyword also introduces a new scope.
 **Types that can be returned by the function**:
 
 - `Int`
-- `String`
+- `Str`
 - `Bool`
 - `Null`
 - `Float`
 
 ## if
 
-```json
-{"if": [
-  [{"condition": "Bool"}, {"then": "Block"}], "..."
-  ]
-} -> "Null"
-```
-
 ```jspl
-if([condition, then], ...)
+if([condition: Bool, then: Block], ...) -> "Null"
 ```
 
 Evaluates each condition in order. If a condition evaluates to `true`, the corresponding `then` expression is executed.
 Regardless of which branch is taken, the overall result is always `null`.
 
-```json
-{"if": [
-    [{"==": [1, 1]},
-      {"message": [
-          "1 == 1✨",
-          "`then` branch."
-        ]
-      }
-    ],
-    [{"==": [1, 2]},
-      {"message": [
-          "1 == 2🤔",
-          "`else if` branch."
-        ]
-      }
-    ],
-    [true,
-      {"message": [
-          "1 == ?🤣",
-          "`else` branch."
-        ]
-      }
-    ]
-  ]
-}
- => null
+```jspl
+if(
+[1 == 1, message("1 == 1✨", "`then` branch.")]
+[1 == 2, message(1 == 2🤔", "`else if` branch.")]
+[true, message("1 == ?🤣", "`else` branch.")]
+)
+  => null
 ```
 
 ## while
 
-```json
-{"while": [{"condition": "Bool"}, {"body": "Block"}]} -> "Null"
-```
-
 ```jspl
-while(condition, body)
+while(condition: Bool, body: Block) -> "Null"
 ```
 
 Executes the `body` repeatedly as long as the `condition` evaluates to `true`.
 Returns `null`.
 
-```json
-{
-  "=": ["i", 0],
-  "while": [
-  {"<": [{"$": "i"}, 5]},
-  {"scope": [
-    {"message": ["Loop", {"$": "i"}]},
-    {"=": ["i", {"+": [{"$": "i"}, 1]}]}
-  ]}
-]}
+```jspl
+i = 0
+while($i < 5
+  scope({
+    message("Loop", "");
+    i += 1
+  })
+)
 ```
 
 ## include
 
-```json
-{"include": [{"path": "String (Literal)"}, {"functions": "String (Literal)"}, "..."]} -> "Null"
-```
-
 ```jspl
-include("path/to/file.jspl", fib)
+include(path: Str (Literal), functions: Str (Literal), ...) -> "Null"
 ```
 
 Executes the specified file and includes the specified function in the namespace.
@@ -133,19 +92,15 @@ and functions can be included from existing code.
 including a function from a different file with the same name causes a redefinition error.
 An error occurs if the file does not contain the specified function.
 
-```json
-{"include": "my_library.jspl", "my_func"}
-{"my_func": ["arg"]}
+```jspl
+include("my_library.jspl", my_func)
+my_func()
 ```
 
 ## ret
 
-```json
-{"ret": "Any"} -> "Null"
-```
-
 ```jspl
-ret(value)
+ret(Any) -> Null
 ```
 
 Terminates execution of the function and returns the given value.
@@ -154,12 +109,8 @@ A `return` may only be written at the end of any block.
 
 ## break
 
-```json
-{"break": []} -> "Null"
-```
-
 ```jspl
-break()
+break() -> Null
 ```
 
 Terminates the innermost `while` loop.
@@ -167,12 +118,8 @@ Terminates the innermost `while` loop.
 
 ## continue
 
-```json
-{"continue": []} -> "Null"
-```
-
 ```jspl
-continue()
+continue() -> Null
 ```
 
 Terminates the current iteration of the innermost `while` loop.

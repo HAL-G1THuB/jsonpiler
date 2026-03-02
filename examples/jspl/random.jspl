@@ -1,12 +1,11 @@
-define(
-  rand_range, { max: Int }, Int,
+define(rand_range, { max: Int }, Int,
   {
     assert(0 < $max, concat(
       "The argument to rand_range ",
-      "must be greater than or equal to zero."
+      "must be greater than zero."
     ))
     rand = random()
-    if([$rand == {-128 * 256 * 65536 * 65536 * 65536}, ret(0)])
+    if([$rand == { -128 * 256 * 65536 * 65536 * 65536 }, ret(0)])
     abs($rand) % $max
   }
 )

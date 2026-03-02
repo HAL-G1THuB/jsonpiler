@@ -1,101 +1,87 @@
-use crate::{
-  Arity::AtLeast, Bind::Lit, CompilationErrKind::*, ErrOR, FuncInfo, Json, Jsonpiler,
-  JsonpilerErr::*, Parser, ScopeInfo, WithPos, built_in, err, take_arg,
-};
-use core::mem::{replace, take};
-use std::{collections::HashMap, env, fs, path::Path};
+use crate::prelude::*;
+use std::{env, fs, path::Path};
 built_in! {self, func, scope, file;
   include => {"include", SCOPE, AtLeast(1), {
-    let path = take_arg!(self, func, (String(Lit(x))) => x);
+    let (file, pos) = {
+      let WithPos { val: path, pos } = arg!(self, func, (Str(Lit(x))) => x);
+      let folder = or_err!((Path::new(&self.parser[pos.file].file).parent()), pos, ParentDirNotFound)?;
+      let full_path = env::current_dir().map_err(|val| pos.with(val))?.join(folder).join(Path::new(&path));
+      (full_path.canonicalize().map_err(|val| pos.with(val))?.to_string_lossy().to_string(), pos)
+    };
     let mut includes = vec![];
     for _ in 1..func.len {
-      includes.push(take_arg!(self, func, (String(Lit(x))) => x).value);
+      let arg = arg!(self, func, (Str(Lit(x))) => x);
+      includes.push(arg.val);
     }
-    let old_locals = scope.replace_locals(vec![HashMap::new()]);
-    let globals = take(&mut self.globals);
-    let user_defined = take(&mut self.user_defined);
-    let file = Path::new(&path.value);
-    let cwd = env::current_dir().map_err(|err| {
-      WithPos{value: err, pos: path.pos}
-    })?;
-    let Some(folder) = Path::new(self.parser[path.pos.file].get_file()).parent() else {
-      return err!(self, path.pos, ParentDirNotFound)
-    };
-    let full_path = cwd.join(folder).join(file);
-    let abs_path = full_path.canonicalize().map_err(|err| {
-      WithPos{value: err, pos: path.pos}
-    })?;
-    if self.parser[path.pos.file].get_file() == abs_path.to_string_lossy() {
-      return err!(self, path.pos, RecursiveInclude(path.value));
+    if self.parser[pos.file].file == file {
+      return err!(pos, RecursiveInclude(file));
     }
-    if let Some(file_idx) = self.parser
-      .iter()
-      .position(|parser| Path::new(parser.get_file()) == abs_path)
+    if let Some(file_idx) = self.parser.iter().position(|parser| parser.file == file)
     {
       #[expect(clippy::iter_over_hash_type)]
-      for (name, value) in &self.files[file_idx] {
+      for (name, val) in &self.files[file_idx] {
         if includes.contains(name) {
           if self.builtin.contains_key(name) {
-            return err!(self, path.pos, ExistentBuiltin(name.clone()));
+            return err!(pos, ExistentFunc(Builtin, name.clone()));
           }
-          let other_idx_opt = self.user_defined.get(name).map(|asm_func| asm_func.file);
-          if other_idx_opt != Some(file_idx) {
-            return err!(self, path.pos, ExistentUserDefined(name.clone()));
+          if self.user_defined.get(name).is_some_and(|func| func.pos.file != file_idx) {
+            return err!(pos, ExistentFunc(UserDefined, name.clone()))
           }
-          if other_idx_opt.is_none(){
-            self.user_defined.insert(name.clone(), value.clone());
-          }
+          self.user_defined.entry(name.clone()).or_insert(val.clone());
           includes.retain(|na| na != name);
         }
       }
       if !includes.is_empty() {
-        return err!(self, path.pos, IncludeFuncNotFound(includes));
+        return err!(pos, IncludeFuncNotFound(includes));
       }
-      scope.replace_locals(old_locals);
-      self.globals = globals;
-      self.user_defined = user_defined;
-      return Ok(Json::Null);
+      return Ok(Null);
     }
-    let metadata = fs::metadata(&abs_path).map_err(|err| {
-      WithPos{value: err, pos: path.pos}
-    })?;
-    if metadata.len() > 1 << 30u8 {
-      return err!(self, path.pos, TooLargeFile);
+    let old_local_top = take(&mut scope.local_top);
+    let old_locals = take(&mut scope.locals);
+    let old_globals = take(&mut self.globals);
+    let old_user_defined = take(&mut self.user_defined);
+    if fs::metadata(&file).map_err(|val| pos.with(val))?.len() > 1 << 30u8 {
+      return err!(pos, TooLargeFile);
     }
-    let bytes = fs::read(&abs_path).map_err(|err| {
-      WithPos{value: err, pos: path.pos}
-    })?;
     let file_idx = self.files.len();
-    let mut new_parser = Parser::from(bytes, file_idx, abs_path.to_string_lossy().to_string());
-    let is_jspl = match abs_path.extension() {
+    self.files.push(HashMap::new());
+    let is_jspl = match Path::new(&file).extension().map(|ext| ext.to_string_lossy()) {
       Some(ext) if ext == "jspl" => true,
       Some(ext) if ext == "json" => false,
-      _ => return err!(self, path.pos, UnsupportedExtension),
+      _ => return err!(pos, UnsupportedFile),
     };
-    self.files.push(HashMap::new());
-    let new_json = new_parser.parse(is_jspl)?;
-    self.parser.push(new_parser);
-    let ret_val = self.eval(new_json, scope)?;
-    scope.drop_json(ret_val)?;
-    scope.replace_locals(old_locals);
-    self.globals = globals;
+    let source = fs::read(&file).map_err(|val| pos.with(val))?;
+    self.parser.push(Parser::from(source, file_idx, file));
+    let new_json = self.parser[file_idx].parse(is_jspl)?;
+    let result = self.eval(new_json, scope)?;
+    self.drop_json(result, scope, false)?;
+    for local in replace(&mut scope.local_top,  old_local_top).into_values() {
+      self.drop_json(local, scope, true)?;
+    }
+    for locals in replace(&mut scope.locals, old_locals) {
+      for local in locals.into_values() {
+        self.drop_json(local, scope, true)?;
+      }
+    }
+    scope.check_free()?;
+    self.globals = old_globals;
     #[expect(clippy::iter_over_hash_type)]
-    for (name, value) in replace(&mut self.user_defined, user_defined) {
+    for (name, val) in replace(&mut self.user_defined, old_user_defined) {
       if includes.contains(&name) {
         if self.builtin.contains_key(&name) {
-          return err!(self, path.pos, ExistentBuiltin(name));
+          return err!(pos, ExistentFunc(Builtin, name));
         }
         if self.user_defined.contains_key(&name) {
-          return err!(self, path.pos, ExistentUserDefined(name));
+          return err!(pos, ExistentFunc(UserDefined, name));
         }
-        self.user_defined.insert(name.clone(), value.clone());
-          includes.retain(|na| na != &name);
+        self.user_defined.insert(name.clone(), val.clone());
+        includes.retain(|na| na != &name);
       }
-      self.files[file_idx].insert(name, value);
+      self.files[file_idx].insert(name, val);
     }
     if !includes.is_empty() {
-      return err!(self, path.pos, IncludeFuncNotFound(includes));
+      return err!(pos, IncludeFuncNotFound(includes));
     }
-    Ok(Json::Null)
+    Ok(Null)
   }},
 }

@@ -1,65 +1,50 @@
-define(
-  julia, { zx: Float; zy: Float }, Int,
-  {
-    cr = -0.7
-    ci = 0.27015
-    i = 0
-    while(
-      { $i < 50 } and { Int( { $zx * $zx } + { $zy * $zy } ) < 4 },
-      {
-        tmp = { { { $zx * $zx } - { $zy * $zy } } + $cr }
-        zy  = { { 2.0 * $zx * $zy } + $ci }
-        zx  = $tmp
-        i   = { $i + 1 }
-      }
-    )
-    $i
-  }
-)
+define(square, { x: Float }, Float, $x * $x )
+define(julia, { zx: Float; zy: Float }, Int, {
+  cr = -0.7
+  ci = 0.27015
+  i = 0
+  while({ $i < 48 } and { Int(square($zx) + square($zy)) < 4 }, {
+    tmp  = { square($zx) - square($zy) }
+    tmp += $cr
+    zy  *= { 2.0 * $zx }
+    zy  += $ci
+    zx   = $tmp
+    i   += 1
+  })
+  $i
+})
 
-define(
-  render_row, { y: Int }, Null,
-  {
-    x = -50
-    while(
-      $x < 50,
-      {
-        fx = { Float($x) / 30.0 }
-        fy = { Float($y) / 15.0 }
-        iter = julia($fx, $fy)
-        str = " "
-        if(
-        [$iter == 50, str = "#"],
-        [45 < $iter,  str = "@"],
-        [40 < $iter,  str = "%"],
-        [35 < $iter,  str = "&"],
-        [30 < $iter,  str = "$"],
-        [25 < $iter,  str = "*"],
-        [20 < $iter,  str = "+"],
-        [15 < $iter,  str = "="],
-        [10 < $iter,  str = "-"],
-        [5  < $iter,  str = "."]
-        )
-        print($str)
-        x = { $x + 1 }
-      }
+define(render_row, { y: Int }, Null, {
+  x = -50
+  while($x < 50, {
+    fx = { Float($x) / 30.0 }
+    fy = { Float($y) / 15.0 }
+    iter = julia($fx, $fy)
+    str = " "
+    if(
+      [$iter == 48, str = "#"],
+      [42 < $iter,  str = "@"],
+      [36 < $iter,  str = "%"],
+      [30 < $iter,  str = "&"],
+      [24 < $iter,  str = "$"],
+      [18 < $iter,  str = "*"],
+      [12 < $iter,  str = "+"],
+      [8 < $iter,   str = "="],
+      [6  < $iter,  str = "-"],
+      [4  < $iter,  str = "."]
     )
-    print("\n")
-  }
-)
+    print($str)
+    x += 1
+  })
+  print("\n")
+})
 
-define(
-  main, {}, Null,
-  {
-    y = -20
-    while(
-      $y < 20,
-      {
-        render_row($y)
-        y = { $y + 1 }
-      }
-    )
-  }
-)
+define(main, {}, Null, {
+  y = -20
+  while($y < 20, {
+    render_row($y)
+    y += 1
+  })
+})
 
 main()

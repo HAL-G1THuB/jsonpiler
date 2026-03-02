@@ -1,9 +1,6 @@
-define(
-  fib, { n: Int }, Int,
-  {
-    if( [ $n > 1, ret(fib($n - 1) + fib($n - 2)) ] )
-    $n
-  }
-)
 # This program computes fib(10) = 55.
+define(fib, { n: Int }, Int, {
+  if( [ $n > 1, ret(fib($n - 1) + fib($n - 2)) ] )
+  $n
+})
 fib(10)

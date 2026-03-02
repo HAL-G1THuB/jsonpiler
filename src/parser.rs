@@ -1,169 +1,181 @@
-mod err_msg;
+pub(crate) mod err_msg;
 mod jspl;
-use crate::{
-  Bind::Lit, CompilationErrKind::*, ErrOR, Json, JsonpilerErr::*, Position, TokenKind, WithPos,
-  parse_err, return_if,
-};
+use crate::prelude::*;
 #[derive(Clone)]
 pub(crate) struct Parser {
-  file: String,
-  pos: Position,
-  source: Vec<u8>,
-}
-impl Position {
-  fn extend_to(&mut self, end: usize) {
-    self.size = end - self.offset;
-  }
+  pub file: String,
+  pub pos: Position,
+  pub source: Vec<u8>,
 }
 impl Parser {
-  fn advance(&mut self, num: usize) -> ErrOR<()> {
-    self.pos.offset += num;
-    self.check_eof()
-  }
   fn check_eof(&mut self) -> ErrOR<()> {
     if self.source.len() <= self.pos.offset {
-      parse_err!(
-        self,
+      err!(
         Position { offset: self.source.len().saturating_sub(1), ..self.pos },
-        UnexpectedTokenError(TokenKind::Eof)
+        UnexpectedToken(TokenKind::Eof)
       )
     } else {
       Ok(())
     }
   }
-  pub(crate) fn consume_if(&mut self, expected: u8) -> ErrOR<bool> {
+  fn consume_if(&mut self, expected: u8) -> ErrOR<bool> {
     self.check_eof()?;
-    if self.peek() == expected {
-      self.advance(1)?;
-      Ok(true)
-    } else {
-      Ok(false)
+    Ok((self.peek() == expected).then(|| self.pos.offset += 1).is_some())
+  }
+  fn consume_if_ex(&mut self, expected: &[u8]) -> ErrOR<bool> {
+    let mut last_err = None;
+    for &byte in expected {
+      match self.consume_if(byte) {
+        Ok(cond) => {
+          if cond {
+            return Ok(true);
+          }
+        }
+        Err(err) => last_err = Some(err),
+      }
     }
+    last_err.map_or(Ok(false), Err)
   }
   fn expect(&mut self, expected: u8) -> ErrOR<()> {
     if self.consume_if(expected)? {
       Ok(())
     } else {
-      parse_err!(self, self.pos, ExpectedTokenError(TokenKind::Char(char::from(expected))))
+      err!(self.pos, ExpectedToken(TokenKind::Char(char::from(expected))))
     }
   }
   pub(crate) fn from(source: Vec<u8>, file: usize, file_name: String) -> Self {
     Self { pos: Position { line: 1, offset: 0, size: 0, file }, source, file: file_name }
   }
-  pub(crate) fn get_file(&self) -> &str {
-    &self.file
+  fn peek(&self) -> u8 {
+    self.source[self.pos.offset]
   }
+  fn set_size(&self, pos: &mut Position) {
+    pos.size = self.pos.offset - pos.offset;
+  }
+  fn skip_digits(&mut self) {
+    while self.source.get(self.pos.offset).is_some_and(u8::is_ascii_digit) {
+      self.pos.offset += 1;
+    }
+  }
+  fn skip_ws(&mut self) -> ErrOR<()> {
+    while self.pos.offset < self.source.len() {
+      if self.peek().is_ascii_whitespace() {
+        if self.peek() == b'\n' {
+          self.pos.line += 1;
+        }
+        self.pos.offset += 1;
+        continue;
+      }
+      return Ok(());
+    }
+    self.check_eof()
+  }
+}
+impl Parser {
   pub(crate) fn parse(&mut self, is_jspl: bool) -> ErrOR<WithPos<Json>> {
     if is_jspl {
       let mut pos = self.pos;
-      let value = self.parse_block(true)?;
-      pos.extend_to(self.pos.offset);
-      Ok(WithPos { pos, value })
+      let val = self.parse_block(true)?;
+      self.set_size(&mut pos);
+      Ok(pos.with(val))
     } else {
       self.parse_json()
     }
   }
   fn parse_array(&mut self) -> ErrOR<Json> {
-    let mut array = vec![];
     self.expect(b'[')?;
     self.skip_ws()?;
-    return_if!(self, b']', Json::Array(Lit(array)));
+    if self.consume_if(b']')? {
+      return Ok(Array(Lit(vec![])));
+    }
+    let mut array = vec![];
     loop {
       array.push(self.parse_value()?);
       self.skip_ws()?;
-      return_if!(self, b']', Json::Array(Lit(array)));
+      if self.consume_if(b']')? {
+        return Ok(Array(Lit(array)));
+      }
       self.expect(b',')?;
-      self.skip_ws()?;
     }
   }
   pub(crate) fn parse_json(&mut self) -> ErrOR<WithPos<Json>> {
     let result = self.parse_value()?;
-    let _: ErrOR<()> = self.skip_ws();
-    if self.pos.offset == self.source.len() {
-      Ok(result)
-    } else {
-      parse_err!(self, ExpectedTokenError(TokenKind::Eof))
-    }
+    if self.skip_ws().is_err() { Ok(result) } else { err!(self.pos, ExpectedToken(TokenKind::Eof)) }
   }
   fn parse_keyword(&mut self, keyword: &'static str, value: Json) -> ErrOR<Json> {
     let pos = self.pos;
-    self.advance(keyword.len())?;
+    self.pos.offset += keyword.len();
+    self.check_eof()?;
     let slice = &self.source[pos.offset..self.pos.offset];
-    if slice == keyword.as_bytes() { Ok(value) } else { parse_err!(self, pos, ParseError(keyword)) }
+    if slice == keyword.as_bytes() { Ok(value) } else { err!(pos, ParseError(keyword)) }
   }
   fn parse_number(&mut self) -> ErrOR<Json> {
     let mut pos = self.pos;
-    let mut is_float = false;
+    let mut float = false;
+    let negative = self.consume_if(b'-')?;
     let start = self.pos.offset;
-    let is_negative = self.consume_if(b'-')?;
-    if self.consume_if(b'0').is_ok_and(|ok| ok) {
-      if self.peek().is_ascii_digit() {
-        return parse_err!(self, StartsWithZero);
+    if self.consume_if_ex(b"0")? {
+      if self.check_eof().is_ok() && self.peek().is_ascii_digit() {
+        return err!(self.pos, StartsWithZero);
       }
     } else {
       self.skip_digits();
     }
-    if self.consume_if(b'.').is_ok_and(|ok| ok) {
-      is_float = true;
+    if self.consume_if_ex(b".").is_ok_and(|bool| bool) {
+      float = true;
+      self.check_eof()?;
       if !self.peek().is_ascii_digit() {
-        return parse_err!(self, ParseError("Float"));
+        return err!(self.pos, ParseError("Float"));
       }
       self.skip_digits();
     }
-    if self.consume_if(b'e').is_ok_and(|ok| ok) || self.consume_if(b'E').is_ok_and(|ok| ok) {
-      is_float = true;
-      if !self.consume_if(b'+')? {
-        self.consume_if(b'-')?;
-      }
+    if self.consume_if_ex(b"eE").is_ok_and(|bool| bool) {
+      float = true;
+      self.consume_if_ex(b"+-")?;
+      self.check_eof()?;
       if !self.peek().is_ascii_digit() {
-        return parse_err!(self, ParseError("Float"));
+        return err!(self.pos, ParseError("Float"));
       }
       self.skip_digits();
     }
-    let end = self.pos.offset;
-    pos.extend_to(end);
-    let slice = &self.source[start..end];
-    let num_str = unsafe { str::from_utf8_unchecked(slice) };
-    if is_float {
-      num_str.parse::<f64>().map_or_else(
-        |_| parse_err!(self, pos, ParseError("Float")),
-        |float| Ok(Json::Float(Lit(float))),
-      )
+    self.set_size(&mut pos);
+    let slice = &self.source[start..self.pos.offset];
+    if float {
+      let mut num_str = if negative { "-" } else { "" }.to_owned();
+      num_str.push_str(str::from_utf8(slice).or(err!(pos, InvalidChar))?);
+      Ok(Float(Lit(num_str.parse::<f64>().or(err!(pos, ParseError("Float")))?)))
     } else {
-      let digits = if is_negative { &slice[1..] } else { slice };
       let mut acc: i64 = 0;
-      for &byte in digits {
+      for byte in slice {
+        let checked = if negative { i64::checked_sub } else { i64::checked_add };
         let digit = i64::from(byte - b'0');
-        if is_negative {
-          if let Some(ok_acc) = acc.checked_mul(10).and_then(|val| val.checked_sub(digit)) {
-            acc = ok_acc;
-          } else {
-            return parse_err!(self, pos, IntegerOutOfRange);
-          }
-        } else if let Some(ok_acc) = acc.checked_mul(10).and_then(|val| val.checked_add(digit)) {
-          acc = ok_acc;
+        if let Some(new_acc) = acc.checked_mul(10).and_then(|val| checked(val, digit)) {
+          acc = new_acc;
         } else {
-          return parse_err!(self, pos, IntegerOutOfRange);
+          return err!(pos, IntegerOutOfRange);
         }
       }
-      Ok(Json::Int(Lit(acc)))
+      Ok(Int(Lit(acc)))
     }
   }
   fn parse_object(&mut self) -> ErrOR<Json> {
-    let mut object = vec![];
     self.expect(b'{')?;
     self.skip_ws()?;
-    return_if!(self, b'}', Json::Object(Lit(object)));
+    if self.consume_if(b'}')? {
+      return Ok(Object(Lit(vec![])));
+    }
+    let mut object = vec![];
     loop {
       let mut pos = self.pos;
       let key = self.parse_string()?;
-      pos.extend_to(self.pos.offset);
+      self.set_size(&mut pos);
       self.skip_ws()?;
       self.expect(b':')?;
+      object.push((pos.with(key), self.parse_value()?));
       self.skip_ws()?;
-      object.push((WithPos { value: key, pos }, self.parse_value()?));
-      self.skip_ws()?;
-      return_if!(self, b'}', Json::Object(Lit(object)));
+      if self.consume_if(b'}')? {
+        return Ok(Object(Lit(object)));
+      }
       self.expect(b',')?;
       self.skip_ws()?;
     }
@@ -172,35 +184,35 @@ impl Parser {
     let mut pos = self.pos;
     self.expect(b'"')?;
     let mut bytes = vec![];
-    loop {
+    while self.pos.offset < self.source.len() {
       match self.peek() {
         b'"' => {
           self.pos.offset += 1;
-          pos.extend_to(self.pos.offset);
-          let Ok(string) = String::from_utf8(bytes) else {
-            return parse_err!(self, pos, InvalidChar);
-          };
-          return Ok(string);
+          self.set_size(&mut pos);
+          return String::from_utf8(bytes).or(err!(pos, InvalidChar));
         }
-        b'\r' | b'\n' => return parse_err!(self, UnterminatedLiteral),
+        b'\r' | b'\n' => return err!(self.pos, UnterminatedLiteral),
         b'\\' => {
-          self.advance(1)?;
-          let esc = self.peek();
-          match esc {
+          self.pos.offset += 1;
+          self.check_eof()?;
+          match self.peek() {
             b'u' => {
-              let mut hex = String::new();
+              let mut code_point: u32 = 0;
               for _ in 0..4 {
-                self.advance(1)?;
-                hex.push(char::from(self.peek()));
+                self.pos.offset += 1;
+                self.check_eof()?;
+                let ch = self.peek();
+                code_point = (code_point << 4)
+                  | u32::from(match ch {
+                    b'0'..=b'9' => ch - b'0',
+                    b'a'..=b'f' => ch - b'a' + 10,
+                    b'A'..=b'F' => ch - b'A' + 10,
+                    _ => return err!(pos, UnexpectedToken(TokenKind::Esc('u'))),
+                  });
               }
-              if let Ok(code_point) = u32::from_str_radix(&hex, 16)
-                && char::from_u32(code_point).is_some()
-              {
-                #[expect(clippy::big_endian_bytes)]
-                bytes.extend_from_slice(&code_point.to_be_bytes());
-              } else {
-                return parse_err!(self, pos, InvalidUnicodeEsc);
-              }
+              let ch =
+                or_err!((char::from_u32(code_point)), pos, UnexpectedToken(TokenKind::Esc('u')))?;
+              bytes.extend_from_slice(ch.encode_utf8(&mut [0; 4]).as_bytes());
             }
             b'/' => bytes.push(b'/'),
             b'"' => bytes.push(b'"'),
@@ -210,55 +222,32 @@ impl Parser {
             b'r' => bytes.push(b'\r'),
             b'n' => bytes.push(b'\n'),
             b't' => bytes.push(b'\t'),
-            ctrl if ctrl.is_ascii_control() => return parse_err!(self, InvalidChar),
-            _ => return parse_err!(self, InvalidEsc(char::from(esc))),
+            ctrl if ctrl.is_ascii_control() => return err!(self.pos, InvalidChar),
+            esc => return err!(self.pos, UnexpectedToken(TokenKind::Esc(char::from(esc)))),
           }
         }
-        ctrl if ctrl.is_ascii_control() => return parse_err!(self, InvalidChar),
+        ctrl if ctrl.is_ascii_control() => return err!(self.pos, InvalidChar),
         byte => bytes.push(byte),
       }
-      self.advance(1)?;
+      self.pos.offset += 1;
     }
+    self.check_eof().map(|()| String::new())
   }
   fn parse_value(&mut self) -> ErrOR<WithPos<Json>> {
     self.skip_ws()?;
     let mut pos = self.pos;
-    let value = match self.peek() {
-      b'"' => Json::String(Lit(self.parse_string()?)),
+    let val = match self.peek() {
+      b'"' => Str(Lit(self.parse_string()?)),
       b'{' => self.parse_object()?,
       b'[' => self.parse_array()?,
-      b't' => self.parse_keyword("true", Json::Bool(Lit(true)))?,
-      b'f' => self.parse_keyword("false", Json::Bool(Lit(false)))?,
-      b'n' => self.parse_keyword("null", Json::Null)?,
+      b't' => self.parse_keyword("true", Bool(Lit(true)))?,
+      b'f' => self.parse_keyword("false", Bool(Lit(false)))?,
+      b'n' => self.parse_keyword("null", Null)?,
       b'0'..=b'9' | b'-' => self.parse_number()?,
-      ctrl if ctrl.is_ascii_control() => return parse_err!(self, InvalidChar),
-      other => return parse_err!(self, UnexpectedTokenError(TokenKind::Char(char::from(other)))),
+      ctrl if ctrl.is_ascii_control() => return err!(self.pos, InvalidChar),
+      other => return err!(self.pos, UnexpectedToken(TokenKind::Char(char::from(other)))),
     };
-    pos.extend_to(self.pos.offset);
-    Ok(WithPos { pos, value })
-  }
-  fn peek(&self) -> u8 {
-    self.source[self.pos.offset]
-  }
-  fn skip_digits(&mut self) {
-    while let Some(&ch) = self.source.get(self.pos.offset) {
-      if !ch.is_ascii_digit() {
-        break;
-      }
-      self.pos.offset += 1;
-    }
-  }
-  fn skip_ws(&mut self) -> ErrOR<()> {
-    while self.pos.offset < self.source.len() {
-      let ch = self.source[self.pos.offset];
-      if !ch.is_ascii_whitespace() {
-        return Ok(());
-      }
-      if ch == b'\n' {
-        self.pos.line += 1;
-      }
-      self.advance(1)?;
-    }
-    self.check_eof()
+    self.set_size(&mut pos);
+    Ok(pos.with(val))
   }
 }

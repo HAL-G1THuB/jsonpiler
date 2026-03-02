@@ -15,7 +15,7 @@ See: [JSON specification](https://www.rfc-editor.org/info/rfc8259)
 - **Bool**: Represents a 8-bit boolean value, either `true` or `false`.
 - **Int**: Represents a 64-bit integer number.
 - **Float**: Represents a 64-bit floating-point number.
-- **String**: Represents a sequence of characters enclosed in double quotes.
+- **Str**: Represents a sequence of characters enclosed in double quotes.
 
 ### Composite Types
 
@@ -43,8 +43,8 @@ See: [JSON specification](https://www.rfc-editor.org/info/rfc8259)
 ```json
 {
   "i": "Int",
-  "x": "String" ,
-  "return": "String"
+  "x": "Str" ,
+  "return": "Str"
 }
 ```
 
@@ -111,7 +111,7 @@ This language builds upon JSON structure with lightweight syntactic sugar and ex
 
 A value can be one of the following:
 
-- String: `"abc"`
+- Str: `"abc"`
 - Number: `123`, `-10`, `1.23`, `2e5`
 - Boolean: `true`, `false`
 - Null: `null`
@@ -155,11 +155,11 @@ int    ::= '0' | [1-9][0-9]*
   - `true`, `false`, `null`
   - Names starting with `$` (e.g., `$name`) have reserved meaning
 
-Internally, it is treated as an abbreviation of String.
+Internally, it is treated as an abbreviation of Str.
 
 ---
 
-### String
+### Str
 
 - UTF-8 strings enclosed in double quotes `"..."`.
 - Supports escape sequences using backslashes:
@@ -292,12 +292,12 @@ $name
 
 ## Parser Error Rules
 
-- Invalid string escape → Error
-- Strings containing control characters → Error
-- Integers with multiple digits starting with `0` → Error
-- Floating-point number with no digits after `.` → Error
-- Exponent with no digits after `e`/`E` → Error
-- Non-string object keys → Error
-- Unexpected trailing characters at top level → `Unexpected trailing characters`
+- Invalid string escaping
+- `Str` containing control characters
+- Multi-digit `Int` starting with `0`
+- `Float` without a digit after `.`
+- `Float` without an exponent after `e`/`E`
+- `Object` key not being `Str`
+- Remaining invalid top-level input
 
 ---

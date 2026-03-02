@@ -30,9 +30,22 @@ Jsonpiler now has a function to support GUI.
 
 ## What’s New
 
-### 0.7.4
+### 0.8.0
 
-- Improvements to error checking and error message generation
+- Added commands: `help`, `version`, `release`, `build`, `build release`
+- In `release` builds, debug information is removed from the generated `.exe`
+- Internal support for storing data on the heap has been implemented
+- Added new functions: `sqrt`, `input`, `Str`
+- Added compound assignment operators: `+=`, `-=`, `*=`, `/=`
+- Renamed the `String` type to `Str`
+- Generated executables now include Jsonpiler version information
+- It is now possible to create a new `GUI` after the previous `GUI` has been closed
+- Mouse position is now correctly detected even when outside the `GUI` window
+- The `GUI` no longer terminates unexpectedly when the PC enters sleep mode
+- The `GUI` window title now displays the name of the file it was created from
+- Added the `error_cases` folder
+- Runtime errors now include detailed information such as error location
+- Error messages are now shown when pressing Ctrl+C or during system shutdown
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 
@@ -47,6 +60,7 @@ No external toolchains or libraries are required.
 - `gdi32.dll`(`GUI`, etc.)
 - `kernel32.dll`(required)
 - `user32.dll`(`message`, `GUI`, etc.)
+
 These are present on standard Windows installations.
 
 ---
@@ -60,7 +74,7 @@ cargo install jsonpiler
 jsonpiler <input.json | input.jspl> [args passed to the produced .exe]
 ```
 
-- `<input.json>` must be UTF-8 encoded.
+- `<input.json | input.jspl>` must be UTF-8 encoded.
 - Any additional arguments are forwarded to the generated executable at runtime.
 
 ---
@@ -81,6 +95,14 @@ Minimal example:
 
 ```json
 { "=": ["a", "title"], "message": [{"$": "a"}, "345"], "+": [1, 2, 3] }
+```
+
+JSPL:
+
+```jspl
+a = "title"
+message($a, "345")
+1 + 2 + 3
 ```
 
 ### Execution order
@@ -159,7 +181,7 @@ graph TD
   subgraph Parse
     B --o C["AST
 Json::Object([
-  Json::String(&quot;+&quot;),
+  Json::Str(&quot;+&quot;),
   Json::Array([
     Json::Int(1),
     Json::Int(2)

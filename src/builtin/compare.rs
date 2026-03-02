@@ -1,35 +1,20 @@
-use crate::{
-  Arity::AtLeast,
-  ConditionCode::{self, *},
-  ErrOR, FuncInfo,
-  Inst::*,
-  Json, Jsonpiler,
-  LogicByteOpcode::*,
-  Register::*,
-  ScopeInfo, built_in,
-  utility::{mov_b, take_int},
-};
+use crate::prelude::*;
 built_in! {self, func, scope, compare;
-  eq => {"==", COMMON, AtLeast(2), {compare_template(E, func, scope)}},
-  grater => {">", COMMON, AtLeast(2), {compare_template(G, func, scope)}},
-  grater_eq => {">=", COMMON, AtLeast(2), {compare_template(Ge, func, scope)}},
-  less => {"<", COMMON, AtLeast(2), {compare_template(L, func, scope)}},
-  less_eq => {"<=", COMMON, AtLeast(2), {compare_template(Le, func, scope)}},
-  not_eq => {"!=", COMMON, AtLeast(2), {compare_template(Ne, func, scope)}},
+  eq => {"==", COMMON, AtLeast(2), {cmp(E, func, scope)}},
+  grater => {">", COMMON, AtLeast(2), {cmp(G, func, scope)}},
+  grater_eq => {">=", COMMON, AtLeast(2), {cmp(Ge, func, scope)}},
+  less => {"<", COMMON, AtLeast(2), {cmp(L, func, scope)}},
+  less_eq => {"<=", COMMON, AtLeast(2), {cmp(Le, func, scope)}},
+  not_eq => {"!=", COMMON, AtLeast(2), {cmp(Ne, func, scope)}},
 }
-fn compare_template(cc: ConditionCode, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {
-  take_int(Rax, func, scope)?;
-  scope.extend(&[mov_b(Rdx, 0xFF)]);
-  for idx in 1..func.len {
-    let old_reg = if idx % 2 == 0 { Rcx } else { Rax };
-    let new_reg = if idx % 2 == 0 { Rax } else { Rcx };
-    take_int(new_reg, func, scope)?;
-    scope.extend(&[
-      LogicRR(Cmp, old_reg, new_reg),
-      SetCc(cc, old_reg),
-      NegRb(old_reg),
-      LogicRbRb(And, Rdx, old_reg),
-    ]);
+fn cmp(cc: ConditionCode, func: &mut Function, scope: &mut Scope) -> ErrOR<Json> {
+  scope.extend(&mov_int(Rax, arg!(self, func, (Int(x)) => x).val));
+  scope.push(mov_b(Rdx, 1));
+  for nth in 1..func.len {
+    let (old, new) = if nth % 2 == 1 { (Rax, Rcx) } else { (Rcx, Rax) };
+    scope.extend(&mov_int(new, arg!(self, func, (Int(x)) => x).val));
+    scope.extend(&[LogicRR(Cmp, old, new), SetCc(cc, old), LogicRbRb(And, Rdx, old)]);
   }
-  scope.mov_tmp_bool(Rdx)
+  scope.push(NegRb(Rdx));
+  scope.ret_bool(Rdx)
 }

@@ -2,32 +2,36 @@
 
 ## concat
 
-```json
-{"concat": ["String (Literal)", "String (Literal)", "..."]} -> "String (Literal)"
-```
-
 ```jspl
-concat(string, string...)
+concat(Str (Literal), ...)
 ```
 
 Returns the result of concatenating all string literals.
 
-```json
-{"concat": ["Hello", "World"]} => "HelloWorld"
+```jspl
+concat("Hello", "World") => "HelloWorld"
 ```
 
 ## len
 
-```json
-{"len": "String (Literal)"} -> "String (Literal)"
-```
-
 ```jspl
-len(string)
+len(Str) -> Str
 ```
 
 Returns the length of the string.
 
-```json
-{"len": "Hello, World!"} => 13
+```jspl
+len(Hello, World!) => 13
+```
+
+## Str
+
+```jspl
+Str(Int) -> Str
+```
+
+Converts the given value into a string.
+
+```jspl
+Str(123) => "123"
 ```

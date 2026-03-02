@@ -1,1 +1,1 @@
-message("Hello", "Hello😃\n Jsonp¡ler❕")
+print("Hello😃 Jsonp¡ler\u2755\n")

@@ -1,7 +1,6 @@
 include("fib.jspl", fib)
 include("lcm.jspl", gcd)
-include("int_sqrt.jspl", int_sqrt)
 include("is_prime.jspl", is_prime)
-x = gcd(fib(10), int_sqrt(100))
-assert(is_prime($x), "Assertion failed")
+x = gcd(fib(10), len(Str(-1234567890)))
+assert(is_prime($x), "x is not prime number")
 $x

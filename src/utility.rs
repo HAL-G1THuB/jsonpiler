@@ -1,300 +1,272 @@
-use crate::{
-  Arity::{self, *},
-  Bind::{self, Lit, Var},
-  CompilationErrKind::*,
-  ConditionCode::E,
-  DataInst::*,
-  ErrOR, FuncInfo,
-  Inst::{self, *},
-  InternalErrKind::*,
-  Json, Jsonpiler,
-  JsonpilerErr::{self, *},
-  LogicByteOpcode::*,
-  Memory,
-  Memory::*,
-  Operand, Parser,
-  Register::{self, *},
-  ScopeInfo, WithPos, take_arg,
-};
+use crate::prelude::*;
 use std::{
-  collections::HashMap,
+  env, io,
+  path::Path,
   time::{SystemTime, UNIX_EPOCH},
 };
 impl Jsonpiler {
-  pub(crate) const COMMON: (bool, bool) = (false, false);
-  pub(crate) const CQO: &'static [u8] = &[0x48, 0x99];
-  pub(crate) const GUI_H: u32 = 0x200;
-  pub(crate) const GUI_W: u32 = 0x200;
-  pub(crate) const REGS: [Register; 4] = [Rcx, Rdx, R8, R9];
-  pub(crate) const RET: &'static [u8] = &[0xC3];
-  pub(crate) const SCOPE: (bool, bool) = (true, false);
-  pub(crate) const SPECIAL: (bool, bool) = (false, true);
-  pub(crate) const SP_SCOPE: (bool, bool) = (true, true);
-  pub(crate) fn call_api_check_null(&self, api: (u32, u32)) -> [Inst; 3] {
-    [CallApi(api), LogicRR(Test, Rax, Rax), JCc(E, self.sym_table["WIN_HANDLER"])]
-  }
-  pub(crate) fn g_symbol(&mut self, key: &str) -> Memory {
-    Global { id: self.sym_table[key] }
-  }
-  // Overflow is unlikely.
-  pub(crate) fn gen_id(&mut self) -> u32 {
-    let id = self.label_id;
-    self.label_id += 1;
+  pub(crate) fn bss(&mut self, size: u32, align: u32) -> u32 {
+    let id = self.id();
+    self.data_insts.push(BssAlloc(id, size, align));
     id
   }
-  pub(crate) fn get_bss_id(&mut self, size: u32, align: u32) -> u32 {
-    let id = self.gen_id();
-    self.data_insts.push(Bss(id, size, align));
-    id
+  pub(crate) fn global_b(&mut self, boolean: bool) -> Label {
+    let id = self.id();
+    if boolean {
+      self.data_insts.push(Byte(id, bool2byte(boolean)));
+    } else {
+      self.data_insts.push(BssAlloc(id, 1, 1));
+    }
+    Label(Global(id), Size(1))
   }
-  pub(crate) fn get_var(&self, var_name: &str, scope: &ScopeInfo) -> Option<Json> {
-    scope.get_var_local(var_name).or_else(|| Some(self.globals.get(var_name)?.clone()))
+  pub(crate) fn global_q(&mut self, value: u64) -> Label {
+    let id = self.id();
+    if value != 0 {
+      self.data_insts.push(Quad(id, value));
+    } else {
+      self.data_insts.push(BssAlloc(id, 8, 8));
+    }
+    Label(Global(id), Size(8))
   }
-  pub(crate) fn global_bool(&mut self, boolean: bool) -> u32 {
-    let id = self.gen_id();
-    self.data_insts.push(Byte(id, if boolean { 0xFF } else { 0 }));
-    id
-  }
-  pub(crate) fn global_num(&mut self, value: u64) -> u32 {
-    let id = self.gen_id();
-    self.data_insts.push(Quad(id, value));
-    id
-  }
-  pub(crate) fn global_str(&mut self, value: String) -> (u32, usize) {
-    if let Some(&id) = self.str_cache.get(&value) {
+  pub(crate) fn global_str<T: Into<String>>(&mut self, value: T) -> u32 {
+    let string = value.into();
+    if let Some(&id) = self.str_cache.get(&string) {
       return id;
     }
-    let len = value.len();
-    let id = self.gen_id();
-    self.str_cache.insert(value.clone(), (id, len));
-    self.data_insts.push(Bytes(id, value.into()));
-    (id, len)
+    let id = self.id();
+    self.str_cache.insert(string.clone(), id);
+    self.data_insts.push(Bytes(id, string.into()));
+    id
   }
-  pub(crate) fn import(&mut self, key1: &'static str, key2: &'static str) -> ErrOR<(u32, u32)> {
-    let outer_idx =
-      if let Some(idx) = self.import_table.iter().position(|(outer_key, _)| *outer_key == key1) {
-        idx
-      } else {
-        self.import_table.push((key1, vec![]));
-        self.import_table.len() - 1
-      };
-    let inner_idx =
-      if let Some(idx) = self.import_table[outer_idx].1.iter().position(|func| *func == key2) {
-        idx
-      } else {
-        self.import_table[outer_idx].1.push(key2);
-        self.import_table[outer_idx].1.len() - 1
-      };
-    Ok((
-      u32::try_from(outer_idx).or(Err(InternalError(Overflow)))?,
-      u32::try_from(inner_idx).or(Err(InternalError(Overflow)))?,
-    ))
+  pub(crate) fn global_w_chars<T: Into<String>>(&mut self, value: T) -> u32 {
+    let string = value.into();
+    if let Some(&id) = self.str_cache.get(&string) {
+      return id;
+    }
+    let id = self.id();
+    self.str_cache.insert(string.clone(), id);
+    self.data_insts.push(WChars(id, string.into()));
+    id
   }
-  pub(crate) fn mov_str(&mut self, string: Bind<String>, dst: Register, scope: &mut ScopeInfo) {
+  // Overflow is unlikely
+  pub(crate) fn id(&mut self) -> u32 {
+    self.id_seed += 1;
+    self.id_seed - 1
+  }
+}
+impl Jsonpiler {
+  pub(crate) fn err_info(&self, pos: Position) -> (String, String, String, String) {
+    self.parser[pos.file].err_info(pos, &self.parser[0].file)
+  }
+  pub(crate) fn get_var(
+    &mut self,
+    var_name: &str,
+    pos: Position,
+    scope: &mut Scope,
+  ) -> ErrOR<Json> {
+    or_err!(
+      (scope.get_var_local(var_name).or_else(|| self.globals.get(var_name).cloned())),
+      pos,
+      UndefinedVar(var_name.into())
+    )
+  }
+  pub(crate) fn import(&mut self, dll: &'static str, func: &'static str) -> ErrOR<(u32, u32)> {
+    let idx = self.dlls.iter().position(|(dll2, _)| *dll2 == dll).unwrap_or_else(|| {
+      self.dlls.push((dll, vec![]));
+      self.dlls.len() - 1
+    });
+    let idx2 = self.dlls[idx].1.iter().position(|func2| *func2 == func).unwrap_or_else(|| {
+      self.dlls[idx].1.push(func);
+      self.dlls[idx].1.len() - 1
+    });
+    Ok((u32::try_from(idx)?, u32::try_from(idx2)?))
+  }
+}
+impl Jsonpiler {
+  pub(crate) fn mov_deep_json(&mut self, dst: Register, jwp: WithPos<Json>) -> ErrOR<Vec<Inst>> {
+    Ok(match jwp.val {
+      Null => vec![Clear(dst)],
+      Bool(boolean) => mov_bool(dst, boolean),
+      Int(int) => mov_int(dst, int),
+      Float(float) => mov_float_reg(dst, float),
+      Str(string) => vec![self.mov_str(Rcx, string), Call(self.copy_str()?), mov_q(dst, Rax)],
+      Array(_) | Object(_) => return err!(jwp.pos, UnsupportedType(jwp.val.describe())),
+    })
+  }
+  pub(crate) fn mov_float_xmm(
+    &mut self,
+    xmm: Register,
+    tmp: Register,
+    float: Bind<f64>,
+  ) -> Vec<Inst> {
+    match float {
+      Lit(lit) => vec![MovSdXM(xmm, self.global_q(lit.to_bits()).0)],
+      Var(label) => mov_label_xmm(xmm, tmp, label),
+    }
+  }
+  #[expect(clippy::cast_possible_wrap)]
+  pub(crate) fn mov_len(
+    &mut self,
+    dst: Register,
+    string: &Bind<String>,
+    scope: &mut Scope,
+  ) -> ErrOR<()> {
     match string {
-      Lit(l_str) => {
-        let lbl = Global { id: self.global_str(l_str).0 };
-        scope.push(LeaRM(dst, lbl));
+      Lit(lit) => scope.extend(&mov_int(dst, Lit(lit.len() as i64))),
+      Var(label) => {
+        let tmp_d = scope.alloc(0x18, 8)?;
+        for (idx, reg) in [Rdi, Rax, Rcx].iter().enumerate() {
+          if *reg != dst {
+            scope.push(mov_q(Local(Tmp, tmp_d + i32::try_from(idx * 8)?), *reg));
+          }
+        }
+        scope.extend(&[
+          self.mov_str(Rdi, Var(*label)),
+          Clear(Rcx),
+          DecR(Rcx),
+          Clear(Rax),
+          Custom(CLD_REPNE_SCASB),
+          self.mov_str(Rax, Var(*label)),
+          SubRR(Rdi, Rax),
+          DecR(Rdi),
+          mov_q(dst, Rdi),
+        ]);
+        for (idx, reg) in [Rdi, Rax, Rcx].iter().enumerate() {
+          if *reg != dst {
+            scope.push(mov_q(*reg, Local(Tmp, tmp_d + i32::try_from(idx * 8)?)));
+          }
+        }
+        scope.free(tmp_d, Size(0x18));
       }
-      Var(label) => scope.push(mov_q(dst, label.mem)),
     }
-  }
-  pub(crate) fn mov_str_len_c_a_d(
-    &mut self, string: Bind<String>, str_reg: Register, len_reg: Register, scope: &mut ScopeInfo,
-  ) -> ErrOR<()> {
-    mov_len_c_a_d(&string, len_reg, scope)?;
-    self.mov_str(string, str_reg, scope);
     Ok(())
   }
-  // fn format(&mut self, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<Json> {}
-  #[inline]
-  #[must_use]
-  pub fn setup(source: Vec<u8>, name: String) -> Self {
-    Self {
-      builtin: HashMap::new(),
-      data_insts: vec![],
-      startup: vec![],
-      str_cache: HashMap::new(),
-      label_id: 0,
-      globals: HashMap::new(),
-      parser: vec![Parser::from(source, 0, name)],
-      files: vec![HashMap::new()],
-      insts: vec![],
-      sym_table: HashMap::new(),
-      import_table: vec![],
-      user_defined: HashMap::new(),
+  pub(crate) fn mov_str(&mut self, dst: Register, string: Bind<String>) -> Inst {
+    match string {
+      Lit(lit) => LeaRM(dst, Global(self.global_str(lit))),
+      Var(Label(addr, _)) => mov_q(dst, addr),
     }
-  }
-  pub(crate) fn take_str(
-    &mut self, reg: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
-  ) -> ErrOR<()> {
-    let string = take_arg!(self, func, (String(x)) => x).value;
-    self.mov_str(string, reg, scope);
-    Ok(())
-  }
-  pub(crate) fn take_str_len_c_a_d(
-    &mut self, str_reg: Register, len_reg: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
-  ) -> ErrOR<()> {
-    let string = take_arg!(self, func, (String(x)) => x).value;
-    self.mov_str_len_c_a_d(string, str_reg, len_reg, scope)
   }
 }
 pub(crate) fn align_up(num: usize, align: usize) -> ErrOR<usize> {
-  num.div_ceil(align).checked_mul(align).ok_or(InternalError(Overflow))
+  num.div_ceil(align).checked_mul(align).ok_or(Internal(OverFlow))
 }
-pub(crate) fn align_up_32(value: u32, align: u32) -> ErrOR<u32> {
-  value.div_ceil(align).checked_mul(align).ok_or(InternalError(Overflow))
+pub(crate) fn align_up_32(num: u32, align: u32) -> ErrOR<u32> {
+  num.div_ceil(align).checked_mul(align).ok_or(Internal(OverFlow))
 }
-pub(crate) fn align_up_i32(value: i32, align: i32) -> ErrOR<i32> {
-  (value + align - 1)
-    .checked_div(align)
-    .and_then(|x| x.checked_mul(align))
-    .ok_or(InternalError(Overflow))
+pub(crate) fn align_down_i32(num: i32, align: i32) -> ErrOR<i32> {
+  num.div_euclid(align).checked_mul(align).ok_or(Internal(OverFlow))
 }
 #[expect(clippy::cast_possible_truncation)]
-pub(crate) fn get_time_stamp() -> u32 {
+pub(crate) fn time_stamp() -> u32 {
   SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as u32
 }
-pub(crate) fn mov_bool(boolean: &Bind<bool>, dst: Register, scope: &mut ScopeInfo) {
-  scope.push(match boolean {
-    Lit(l_bool) => mov_b(dst, if *l_bool { 0xFF } else { 0 }),
-    Var(label) => mov_b(dst, label.mem),
-  });
+pub(crate) fn mov_bool(dst: Register, boolean: Bind<bool>) -> Vec<Inst> {
+  match boolean {
+    Lit(lit) => vec![mov_b(dst, bool2byte(lit))],
+    Var(label) => mov_label(dst, label, 1, false),
+  }
 }
-pub(crate) fn mov_float_reg(float: &Bind<f64>, dst: Register, scope: &mut ScopeInfo) {
-  scope.push(match float {
-    Lit(l_float) => mov_q(dst, l_float.to_bits()),
-    Var(label) => mov_q(dst, label.mem),
-  });
+pub(crate) fn mov_float_reg(dst: Register, float: Bind<f64>) -> Vec<Inst> {
+  match float {
+    Lit(lit) => vec![mov_q(dst, lit.to_bits())],
+    Var(label) => mov_label(dst, label, 8, false),
+  }
 }
-pub(crate) fn mov_int(int: &Bind<i64>, dst: Register, scope: &mut ScopeInfo) {
-  #[expect(clippy::cast_sign_loss)]
-  scope.push(match int {
-    Lit(l_int) => {
-      if *l_int == 0 {
-        Clear(dst)
-      } else if let Ok(l_i32) = i32::try_from(*l_int)
-        && l_int.is_positive()
-      {
-        mov_d(dst, l_i32 as u32)
-      } else {
-        mov_q(dst, *l_int as u64)
-      }
-    }
-    Var(label) => mov_q(dst, label.mem),
-  });
+pub(crate) fn mov_int(dst: Register, int: Bind<i64>) -> Vec<Inst> {
+  match int {
+    Lit(lit) => vec![mov_imm(dst, lit)],
+    Var(label) => mov_label(dst, label, 8, false),
+  }
+}
+pub(crate) fn mov_imm(dst: Register, lit: i64) -> Inst {
+  if lit == 0 {
+    Clear(dst)
+  } else if let Ok(l_i32) = i32::try_from(lit)
+    && lit.is_positive()
+  {
+    mov_d(dst, l_i32 as u32)
+  } else {
+    mov_q(dst, lit as u64)
+  }
 }
 pub(crate) fn mov_q<T: Into<Operand<u64>>, U: Into<Operand<u64>>>(dst: T, src: U) -> Inst {
-  MovQQ((dst.into(), src.into()).into())
+  MovQQ((dst.into(), src.into()))
 }
 pub(crate) fn mov_d<T: Into<Operand<u32>>, U: Into<Operand<u32>>>(dst: T, src: U) -> Inst {
-  MovDD((dst.into(), src.into()).into())
+  MovDD((dst.into(), src.into()))
 }
 pub(crate) fn mov_b<T: Into<Operand<u8>>, U: Into<Operand<u8>>>(dst: T, src: U) -> Inst {
-  MovBB((dst.into(), src.into()).into())
+  MovBB((dst.into(), src.into()))
 }
-pub(crate) fn mov_float_xmm(
-  float: &Bind<f64>, xmm: Register, reg: Register, scope: &mut ScopeInfo,
-) -> ErrOR<()> {
-  let addr = match float {
-    Lit(l_float) => {
-      scope.push(mov_q(reg, l_float.to_bits()));
-      let offset = scope.alloc(8, 8)?;
-      scope.push(mov_q(Tmp { offset }, reg));
-      scope.free(offset, 8)?;
-      Tmp { offset }
-    }
-    Var(label) => label.mem,
-  };
-  scope.push(MovSdXM(xmm, addr));
-  Ok(())
-}
-#[expect(clippy::cast_possible_wrap)]
-pub(crate) fn mov_len_c_a_d(
-  string: &Bind<String>, dst: Register, scope: &mut ScopeInfo,
-) -> ErrOR<()> {
-  match string {
-    Lit(l_str) => mov_int(&Lit(l_str.len() as i64), dst, scope),
-    Var(label) => {
-      const CLD_REPNE_SCASB: &[u8] = &[0xFC, 0xF2, 0xAE];
-      let offset = scope.alloc(8, 8)?;
-      scope.push(mov_q(dst, label.mem));
-      scope.extend(&[
-        mov_q(Tmp { offset }, Rdi),
-        mov_q(Rdx, label.mem),
-        mov_q(Rdi, Rdx),
-        Clear(Rcx),
-        DecR(Rcx),
-        Clear(Rax),
-        Custom(&CLD_REPNE_SCASB),
-        SubRR(Rdi, Rdx),
-        DecR(Rdi),
-        mov_q(dst, Rdi),
-        mov_q(Rdi, Tmp { offset }),
-      ]);
+pub(crate) fn ret_label(
+  Label(addr, size): Label,
+  tmp: Register,
+  src: Register,
+  size_i32: i32,
+  is_str: bool,
+) -> Vec<Inst> {
+  let mov2addr = if size_i32 == 1 { mov_b(addr, src) } else { mov_q(addr, src) };
+  match size {
+    _ if is_str => vec![mov2addr],
+    Size(_) => vec![mov2addr],
+    Heap => {
+      vec![
+        mov_q(tmp, addr),
+        if size_i32 == 1 { mov_b(Ref(tmp), src) } else { mov_q(Ref(tmp), src) },
+      ]
     }
   }
-  Ok(())
 }
-pub(crate) fn args_type_error(
-  nth: usize, name: &str, expected: String, json: &WithPos<Json>,
-) -> JsonpilerErr {
-  let suffix = match nth % 100 {
-    11..=13 => "th",
-    _ => match nth % 10 {
-      1 => "st",
-      2 => "nd",
-      3 => "rd",
-      _ => "th",
-    },
-  };
-  let typ = json.value.type_name();
-  CompilationError {
-    kind: TypeError { name: format!("{nth}{suffix} argument of `{name}`"), expected, typ },
-    pos: json.pos,
+pub(crate) fn mov_label(
+  dst: Register,
+  Label(addr, size): Label,
+  size_i32: i32,
+  is_str: bool,
+) -> Vec<Inst> {
+  let mov2dst = if size_i32 == 1 { mov_b(dst, addr) } else { mov_q(dst, addr) };
+  match size {
+    _ if is_str => vec![mov2dst],
+    Size(_) => vec![mov2dst],
+    Heap => vec![
+      mov_q(dst, addr),
+      if size_i32 == 1 { mov_b(dst, Ref(dst)) } else { mov_q(dst, Ref(dst)) },
+    ],
   }
 }
-pub(crate) fn take_bool(reg: Register, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<()> {
-  let boolean = take_arg!(self, func, (Bool(x)) => x).value;
-  mov_bool(&boolean, reg, scope);
-  Ok(())
+pub(crate) fn mov_label_xmm(xmm: Register, tmp: Register, Label(addr, size): Label) -> Vec<Inst> {
+  if size == Heap { vec![mov_q(tmp, addr), MovSdXRef(xmm, tmp)] } else { vec![MovSdXM(xmm, addr)] }
 }
-pub(crate) fn take_float(
-  xmm: Register, reg: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
-) -> ErrOR<()> {
-  let float = take_arg!(self, func, (Float(x)) => x).value;
-  mov_float_xmm(&float, xmm, reg, scope)?;
-  Ok(())
+pub(crate) fn ret_label_xmm(Label(addr, size): Label, tmp: Register, xmm: Register) -> Vec<Inst> {
+  if size == Heap { vec![mov_q(tmp, addr), MovSdRefX(tmp, xmm)] } else { vec![MovSdMX(addr, xmm)] }
 }
-pub(crate) fn take_int(dst: Register, func: &mut FuncInfo, scope: &mut ScopeInfo) -> ErrOR<()> {
-  let int = take_arg!(self, func, (Int(x)) => x).value;
-  mov_int(&int, dst, scope);
-  Ok(())
+pub(crate) fn v_size<T>(data: &[T]) -> ErrOR<u32> {
+  u32::try_from(data.len()).map_err(Into::into)
 }
-pub(crate) fn take_len_c_a_d(
-  dst: Register, func: &mut FuncInfo, scope: &mut ScopeInfo,
-) -> ErrOR<()> {
-  let string = take_arg!(self, func, (String(x)) => x).value;
-  mov_len_c_a_d(&string, dst, scope)?;
-  Ok(())
-}
-pub(crate) fn type_error(name: String, expected: String, json: &WithPos<Json>) -> JsonpilerErr {
-  let typ = json.value.type_name();
-  CompilationError { pos: json.pos, kind: TypeError { name, expected, typ } }
+pub(crate) fn r_size(data: u32) -> ErrOR<u32> {
+  align_up_32(data, FILE_ALIGNMENT)
 }
 #[rustfmt::skip]
-pub(crate) fn validate_args(func: &FuncInfo, expected: Arity) -> ErrOR<()> {
-  let supplied = func.len;
+pub(crate) fn validate_args(func: &Function, expected: Arity) -> ErrOR<()> {
+  let actual = func.len;
   match expected {
-    Exactly(n) => if supplied == n { return Ok(()); }
-    AtLeast(min) => if supplied >= min { return Ok(()); }
-    AtMost(max) => if supplied <= max { return Ok(()); }
-    Range(min, max) => if min <= supplied && supplied <= max { return Ok(()); }
-    NoArgs => if supplied == 0 { return Ok(()); }
+    Exactly(n) => if actual == n { return Ok(()) }
+    AtLeast(min) => if min <= actual { return Ok(()) }
+    AtMost(max) => if actual <= max { return Ok(()) }
+    Range(min, max) => if min <= actual && actual <= max { return Ok(()) }
+    Zero => if actual == 0 { return Ok(()) }
     Any => (),
   }
-  Err(CompilationError {
-    kind: ArityError { name: func.name.clone(), expected, supplied },
-    pos: func.pos,
-  })
+  err!(func.pos, ArityError { name: func.name.clone(), expected, actual })
+}
+pub(crate) fn bool2byte(boolean: bool) -> u8 {
+  if boolean { 0xFF } else { 0 }
+}
+pub(crate) fn full_path(file: &str) -> Result<String, io::Error> {
+  Ok(
+    env::current_dir()
+      .and_then(|dir| dir.join(Path::new(file)).canonicalize())?
+      .to_string_lossy()
+      .to_string(),
+  )
 }

@@ -10,6 +10,25 @@
 
 ## Released
 
+### jsonpiler 0.8
+
+### 0.8.0
+
+- Added commands: `help`, `version`, `release`, `build`, `build release`
+- In `release` builds, debug information is removed from the generated `.exe`
+- Internal support for storing data on the heap has been implemented
+- Added new functions: `sqrt`, `input`, `Str`
+- Added compound assignment operators: `+=`, `-=`, `*=`, `/=`
+- Renamed the `String` type to `Str`
+- Generated executables now include Jsonpiler version information
+- It is now possible to create a new `GUI` after the previous `GUI` has been closed
+- Mouse position is now correctly detected even when outside the `GUI` window
+- The `GUI` no longer terminates unexpectedly when the PC enters sleep mode
+- The `GUI` window title now displays the name of the file it was created from
+- Added the `error_cases` folder
+- Runtime errors now include detailed information such as error location
+- Error messages are now shown when pressing Ctrl+C or during system shutdown
+
 ### jsonpiler 0.7
 
 #### 0.7.4

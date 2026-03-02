@@ -31,9 +31,22 @@ Jsonpilerに GUI をサポートする関数が追加されました。
 
 ## 更新情報
 
-### 0.7.4
+### 0.8.0
 
-- エラーチェックおよびエラー文生成の改良
+- コマンドを追加: `help`, `version`, ` `, `release`, `build`, `build release`
+- `release`版では、.exe内のデバッグ情報が取り除かれる。
+- 内部的にヒープ領域にデータを格納できるようになった
+- 新しい関数を追加: `sqrt`, `input`, `Str`
+- 複合代入演算子を追加: `+=`, `-=`, `*=`, `/=`
+- `String`型を`Str`型に名称変更
+- 生成された.exeがJsonpilerのバージョン情報を含むようになった
+- `GUI`の終了後、新しい`GUI`を生成できるようになった
+- `GUI`のウィンドウ外にマウスがある場合の位置を正しく取得するようになった
+- `GUI`がPCのスリープ時に強制終了しなくなった
+- `GUI`が存在するファイル名が自身のタイトルバーに表示されるようになった
+- `error_cases`フォルダを追加
+- 実行時エラーにエラー位置などの情報を追加
+- Ctrl+Cやシャットダウン時にエラーメッセージを出すようになった
 
 詳細は **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG-ja.md)** を参照してください。
 
@@ -62,7 +75,7 @@ cargo install jsonpiler
 jsonpiler <input.json | input.jspl> [生成exeへの引数]
 ```
 
-- `<input.json>` は UTF-8 である必要があります。
+- `<input.json | input.jspl>` は UTF-8 である必要があります。
 - 追加の引数は生成された実行ファイルに渡されます。
 
 ---
@@ -84,6 +97,12 @@ jsonpiler <input.json | input.jspl> [生成exeへの引数]
 { "=": ["a", "title"], "message": [{ "$": "a" }, "345"], "+": [1, 2, 3] }
 ```
 
+```jspl
+a = "title"
+message($a, "345")
+1 + 2 + 3
+```
+
 ### 実行順序
 
 - Jsonpiler プログラムは単一の JSON オブジェクトで構成され、キーは **順次評価** されます。
@@ -91,7 +110,9 @@ jsonpiler <input.json | input.jspl> [生成exeへの引数]
 - `"message"` は `a` の値に `"345"` を連結して表示します。
 - `"+"` は `1 + 2 + 3` を計算し、結果は **6** です。
 
-プログラムの **最終式の値** はプロセスの **終了コード** になります。Cargo で実行すると次のように表示される場合があります:
+プログラムの **最終式の値** はプロセスの **終了コード** になります。
+
+Cargo で実行すると次のように表示される場合があります:
 
 ```text
 error: process didn't exit successfully: `jsonpiler.exe test.json` (exit code: 6)
@@ -157,7 +178,7 @@ graph TD
   end
   subgraph 解析
     B --o C["AST\nJson::Object([
-      Json::String(&quot;+&quot;),
+      Json::Str(&quot;+&quot;),
       Json::Array([
         Json::Int(1),
         Json::Int(2)

@@ -2,33 +2,29 @@
 
 ## scope
 
-```json
-{"scope": {"expression": "Block"}} -> "Any"
-```
-
 ```jspl
-scope({sequence})
+scope(Block) -> Any
 ```
 
 It introduces a new scope and evaluates the expression in order and returns the result.
 
-```json
-{ "scope": {"+": [1, 3], "value": 1} } => 1
+```jspl
+scope({
+  x = 1
+  $x
+}) => 1
 ```
 
 ## = / global
 
-```json
-{"=": [{"variable": "String (Literal)"}, {"value": "Any"}]} -> "Null"
-```
-
-```json
-{"global": [{"variable": "String (Literal)"}, {"value": "Any"}]} -> "Null"
+```jspl
+Str (Literal) = Any
+  -> Null
 ```
 
 ```jspl
-variable = value
-global(variable, value)
+Str (Literal) global Any
+  -> Null
 ```
 
 Assigns the given value to the specified variable name.  
@@ -43,12 +39,8 @@ Currently, the following types are **not assignable** and **not reassignable**:
 
 ## $
 
-```json
-{"$": {"variable": "String (Literal)"}} -> "VAny"
-```
-
 ```jspl
-$variable
+$Str (Literal) -> Any (Local or Global Variable)
 ```
 
 Returns the value bound to the given variable name.

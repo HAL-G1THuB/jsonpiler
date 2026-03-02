@@ -1,0 +1,3 @@
+# An error will occur at runtime.
+zero = 0
+1 / $zero

@@ -2,80 +2,68 @@
 
 ## assert
 
-```json
-{"assert": ["Bool", "String"]} -> "Null"
-```
-
 ```jspl
-assert(bool)
+assert(Bool, Str) -> Null
 ```
 
 If the given boolean is `false`, an error is generated at runtime.
 
-```json
-{"assert": [false, "Assertion failed"]} ... message("", "Assertion failed") and terminate
+```jspl
+assert(false, "Assertion failed")
+...
+RuntimeError:
+  AssertionError:
+   Assertion failed
+Error at assert.jspl line: 1 column: 6
+Error position: 
+assert(false, "Assertion failed")
+       ^^^^^
 ```
 
 ## not
 
-```json
-{"not": "Bool or Int"} -> "Bool or Int (Temporary Value)"
+```jspl
+not(Bool or Int") -> Bool or Int
 ```
+
+Returns the NOT of the given boolean or integer.
 
 ```jspl
-not(bool)
-```
-
-Returns the logical NOT of the given boolean or integer.
-
-```json
-{"not": true} => false
+not(true) => false
 ```
 
 ## and
 
-```json
-{"and": ["Bool or Int", "Bool or Int", "..."]} -> "Bool or Int (Temporary Value)"
+```jspl
+and(Bool or Int, Bool or Int, ...) -> Bool or Int
 ```
+
+Returns the AND of the given booleans or integers.
 
 ```jspl
-bool and bool
-```
-
-Returns the logical AND of the given booleans or integers.
-
-```json
-{"and": [true, false]} => false
+true and false => false
 ```
 
 ## or
 
-```json
-{"or": ["Bool or Int", "Bool or Int", "..."]} -> "Bool or Int (Temporary Value)"
+```jspl
+or(Bool or Int, Bool or Int, ...) -> Bool or Int
 ```
+
+Returns the OR of the given booleans or integers.
 
 ```jspl
-bool or bool
-```
-
-Returns the logical OR of the given booleans or integers.
-
-```json
-{"or": [true, false]} => true
+true or false => true
 ```
 
 ## xor
 
-```json
-{"xor": ["Bool or Int", "Bool or Int", "..."]} -> "Bool or Int (Temporary Value)"
-```
-
 ```jspl
-bool xor bool
+xor(Bool or Int, Bool or Int, ...) -> Bool or Int
 ```
 
 Returns the logical OR of the given booleans or integers.
 
-```json
-{"xor": [true, false]} => true
+```jspl
+true xor false => true
 ```

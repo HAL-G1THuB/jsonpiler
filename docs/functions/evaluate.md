@@ -2,12 +2,8 @@
 
 ## '
 
-```json
-{"'": {"expr": "Any"}} -> {"unevaluated_expr": "Any"}
-```
-
 ```jspl
-'(expr)
+'(Any) -> unevaluated: Any
 ```
 
 Returns the expression without evaluating it.
@@ -15,44 +11,32 @@ Can also be used as a comment.
 
 ## eval
 
-```json
-{"eval": {"expr": "Any"}} -> {"evaluated_expr": "Any"}
-```
-
 ```jspl
-eval(expr)
+eval(Any) -> evaluated: Any
 ```
 
 Evaluates the given expression and returns the result.
 
 ## list
 
-```json
-{"list": [{"expr": "Any"}, "..."]} -> "Array (Literal)"
-```
-
 ```jspl
-[expr, ...]
+list(Any, ...) -> Array (Literal)
 ```
 
 The list function returns its evaluated arguments as an Array (Literal).
 
-```json
-{"list": {"+": [3, 5]}} => [8]
+```jspl
+list(3 + 5, 0) => [8, 0]
 ```
 
 ## value
 
-```json
-{"value": {"value": "Any"}} -> "Any"
-```
-
 ```jspl
-value
+value(Any) -> Any
 ```
 
 Returns the given value.
 
-```json
-{"value": 8} => 8
+```jspl
+value(8) => 8
 ```

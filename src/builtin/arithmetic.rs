@@ -1,190 +1,200 @@
-use crate::{
-  Arity::{AtLeast, Exactly, NoArgs},
-  Bind::{self, Lit, Var},
-  CompilationErrKind::*,
-  ErrOR, FuncInfo,
-  Inst::{self, *},
-  Json, Jsonpiler,
-  JsonpilerErr::*,
-  Label,
-  LogicByteOpcode::*,
-  Position,
-  Register::*,
-  ScopeInfo, WithPos, built_in, err, take_arg,
-  utility::{args_type_error, mov_float_reg, mov_float_xmm, mov_int, mov_q, take_float, take_int},
-};
+use crate::prelude::*;
 built_in! {self, _func, scope, arithmetic;
   abs => {"abs", COMMON, Exactly(1), {
-    let arg = _func.arg()?;
-    if let Json::Int(int) = arg.value {
-      mov_int(&int, Rax, scope);
-      scope.extend(&[
-        Custom(&Jsonpiler::CQO),
-        LogicRR(Xor, Rax, Rdx),
-        SubRR(Rax, Rdx)
-      ]);
-      Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
-    } else if let Json::Float(float) = arg.value {
-      const BTR_RAX_63: &[u8] = &[0x48, 0x0F, 0xBA, 0xF0, 0x3F];
-      mov_float_reg(&float, Rax, scope);
-      scope.push(Custom(&BTR_RAX_63));
-      Ok(Json::Float(Var(scope.mov_tmp(Rax)?)))
-    } else {
-      Err(args_type_error(1, &_func.name, "Int` or `Float".into(), &arg))
-  }  }},
-  add => {"+", COMMON, AtLeast(2), {
-    arithmetic_template(
-      &(vec![AddRR(Rax, Rcx)], AddSd(Rax, Rcx)),
+    match _func.arg()? {
+      WithPos { val: Int(int), .. } => {
+        scope.extend(&mov_int(Rax, int));
+        scope.extend(&[Custom(CQO), LogicRR(Xor, Rax, Rdx), SubRR(Rax, Rdx)]);
+        Ok(Int(Var(scope.ret(Rax)?)))
+      }
+      WithPos { val: Float(float), .. } => {
+        scope.extend(&mov_float_reg(Rax, float));
+        scope.push(Custom(BTR_RAX_63));
+        Ok(Float(Var(scope.ret(Rax)?)))
+      }
+      other => Err(args_type_err(1, &_func.name, "Int` or `Float".into(), &other))
+    }
+  }},
+  calc_add => {"+", COMMON, AtLeast(2), {
+    self.calc_normal(
+      &(AddRR(Rax, Rcx), AddSd(Rax, Rcx)),
       (&i64::wrapping_add, &i64::wrapping_add),
-      _func, scope, 0, &|_| Ok(None), &||Some(IncR(Rax))
+      _func, scope, 0, (&|| Ok(None), &|| Some(IncR(Rax))), None
     )
   }},
-  div => {"/", COMMON, AtLeast(2), {
-    arithmetic_template(
-      &(vec![Custom(&Jsonpiler::CQO), IDivR(Rcx)], DivSd(Rax, Rcx)),
+  calc_div => {"/", COMMON, AtLeast(2), {
+    let func_pos = _func.pos;
+    self.calc_normal(
+      &(IDivR(Rcx), DivSd(Rax, Rcx)),
       (&i64::wrapping_div, &i64::wrapping_mul),
-      _func, scope, 1, &|pos| err!(self, pos, ZeroDivisionError), &||None)
+      _func, scope, 1, (&|| err!(func_pos, ZeroDivision), &|| None),
+      Some(&Jsonpiler::check_zero_cqo)
+    )
   }},
-  float => {"Float", COMMON, Exactly(1), {
-    take_int(Rax, _func, scope)?;
-    scope.push(CvtSi2Sd(Rax, Rax));
-    scope.mov_tmp_xmm(Rax)
-  }},
-  int => {"Int", COMMON, Exactly(1), {
-    take_float(Rax, Rax, _func, scope)?;
-    scope.push(CvtTSd2Si(Rax, Rax));
-    Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
-  }},
-  minus => {"-", COMMON, AtLeast(1), {
+  calc_minus => {"-", COMMON, AtLeast(1), {
     if _func.len == 1 {
       match _func.arg()? {
-      WithPos { value: Json::Int(int), .. } => {
-        mov_int(&int, Rax, scope);
-        scope.push(NegR(Rax));
-        Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
+        WithPos { val: Int(int), .. } => {
+          scope.extend(&mov_int(Rax, int));
+          scope.push(NegR(Rax));
+          Ok(Int(Var(scope.ret(Rax)?)))
+        }
+        WithPos { val: Float(float), .. } => {
+          scope.extend(&mov_float_reg(Rax, float));
+          scope.push(Custom(BTC_RAX_63));
+          Ok(Float(Var(scope.ret(Rax)?)))
+        }
+        other => Err(args_type_err(1, &_func.name, "Int` or `Float".into(), &other))
       }
-      WithPos { value: Json::Float(float), .. } => {
-        const BTC_RAX_63: &[u8] = &[0x48, 0x0F, 0xBA, 0xF8, 0x3F];
-        mov_float_reg(&float, Rax, scope);
-        scope.push(Custom(&BTC_RAX_63));
-        Ok(Json::Float(Var(scope.mov_tmp(Rax)?)))
-      }
-      other => {
-        Err(args_type_error(1, &_func.name, "Int` or `Float".into(), &other))
-      }
-    }
     } else {
-      arithmetic_template(&(vec![SubRR(Rax, Rcx)], SubSd(Rax, Rcx)), (&i64::wrapping_sub, &i64::wrapping_add), _func, scope, 0, &|_| Ok(None), &||Some(DecR(Rax)))
+      self.calc_normal(
+        &(SubRR(Rax, Rcx), SubSd(Rax, Rcx)),
+        (&i64::wrapping_sub, &i64::wrapping_add),
+        _func, scope, 0, (&|| Ok(None), &|| Some(DecR(Rax))), None
+      )
     }
   }},
-  mul => {"*", COMMON, AtLeast(2), {
-    arithmetic_template(&(vec![IMulRR(Rax, Rcx)], MulSd(Rax, Rcx)), (&i64::wrapping_mul, &i64::wrapping_mul), _func, scope, 1, &|_| Ok(Some(0)), &||None)
+  calc_mul => {"*", COMMON, AtLeast(2), {
+    self.calc_normal(
+      &(IMulRR(Rax, Rcx), MulSd(Rax, Rcx)),
+      (&i64::wrapping_mul, &i64::wrapping_mul),
+      _func, scope, 1, (&|| Ok(Some(0)), &|| None), None
+    )
   }},
-  random => {"random", COMMON, NoArgs, {
+  float => {"Float", COMMON, Exactly(1), {
+    scope.extend(&mov_int(Rax, arg!(self, _func, (Int(x)) => x).val));
+    scope.push(CvtSi2Sd(Rax, Rax));
+    scope.ret_xmm(Rax)
+  }},
+  int => {"Int", COMMON, Exactly(1), {
+          scope.extend(&self.mov_float_xmm(Rax, Rax, arg!(self, _func, (Float(x)) => x).val));
+    scope.push(CvtTSd2Si(Rax, Rax));
+    Ok(Int(Var(scope.ret(Rax)?)))
+  }},
+  random => {"random", COMMON, Zero, {
     scope.push(Call(self.get_random()?));
-    Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
+    Ok(Int(Var(scope.ret(Rax)?)))
   }},
   rem => {"%", COMMON, Exactly(2), {
-    let int1 = take_arg!(self, _func, (Int(x)) => x);
-    let int2 = take_arg!(self, _func, (Int(x)) => x);
-    if let (Lit(l_int1), Lit(l_int2)) = (&int1.value, &int2.value) {
-      if *l_int2 == 0 {
-        return err!(self, int2.pos, ZeroDivisionError);
-      }
-      return Ok(Json::Int(Lit(l_int1.wrapping_rem(*l_int2))));
+    let lhs = arg!(self, _func, (Int(x)) => x).val;
+    let WithPos { val: rhs, pos } = arg!(self, _func, (Int(x)) => x);
+    if matches!(rhs, Lit(0)) {
+      return err!(pos, ZeroDivision);
     }
-    mov_int(&int1.value, Rax, scope);
-    match int2.value {
-      Lit(l_int) => {
-        if l_int == 0 {
-          return err!(self, int2.pos, ZeroDivisionError);
-        }
-        mov_int(&Lit(l_int), Rcx, scope);
-      }
-      Var(label) => {
-        scope.push(mov_q(Rcx, label.mem));
-      }
+    if let (Lit(lit1), Lit(lit2)) = (&lhs, &rhs) {
+      return Ok(Int(Lit(lit1.wrapping_rem(*lit2))));
     }
-    scope.push(Custom(&Jsonpiler::CQO));
-    scope.push(IDivR(Rcx));
-    Ok(Json::Int(Var(scope.mov_tmp(Rdx)?)))
+    extend!(
+      scope.body,
+      mov_int(Rax, lhs),
+      mov_int(Rcx, rhs),
+      self.check_zero_cqo(pos)?,
+      [IDivR(Rcx)]
+    );
+    Ok(Int(Var(scope.ret(Rdx)?)))
+  }},
+  sqrt => {"sqrt", COMMON, Exactly(1), {
+    scope.extend(&self.mov_float_xmm(Rax, Rax, arg!(self, _func, (Float(x)) => x).val));
+    scope.push(SqrtSd(Rax, Rax));
+    scope.ret_xmm(Rax)
   }},
 }
 type Op = dyn Fn(i64, i64) -> i64;
-fn arithmetic_template(
-  op_inst: &(Vec<Inst>, Inst), ops: (&Op, &Op), func: &mut FuncInfo, scope: &mut ScopeInfo,
-  ident_elem: i64, case_zero: &impl Fn(Position) -> ErrOR<Option<i64>>,
-  case_one: &impl Fn() -> Option<Inst>,
-) -> ErrOR<Json> {
-  match func.arg()? {
-    WithPos { value: Json::Int(int), .. } => {
-      let mut int_vec = vec![];
-      for _ in 1..func.len {
-        int_vec.push(take_arg!(self, func, (Int(x)) => x).value);
-      }
-      let (first, vars, acc) =
-        constant_fold(&int, int_vec, ops, ident_elem, &|| case_zero(func.pos))?;
-      if first.is_none() && vars.is_empty() {
-        return Ok(Json::Int(Lit(acc)));
-      }
-      if let Some(lbl) = first {
-        if acc == 0 {
-          if let Some(ret_val) = case_zero(func.pos)? {
-            return Ok(Json::Int(Lit(ret_val)));
+type CheckFn = dyn Fn(&mut Jsonpiler, Position) -> ErrOR<Vec<Inst>>;
+impl Jsonpiler {
+  #[expect(clippy::too_many_arguments)]
+  fn calc_normal(
+    &mut self,
+    op_inst: &(Inst, Inst),
+    ops: (&Op, &Op),
+    func: &mut Function,
+    scope: &mut Scope,
+    ident_elem: i64,
+    when: (&impl Fn() -> ErrOR<Option<i64>>, &impl Fn() -> Option<Inst>),
+    check_opt: Option<&CheckFn>,
+  ) -> ErrOR<Json> {
+    match func.arg()? {
+      WithPos { val: Int(int), .. } => {
+        let mut rest = vec![];
+        for _ in 1..func.len {
+          rest.push(arg!(self, func, (Int(x)) => x));
+        }
+        let (first, vars, acc) = constant_fold(int, rest, ops, ident_elem, &when.0)?;
+        if first.is_none() && vars.is_empty() {
+          return Ok(Int(Lit(acc)));
+        }
+        if let Some(label) = first {
+          if acc == 0
+            && let Some(ret_val) = when.0()?
+          {
+            return Ok(Int(Lit(ret_val)));
           }
-          mov_int(&Var(lbl), Rax, scope);
-        } else if acc == 1 {
-          mov_int(&Var(lbl), Rax, scope);
-          if let Some(inst) = case_one() {
-            scope.push(inst);
+          scope.extend(&mov_int(Rax, Var(label)));
+          if acc != 0 {
+            if acc == 1
+              && let Some(inst) = when.1()
+            {
+              scope.push(inst);
+            } else {
+              scope.extend(&mov_int(Rcx, Lit(acc)));
+              if let Some(check) = check_opt {
+                scope.extend(&check(self, func.pos)?);
+              }
+              scope.push(op_inst.0);
+            }
           }
         } else {
-          mov_int(&Var(lbl), Rax, scope);
-          mov_int(&Lit(acc), Rcx, scope);
-          scope.extend(&op_inst.0);
+          scope.extend(&mov_int(Rax, Lit(acc)));
         }
-      } else {
-        mov_int(&Lit(acc), Rax, scope);
+        for label_wp in vars {
+          scope.extend(&mov_int(Rcx, Var(label_wp.val)));
+          if let Some(check) = check_opt {
+            scope.extend(&check(self, label_wp.pos)?);
+          }
+          scope.push(op_inst.0);
+        }
+        Ok(Int(Var(scope.ret(Rax)?)))
       }
-      for var in vars {
-        mov_int(&Var(var), Rcx, scope);
-        scope.extend(&op_inst.0);
+      WithPos { val: Float(float), .. } => {
+        scope.extend(&self.mov_float_xmm(Rax, Rax, float));
+        for _ in 1..func.len {
+          scope.extend(&self.mov_float_xmm(Rcx, Rax, arg!(self, func, (Float(x)) => x).val));
+          scope.push(op_inst.1);
+        }
+        scope.ret_xmm(Rax)
       }
-      Ok(Json::Int(Var(scope.mov_tmp(Rax)?)))
+      other => Err(args_type_err(1, &func.name, "Int` or `Float".into(), &other)),
     }
-    WithPos { value: Json::Float(float), .. } => {
-      mov_float_xmm(&float, Rax, Rax, scope)?;
-      for _ in 1..func.len {
-        take_float(Rcx, Rax, func, scope)?;
-        scope.push(op_inst.1.clone());
-      }
-      scope.mov_tmp_xmm(Rax)
-    }
-    other => Err(args_type_error(1, &func.name, "Int` or `Float".into(), &other)),
+  }
+  pub(crate) fn check_zero_cqo(&mut self, pos: Position) -> ErrOR<Vec<Inst>> {
+    let zero_division = self.custom_err(ZERO_DIVISION, Lit(String::new()), pos)?;
+    Ok(vec![LogicRR(Test, Rcx, Rcx), JCc(E, zero_division), Custom(CQO)])
   }
 }
 fn constant_fold(
-  first: &Bind<i64>, rest: Vec<Bind<i64>>, ops: (&Op, &Op), ident_elem: i64,
-  case_zero: &impl Fn() -> ErrOR<Option<i64>>,
-) -> ErrOR<(Option<Label>, Vec<Label>, i64)> {
+  first: Bind<i64>,
+  rest: Vec<WithPos<Bind<i64>>>,
+  ops: (&Op, &Op),
+  ident_elem: i64,
+  when0: &impl Fn() -> ErrOR<Option<i64>>,
+) -> ErrOR<(Option<Label>, Vec<WithPos<Label>>, i64)> {
   let mut vars = vec![];
   let mut acc = ident_elem;
-  for bind in rest {
-    match bind {
-      Lit(l_int) => acc = ops.1(acc, l_int),
-      Var(lbl) => vars.push(lbl),
+  for bind_wp in rest {
+    match bind_wp.val {
+      Lit(lit) => acc = ops.1(acc, lit),
+      Var(label) => vars.push(bind_wp.pos.with(label)),
     }
   }
   match first {
-    Lit(l_int) => {
+    Lit(lit) => {
       if acc == 0
-        && let Some(ret_val) = case_zero()?
+        && let Some(ret_val) = when0()?
       {
         return Ok((None, vars, ret_val));
       }
-      acc = ops.0(*l_int, acc);
-      Ok((None, vars, acc))
+      Ok((None, vars, ops.0(lit, acc)))
     }
-    Var(lbl) => Ok((Some(*lbl), vars, acc)),
+    Var(label) => Ok((Some(label), vars, acc)),
   }
 }

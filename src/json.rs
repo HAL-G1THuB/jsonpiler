@@ -1,86 +1,75 @@
-use super::{
-  Bind::{Lit, Var},
-  Json, Label,
-};
-use core::fmt;
+use crate::prelude::*;
+use std::fmt;
 impl Json {
-  pub(crate) fn get_label(&self) -> Option<Label> {
+  pub(crate) fn describe(&self) -> String {
+    format!(
+      "{}{}",
+      self.type_name(),
+      match self {
+        Bool(bind) => format!("{bind}"),
+        Null => String::new(),
+        Float(bind) => format!("{bind}"),
+        Object(bind) => format!("{bind}"),
+        Int(bind) => format!("{bind}"),
+        Str(bind) => format!("{bind}"),
+        Array(bind) => format!("{bind}"),
+      }
+    )
+  }
+  pub(crate) fn label(&mut self) -> Option<&mut Label> {
     match self {
-      Json::Int(Var(label))
-      | Json::Float(Var(label))
-      | Json::String(Var(label))
-      | Json::Bool(Var(label))
-      | Json::Array(Var(label))
-      | Json::Object(Var(label)) => Some(*label),
-      Json::Array(_)
-      | Json::Bool(_)
-      | Json::Float(_)
-      | Json::Int(_)
-      | Json::Null
-      | Json::Object(_)
-      | Json::String(_) => None,
+      Int(Var(label)) | Float(Var(label)) | Str(Var(label)) | Bool(Var(label))
+      | Array(Var(label)) | Object(Var(label)) => Some(label),
+      Array(_) | Bool(_) | Float(_) | Int(_) | Null | Object(_) | Str(_) => None,
     }
   }
-  pub(crate) fn type_name(&self) -> String {
+  pub(crate) fn type_name(&self) -> &'static str {
     match self {
-      Json::Bool(bind) => bind.describe("Bool"),
-      Json::Null => "Null".into(),
-      Json::Float(bind) => bind.describe("Float"),
-      Json::Object(bind) => bind.describe("Object"),
-      Json::Int(bind) => bind.describe("Int"),
-      Json::String(bind) => bind.describe("String"),
-      Json::Array(bind) => bind.describe("Array"),
+      Bool(_) => "Bool",
+      Null => "Null",
+      Float(_) => "Float",
+      Object(_) => "Object",
+      Int(_) => "Int",
+      Str(_) => "Str",
+      Array(_) => "Array",
     }
   }
 }
 impl fmt::Display for Json {
-  #[expect(clippy::min_ident_chars)]
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
-      Json::Null => f.write_str("Null"),
-      Json::Array(bind) => match bind {
-        Lit(array) => {
-          f.write_str("[")?;
-          for (i, item) in array.iter().enumerate() {
-            if i > 0 {
-              f.write_str(", ")?;
-            }
-            write!(f, "{}", item.value)?;
-          }
-          f.write_str("]")
-        }
-        Var(_) => f.write_str(&bind.describe("Array")),
-      },
-      Json::Bool(bind) => match bind {
-        Lit(l_bool) => write!(f, "{l_bool}"),
-        Var(_) => f.write_str(&bind.describe("Bool")),
-      },
-      Json::Int(bind) => match bind {
-        Lit(l_int) => write!(f, "{l_int}"),
-        Var(_) => f.write_str(&bind.describe("Int")),
-      },
-      Json::Float(bind) => match bind {
-        Lit(l_float) => write!(f, "{l_float}"),
-        Var(_) => f.write_str(&bind.describe("Float")),
-      },
-      Json::String(bind) => match bind {
-        Lit(l_st) => f.write_str(l_st),
-        Var(_) => f.write_str(&bind.describe("String")),
-      },
-      Json::Object(bind) => match bind {
-        Lit(obj) => {
-          f.write_str("{")?;
-          for (i, key_val) in obj.iter().enumerate() {
-            if i > 0 {
-              f.write_str(", ")?;
-            }
-            write!(f, "{}: ", &key_val.0.value)?;
-            key_val.1.value.fmt(f)?;
-          }
-          f.write_str("}")
-        }
-        Var(_) => f.write_str(&bind.describe("Object")),
-      },
+      Array(Lit(array)) => {
+        let content = array.iter().map(|item| format!("{}", &item.val));
+        write!(f, "[{}]", &content.collect::<Vec<_>>().join(", "))
+      }
+      Bool(Lit(lit)) => lit.fmt(f),
+      Int(Lit(lit)) => lit.fmt(f),
+      Float(Lit(lit)) => lit.fmt(f),
+      Str(Lit(lit)) => lit.fmt(f),
+      Object(Lit(obj)) => {
+        let content = obj.iter().map(|(key, val)| format!("{}: {}", &key.val, val.val));
+        write!(f, "{{{}}}", &content.collect::<Vec<_>>().join(", "))
+      }
+      Null => write!(f, "null"),
+      Array(Var(label)) | Bool(Var(label)) | Int(Var(label)) | Float(Var(label))
+      | Str(Var(label)) | Object(Var(label)) => label.fmt(f),
+    }
+  }
+}
+impl<T> fmt::Display for Bind<T> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      Var(label) => write!(f, "{label}"),
+      Lit(_) => f.write_str(" (Literal)"),
+    }
+  }
+}
+impl fmt::Display for Label {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self.0 {
+      Local(Tmp, _) => Ok(()),
+      Local(Long, _) => write!(f, " (Local variable)"),
+      Global(_) => write!(f, " (Global variable)"),
     }
   }
 }

@@ -1,21 +1,19 @@
-use crate::{
-  Arity::{AtLeast, Exactly},
-  Bind::*,
-  ErrOR, FuncInfo, Json, Jsonpiler,
-  Register::*,
-  ScopeInfo, built_in, take_arg,
-  utility::take_len_c_a_d,
-};
+use crate::prelude::*;
 built_in! {self, func, _scope, string;
   f_concat =>{"concat", COMMON, AtLeast(1), {
-    let mut result = take_arg!(self, func, (String(Lit(x))) => x).value;
-    for _ in 1..func.len {
-      result.push_str(&take_arg!(self, func, (String(Lit(x))) => x).value);
+    let mut string = String::new();
+    for _ in 1..=func.len {
+      string.push_str(&arg!(self, func, (Str(Lit(x))) => x).val);
     }
-    Ok(Json::String(Lit(result)))
+    Ok(Str(Lit(string)))
+  }},
+  int_to_string => {"Str", COMMON, Exactly(1), {
+    _scope.extend(&mov_int(Rcx, arg!(self, func, (Int(x)) => x).val));
+    _scope.push(Call(self.get_int_to_str()?));
+    _scope.ret_str(Rax)
   }},
   len =>{"len", COMMON, Exactly(1), {
-    take_len_c_a_d(Rax, func, _scope)?;
-    Ok(Json::Int(Var(_scope.mov_tmp(Rax)?)))
-  }}
+    self.mov_len(Rax, &arg!(self, func, (Str(x)) => x).val, _scope)?;
+    Ok(Int(Var(_scope.ret(Rax)?)))
+  }},
 }

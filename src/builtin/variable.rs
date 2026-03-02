@@ -1,159 +1,88 @@
-use crate::{
-  Arity::Exactly,
-  Bind::{self, Lit, Var},
-  CompilationErrKind::*,
-  ErrOR, FuncInfo,
-  Inst::*,
-  InternalErrKind::*,
-  Json, Jsonpiler,
-  JsonpilerErr::*,
-  Label,
-  Memory::Global,
-  Register::*,
-  ScopeInfo, WithPos, built_in,
-  dll::*,
-  err, get_target_mem, take_arg, take_arg_custom,
-  utility::{args_type_error, mov_b, mov_bool, mov_int, mov_q},
-};
-use core::mem::discriminant;
+use crate::prelude::*;
+const ENTER: &str = "EnterCriticalSection";
+const LEAVE: &str = "LeaveCriticalSection";
 impl Jsonpiler {
-  #[expect(clippy::cast_sign_loss, clippy::too_many_lines)]
-  fn assign(&mut self, func: &mut FuncInfo, scope: &mut ScopeInfo, is_global: bool) -> ErrOR<Json> {
-    let WithPos { value: variable, pos: var_pos } = take_arg!(self, func, (String(Lit(x))) => x);
-    let json2 = func.arg()?;
-    let ref_label = if is_global {
+  pub(crate) fn assign(
+    &mut self,
+    func: &mut Function,
+    scope: &mut Scope,
+    is_global: bool,
+  ) -> ErrOR<Json> {
+    let WithPos { val: variable, pos: var_pos } = arg!(self, func, (Str(Lit(x))) => x);
+    let WithPos { val, pos } = func.arg()?;
+    let ref_json = if is_global {
       if scope.get_var_local(&variable).is_some() {
-        return err!(self, var_pos, ExistentVar(variable));
+        return err!(var_pos, ExistentVar(variable));
       }
       self.globals.get(&variable).cloned()
     } else {
       scope.get_var_local(&variable)
     };
-    if let Some(json) = &ref_label
-      && discriminant(json) != discriminant(&json2.value)
+    if let Some(json) = &ref_json
+      && discriminant(json) != discriminant(&val)
     {
-      return Err(args_type_error(1, &format!("Variable `{variable}`"), json.type_name(), &json2));
+      return Err(type_err(format!("Variable `{variable}`"), json.describe(), &pos.with(val)));
     }
-    let value = match json2.value {
-      Json::String(string) => {
+    let reassign = ref_json.and_then(|mut json| json.label().copied());
+    let data_sect_allowed = is_global && reassign.is_none() && scope.epilogue.is_none();
+    let value = match &val {
+      Null => Null,
+      Bool(Lit(lit)) if data_sect_allowed => Bool(Var(self.global_b(*lit))),
+      Int(Lit(int)) if data_sect_allowed => Int(Var(self.global_q(*int as u64))),
+      Float(Lit(lit)) if data_sect_allowed => Float(Var(self.global_q(lit.to_bits()))),
+      Array(_) | Bool(_) | Float(_) | Int(_) | Object(_) | Str(_) => {
         if is_global {
-          self.enter_c_s(scope)?;
+          self.critical_sect(scope, ENTER)?;
         }
-        let mem =
-          get_target_mem!(self, scope, is_global, 8, ref_label, (String(Var(label))) => label);
-        scope.push(match string {
-          Lit(l_str) => {
-            let id = self.global_str(l_str).0;
-            LeaRM(Rax, Global { id })
-          }
-          Var(str_label) => mov_q(Rax, str_label.mem),
-        });
-        scope.push(mov_q(mem, Rax));
+        let size = if matches!(&val, Bool(_)) { 1 } else { 8 };
+        let label = if let Some(label) = &reassign {
+          *label
+        } else if is_global {
+          Label(Global(self.bss(u32::try_from(size)?, u32::try_from(size)?)), Size(size))
+        } else {
+          Label(Local(Long, scope.alloc(size, size)?), Size(size))
+        };
+        let value = match &val {
+          Null => Null,
+          Str(_) => Str(Var(Label(label.0, Heap))),
+          Float(_) => Float(Var(label)),
+          Int(_) => Int(Var(label)),
+          Bool(_) => Bool(Var(label)),
+          Array(_) | Object(_) => return err!(pos, UnsupportedType(val.describe())),
+        };
+        scope.extend(&self.mov_deep_json(Rax, pos.with(val))?);
+        scope.extend(&ret_label(label, Rcx, Rax, size, matches!(&value, Str(_))));
         if is_global {
-          self.leave_c_s(scope)?;
+          self.critical_sect(scope, LEAVE)?;
         }
-        Json::String(Var(Label { mem, size: 8 }))
-      }
-      Json::Null => Json::Null,
-      Json::Int(Lit(int)) if is_global && ref_label.is_none() && scope.get_epilogue().is_none() => {
-        Json::Int(Var(Label { mem: Global { id: self.global_num(int as u64) }, size: 8 }))
-      }
-      Json::Int(int) => {
-        if is_global {
-          self.enter_c_s(scope)?;
-        }
-        let mem = get_target_mem!(self, scope, is_global, 8, ref_label, (Int(Var(label))) => label);
-        mov_int(&int, Rax, scope);
-        scope.push(mov_q(mem, Rax));
-        if is_global {
-          self.leave_c_s(scope)?;
-        }
-        Json::Int(Var(Label { mem, size: 8 }))
-      }
-      Json::Bool(Lit(l_bool))
-        if is_global && ref_label.is_none() && scope.get_epilogue().is_none() =>
-      {
-        Json::Bool(Var(Label { mem: Global { id: self.global_bool(l_bool) }, size: 1 }))
-      }
-      Json::Bool(boolean) => {
-        if is_global {
-          self.enter_c_s(scope)?;
-        }
-        let mem =
-          get_target_mem!(self, scope, is_global, 1, ref_label, (Bool(Var(label))) => label);
-        mov_bool(&boolean, Rax, scope);
-        scope.push(mov_b(mem, Rax));
-        if is_global {
-          self.leave_c_s(scope)?;
-        }
-        Json::Bool(Var(Label { mem, size: 1 }))
-      }
-      Json::Float(Lit(l_float))
-        if is_global && ref_label.is_none() && scope.get_epilogue().is_none() =>
-      {
-        Json::Float(Var(Label { mem: Global { id: self.global_num(l_float.to_bits()) }, size: 8 }))
-      }
-      Json::Float(float) => {
-        if is_global {
-          self.enter_c_s(scope)?;
-        }
-        let mem =
-          get_target_mem!(self, scope, is_global, 8, ref_label, (Float(Var(label))) => label);
-        scope.push(match float {
-          Bind::Lit(l_float) => mov_q(Rax, l_float.to_bits()),
-          Bind::Var(float_label) => mov_q(Rax, float_label.mem),
-        });
-        scope.push(mov_q(mem, Rax));
-        if is_global {
-          self.leave_c_s(scope)?;
-        }
-        Json::Float(Var(Label { mem, size: 8 }))
-      }
-      Json::Array(_) | Json::Object(_) => {
-        return Err(args_type_error(
-          2,
-          &func.name,
-          "Types excluding arrays and objects".into(),
-          &json2,
-        ));
+        value
       }
     };
-    if is_global {
-      self.globals.insert(variable, value);
-    } else if ref_label.is_none() {
-      scope.innermost_scope()?.insert(variable, value);
+    if reassign.is_none() {
+      if is_global {
+        &mut self.globals
+      } else {
+        scope.locals.last_mut().unwrap_or(&mut scope.local_top)
+      }
+      .insert(variable, value);
     }
-    Ok(Json::Null)
+    Ok(Null)
   }
-  fn enter_c_s(&mut self, scope: &mut ScopeInfo) -> ErrOR<()> {
-    let critical_section = Global { id: self.get_critical_section()? };
-    let enter_c_s = self.import(KERNEL32, "EnterCriticalSection")?;
-    scope.extend(&[LeaRM(Rcx, critical_section), CallApi(enter_c_s)]);
-    Ok(())
-  }
-  fn leave_c_s(&mut self, scope: &mut ScopeInfo) -> ErrOR<()> {
-    let critical_section = Global { id: self.get_critical_section()? };
-    let leave_c_s = self.import(KERNEL32, "LeaveCriticalSection")?;
-    scope.extend(&[LeaRM(Rcx, critical_section), CallApi(leave_c_s)]);
+  fn critical_sect(&mut self, scope: &mut Scope, action: &'static str) -> ErrOR<()> {
+    let critical_section = Global(self.get_critical_section()?);
+    let action_cs = self.import(KERNEL32, action)?;
+    scope.extend(&[LeaRM(Rcx, critical_section), CallApi(action_cs)]);
     Ok(())
   }
 }
 built_in! {self, func, scope, variable;
-  assign_global => {"global", COMMON, Exactly(2), {
-    self.assign(func, scope, true)
-  }},
-  assign_local =>{ "=", COMMON, Exactly(2), {
-    self.assign(func, scope, false)
-  }},
+  assign_global => {"global", COMMON, Exactly(2), { self.assign(func, scope, true) }},
+  assign_local => {"=", COMMON, Exactly(2), { self.assign(func, scope, false) }},
   reference => {"$", COMMON, Exactly(1), {
-    let var_name = take_arg!(self, func, (String(Lit(x))) => x);
-    match self.get_var(&var_name.value, scope) {
-      Some(var) => Ok(var),
-      None => err!(self, var_name.pos, UndefinedVar(var_name.value)),
-    }
+    let WithPos { val: var_name, pos } = arg!(self, func, (Str(Lit(x))) => x);
+    self.get_var(&var_name, pos, scope)
   }},
   scope => {"scope", SP_SCOPE, Exactly(1), {
-    let object = take_arg_custom!(self, func, "Block", (Object(Lit(x))) => x).value;
-    self.eval_object(object, scope)
+    self.eval_object(arg_custom!(self, func, "Block", (Object(Lit(x))) => x).val, scope)
   }}
 }

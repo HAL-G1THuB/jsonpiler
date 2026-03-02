@@ -1,0 +1,75 @@
+{
+  "Global Variable": {
+    "prefix": "global",
+    "body": [
+      "${1:variable} global { $2 }"
+    ],
+    "description": "Declare a global variable"
+  },
+  "Arithmetic Assignment": {
+    "prefix": "set",
+    "body": [
+      "${1:variable} = { $2 }"
+    ],
+    "description": "Assign an expression to a variable"
+  },
+  "Define Function with Body": {
+    "prefix": "define",
+    "body": [
+      "define(${1:function}, {${2:params}}, ${3:Null}, {",
+      "  $0",
+      "})"
+    ],
+    "description": "Define a function with parameters and return type"
+  },
+  "If Statement": {
+    "prefix": "if",
+    "body": [
+      "if([${1:false}, {",
+      "  $0",
+      "}])"
+    ],
+    "description": "If statement with block"
+  },
+  "If-Else Statement": {
+    "prefix": "ifelse",
+    "body": [
+      "if([${1:false}, {",
+      "  $2",
+      "}], [true, {",
+      "  $0",
+      "}])"
+    ],
+    "description": "If-else statement with blocks"
+  },
+  "While Loop": {
+    "prefix": "while",
+    "body": [
+      "while(${1:false}, {",
+      "  $0",
+      "})"
+    ],
+    "description": "While loop with block"
+  },
+  "Return Statement": {
+    "prefix": "ret",
+    "body": [
+      "ret(${1:null})"
+    ],
+    "description": "Return a value from a function"
+  },
+  "Include Statement": {
+    "prefix": "include",
+    "body": [
+      "include(\"${1:file}.jspl\", ${2:function})"
+    ],
+    "description": "Include external JSPL file and import functions"
+  },
+  "Complex Expression": {
+    "prefix": "expr",
+    "body": [
+      "{ ${1:expression} }"
+    ],
+    "description": "Wrap an expression in braces"
+  }
+}
