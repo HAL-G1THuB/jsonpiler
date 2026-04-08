@@ -31,22 +31,34 @@ Jsonpiler now has a function to support GUI.
 
 ## What’s New
 
-### 0.8.0
+#### 0.9.0
 
-- Added commands: `help`, `version`, `release`, `build`, `build release`
-- In `release` builds, debug information is removed from the generated `.exe`
-- Internal support for storing data on the heap has been implemented
-- Added new functions: `sqrt`, `input`, `Str`
-- Added compound assignment operators: `+=`, `-=`, `*=`, `/=`
-- Renamed the `String` type to `Str`
-- Generated executables now include Jsonpiler version information
-- It is now possible to create a new `GUI` after the previous `GUI` has been closed
-- Mouse position is now correctly detected even when outside the `GUI` window
-- The `GUI` no longer terminates unexpectedly when the PC enters sleep mode
-- The `GUI` window title now displays the name of the file it was created from
-- Added the `error_cases` folder
-- Runtime errors now include detailed information such as error location
-- Error messages are now shown when pressing Ctrl+C or during system shutdown
+- Added
+  - Commands: `format`, `server`
+  - New functions: `confirm`, `main`, `<<`, `>>`
+  - Formatting feature and an LSP server for diagnostics and error reporting
+  - Local variable definition with `let` (`variable = value`)
+  - Global variable definition with `global` (`variable = value`)
+  - Comparison functions now support `Float`
+  - Operator precedence
+
+- Changed
+  - Syntax for variable definition and reassignment has been separated
+  - `=` is now used exclusively for reassignment
+  - In `if([cond, any])`, the `[]` can be omitted when only a single condition–value pair is present
+  - `concat` now concatenates non-literal values as well
+  - Unexpected memory leaks are now detected at runtime
+    (memory leaks are not expected by design)
+  - When loading other files with `include`, they are executed at startup rather than at the time of first load
+  - Warnings are now emitted for unused variables and arguments
+    This warning can be suppressed by prefixing the variable name with `_`
+  - `len` now returns the number of characters in a string rather than the byte length
+  - The function name invoked by `GUI` is now displayed in the window title bar
+  - Only user-defined functions that are used, along with the functions they depend on, are linked
+  - Now generates an error for arithmetic overflow in non-release builds
+- Removed
+  - `cargo doc`
+  - Functions: `'`, `eval`
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 
