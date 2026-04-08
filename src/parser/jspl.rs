@@ -1,36 +1,36 @@
 use crate::prelude::*;
 impl Parser {
-  pub(crate) fn parse_block(&mut self, is_top_level: bool) -> ErrOR<Json> {
+  pub(crate) fn parse_block(&mut self, is_top_level: bool) -> ParseErrOR<Json> {
     self.check_eof()?;
     let mut entries = vec![];
-    let mut entry_pos = None;
+    let mut entry_pos: Option<Position> = None;
     if !is_top_level {
       self.expect(b'{')?;
     }
     loop {
       let result = self.skip_ws_comment(true);
       let is_eof = result.is_err();
-      let is_sep = result.is_ok_and(|bool| bool);
+      let is_separated = result.is_ok_and(|bool| bool);
       if (is_top_level && is_eof) || (!is_top_level && self.consume_if(b'}')?) {
         break;
       }
-      if !entries.is_empty() && !is_sep && !is_eof {
-        return err!(self.pos, ExpectedToken(TokenKind::Separate));
+      if !entries.is_empty() && !is_separated && !is_eof {
+        return parse_err!(self.pos, ExpectedToken(TokenKind::Separate));
       }
-      let val = self.try_multi_tokens()?;
+      let value = self.try_operator(0)?;
       if let Some(pos) = entry_pos {
-        return err!(pos, UnexpectedLiteral);
+        self.warn(pos, UselessLiteral);
       }
-      if let Object(Lit(object)) = val.val {
+      if let Object(Lit(object)) = value.val {
         entries.extend(object);
       } else {
-        entry_pos = Some(val.pos);
-        entries.push((val.pos.with("value".into()), val));
+        entry_pos = Some(value.pos);
+        entries.push((value.pos.with("value".to_owned()), value.pos.with(Array(Lit(vec![value])))));
       }
     }
     Ok(Object(Lit(entries)))
   }
-  fn parse_call(&mut self) -> ErrOR<WithPos<Json>> {
+  fn parse_call(&mut self) -> ParseErrOR<WithPos<Json>> {
     let mut pos = self.pos;
     self.expect(b'(')?;
     self.skip_ws_comment(false)?;
@@ -41,38 +41,40 @@ impl Parser {
     }
     loop {
       self.skip_ws_comment(false)?;
-      args.push(self.try_multi_tokens()?);
+      args.push(self.try_operator(0)?);
       self.skip_ws_comment(false)?;
+      let did_consume = self.consume_if(b',')?;
+      if did_consume {
+        self.skip_ws_comment(false)?;
+      }
       if self.consume_if(b')')? {
         break;
       }
-      self.expect(b',')?;
+      if !did_consume {
+        self.expect(b',')?;
+      }
       self.skip_ws_comment(false)?;
     }
     self.set_size(&mut pos);
     Ok(pos.with(Array(Lit(args))))
   }
-  fn parse_ident(&mut self) -> ErrOR<WithPos<String>> {
+  fn parse_ident(&mut self) -> ParseErrOR<WithPos<String>> {
     let mut pos = self.pos;
-    while self.pos.offset < self.source.len() {
+    while (self.pos.offset as usize) < self.source.len() {
       let byte = self.peek();
-      if !(0x21..=0x7E).contains(&byte) {
-        break;
-      }
-      if b"()[,]{:}\";".contains(&byte) {
+      if byte.is_ascii_whitespace() || byte.is_ascii_control() || b"#()[,]{:;}\"".contains(&byte) {
         break;
       }
       self.pos.offset += 1;
     }
     if pos.offset == self.pos.offset {
-      return err!(pos, ExpectedIdent);
+      return parse_err!(pos, ExpectedIdent);
     }
     self.set_size(&mut pos);
-    let slice = self.source[pos.offset..self.pos.offset].to_vec();
-    Ok(pos.with(String::from_utf8(slice).or(err!(pos, InvalidChar))?))
+    Ok(pos.with(self.get_slice(pos)?.into()))
   }
-  fn skip_space(&mut self) -> bool {
-    while self.pos.offset < self.source.len() {
+  fn skip_space_check_sep(&mut self) -> bool {
+    while (self.pos.offset as usize) < self.source.len() {
       match self.peek() {
         b' ' | b'\t' => {
           self.pos.offset += 1;
@@ -80,21 +82,32 @@ impl Parser {
             return true;
           }
         }
-        b'\n' | b'\r' | b'#' => return true,
+        b'\n' | b'#' => return true,
         ws if ws.is_ascii_whitespace() => return true,
         _ => return false,
       }
     }
     true
   }
-  fn skip_ws_comment(&mut self, is_block: bool) -> ErrOR<bool> {
-    let mut found_sep = false;
-    while self.pos.offset < self.source.len() {
+  pub(crate) fn skip_ws_comment(&mut self, is_block: bool) -> ParseErrOR<bool> {
+    let mut is_separated = false;
+    while (self.pos.offset as usize) < self.source.len() {
       if self.consume_if(b'#')? {
-        while self.pos.offset < self.source.len() {
-          if self.consume_if(b'\n')? {
+        let mut pos = self.pos;
+        pos.offset -= 1;
+        loop {
+          let result = self.consume_if(b'\n').ok();
+          if result.is_none_or(|boolean| boolean) {
+            self.set_size(&mut pos);
+            if result.is_some() {
+              pos.size -= 1;
+            }
+            self.comments.insert(
+              pos.offset,
+              Comment { leading: is_separated, text: self.get_slice(pos)?.to_owned() },
+            );
             self.pos.line += 1;
-            found_sep = true;
+            is_separated = true;
             break;
           }
           self.pos.offset += 1;
@@ -103,118 +116,147 @@ impl Parser {
       }
       match self.peek() {
         b'\n' => {
-          found_sep = true;
+          is_separated = true;
           self.pos.line += 1;
           self.pos.offset += 1;
         }
         b';' if is_block => {
-          found_sep = true;
+          is_separated = true;
           self.pos.offset += 1;
         }
         ws if ws.is_ascii_whitespace() => self.pos.offset += 1,
-        _ => return Ok(found_sep),
+        _ => return Ok(is_separated),
       }
     }
-    self.check_eof().map(|()| false)
+    Err(self.eof_err())
   }
-  fn try_multi_tokens(&mut self) -> ErrOR<WithPos<Json>> {
-    let first = self.try_parse_value()?;
-    let mut save = self.pos;
-    let mut pos = first.pos;
-    let mut operands = vec![first.clone()];
-    let mut op_opt: Option<WithPos<String>> = None;
+  fn try_concat_op(
+    &mut self,
+    prec: usize,
+    operator: &mut WithPos<String>,
+    left: &mut WithPos<Json>,
+  ) -> ParseErrOR<()> {
+    let right = self.try_operator(prec)?;
+    let mut pos = left.pos;
+    self.set_size(&mut pos);
+    operator.pos.info = INFO_OP;
+    if let Object(Lit(obj)) = &mut left.val
+      && obj.len() == 1
+      && operator.val == obj[0].0.val
+      && !matches!(obj[0].0.val.as_ref(), "<<" | ">>" | "%")
+      && let Array(Lit(args)) = &mut obj[0].1.val
+    {
+      args.push(right);
+    } else {
+      let args = pos.with(Array(Lit(vec![take(left), right])));
+      *left = pos.with(Object(Lit(vec![(operator.clone(), args)])));
+    }
+    Ok(())
+  }
+  fn try_operator(&mut self, min_prec: usize) -> ParseErrOR<WithPos<Json>> {
+    let mut left = self.try_parse_value()?;
+    let mut unknown_op: Option<String> = None;
     loop {
-      if (!self.skip_space()
-        && self.try_parse_ident().is_some_and(|rest| {
-          if op_opt.is_none() {
-            op_opt = Some(rest.clone());
-          }
-          op_opt.as_ref().is_some_and(|op| op.val == rest.val)
-        })
-        && !self.skip_space())
-        && let Ok(rest) = self.try_parse_value()
-      {
-        save = self.pos;
-        operands.push(rest);
+      let save = self.pos;
+      if self.skip_space_check_sep() {
+        self.pos = save;
+        break;
+      }
+      let Some(mut operator) = self.try_parse_ident() else {
+        break;
+      };
+      if let Some(prec) = op_precedence(&operator.val) {
+        if prec < min_prec || self.skip_space_check_sep() {
+          self.pos = save;
+          break;
+        }
+        self.try_concat_op(prec + 1, &mut operator, &mut left)?;
         continue;
       }
-      break;
+      match &unknown_op {
+        None => unknown_op = Some(operator.val.clone()),
+        Some(op) if op != &operator.val => {
+          self.pos = save;
+          break;
+        }
+        _ => (),
+      }
+      if self.skip_space_check_sep() {
+        self.pos = save;
+        break;
+      }
+      self.try_concat_op(0, &mut operator, &mut left)?;
     }
-    self.pos = save;
-    self.set_size(&mut pos);
-    if let Some(operator) = op_opt {
-      Ok(WithPos { pos, val: Object(Lit(vec![(operator, pos.with(Array(Lit(operands))))])) })
-    } else {
-      Ok(first)
-    }
+    Ok(left)
   }
   fn try_parse_ident(&mut self) -> Option<WithPos<String>> {
-    let pos = self.pos;
+    let saved = self.pos;
     self.skip_ws_comment(false).ok()?;
     let ident = self.parse_ident().ok()?;
     match ident.val.as_str() {
-      var if var.starts_with('$') || matches!(var, "true" | "false" | "null") => {
-        self.pos = pos;
+      "true" | "false" | "null" => {
+        self.pos = saved;
         None
       }
       _ => Some(ident),
     }
   }
-  fn try_parse_value(&mut self) -> ErrOR<WithPos<Json>> {
+  fn try_parse_value(&mut self) -> ParseErrOR<WithPos<Json>> {
     let mut pos = self.pos;
     let val = match self.peek() {
       b'"' => Str(Lit(self.parse_string()?)),
       b'0'..=b'9' => self.parse_number()?,
-      b'-' if matches!(self.source.get(self.pos.offset + 1), Some(b'0'..=b'9')) => {
+      b'-' if self.source.get((self.pos.offset + 1) as usize).is_some_and(u8::is_ascii_digit) => {
         self.parse_number()?
       }
       b'[' => {
         self.pos.offset += 1;
+        self.skip_ws_comment(false)?;
         if self.consume_if(b']')? {
           self.set_size(&mut pos);
           Array(Lit(vec![]))
         } else {
           let mut array = vec![];
           loop {
+            array.push(self.try_operator(0)?);
             self.skip_ws_comment(false)?;
-            array.push(self.try_multi_tokens()?);
-            self.skip_ws_comment(false)?;
+            let did_consume = self.consume_if(b',')?;
+            if did_consume {
+              self.skip_ws_comment(false)?;
+            }
             if self.consume_if(b']')? {
               self.set_size(&mut pos);
               break Array(Lit(array));
             }
-            self.expect(b',')?;
+            if !did_consume {
+              self.expect(b',')?;
+            }
+            self.skip_ws_comment(false)?;
           }
         }
       }
       b'{' => self.parse_block(false)?,
       _ => {
         let mut ident = self.parse_ident()?;
-        if ident.val.as_bytes().first() == Some(&b'$') {
-          ident.pos.size -= 1;
-          #[expect(clippy::string_slice)]
-          Object(Lit(vec![(
-            Position { size: 1, ..ident.pos }.with("$".into()),
-            Position { offset: ident.pos.offset + 1, ..ident.pos }
-              .with(Str(Lit(ident.val[1..].into()))),
-          )]))
+        let save = self.pos;
+        let not_eof = self.skip_ws_comment(false).is_ok();
+        if not_eof && self.peek() == b'(' {
+          let args = self.parse_call()?;
+          ident.pos.info = INFO_FUNC;
+          Object(Lit(vec![(ident, args)]))
+        } else if not_eof && self.consume_if(b':')? {
+          self.skip_ws_comment(false)?;
+          let args = self.try_operator(0)?;
+          ident.pos.info = INFO_KEY_VAL;
+          Object(Lit(vec![(ident, args)]))
         } else {
-          let save = self.pos;
-          let not_eof = self.skip_ws_comment(false).is_ok();
-          if not_eof && self.peek() == b'(' {
-            let args = self.parse_call()?;
-            Object(Lit(vec![(ident, args)]))
-          } else if not_eof && self.consume_if(b':')? {
-            self.skip_ws_comment(false)?;
-            let args = self.try_multi_tokens()?;
-            Object(Lit(vec![(ident, args)]))
-          } else {
-            self.pos = save;
-            match ident.val.as_str() {
-              "true" => Bool(Lit(true)),
-              "false" => Bool(Lit(false)),
-              "null" => Null,
-              _ => Str(Lit(ident.val)),
+          self.pos = save;
+          match ident.val.as_str() {
+            "true" => Bool(Lit(true)),
+            "false" => Bool(Lit(false)),
+            "null" => Null(Lit(())),
+            _ => {
+              Object(Lit(vec![(ident.pos.with("$".into()), ident.map(|string| Str(Lit(string))))]))
             }
           }
         }

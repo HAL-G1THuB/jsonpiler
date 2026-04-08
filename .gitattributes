@@ -2,3 +2,4 @@
 *.bin binary
 *.jpeg binary
 *.vsix binary
+*.exe binary

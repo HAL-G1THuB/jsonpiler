@@ -1,19 +1,21 @@
-define(square, { x: Float }, Float, $x * $x )
-define(mouse_julia, {x: Int; y: Int; frame: Int; mouse_x: Int; mouse_y: Int}, Int, {
-  zx = { Float($x) / 128.0 }
-  zy = { Float($y) / 128.0 }
-  cx = { Float($mouse_x) / 128.0 }
-  cy = { Float($mouse_y) / 128.0 }
-  i = 0
-  zxn = $zx
-  zyn = $zy
-  while({ $i < 256 } and { Int(square($zxn) + square($zyn)) < 4 }, {
-    tmp = { { square($zxn) - square($zyn) } + $cx }
-    zyn *= { 2.0 * $zxn }
-    zyn += $cy
-    zxn  = $tmp
-    i  += 1
-  })
-  { abs(Int($zxn)) * 32 } + { abs(Int($zyn)) * 32 * 256 * 256 } + { $i * 32 * 256 }
-})
+define(square, x: Float, Float, x * x)
+define(mouse_julia, { x: Int; y: Int; _frame: Int; mouse_x: Int; mouse_y: Int }, Int,
+{
+  let(zx = Float(x) / 128.0)
+  let(zy = Float(y) / 128.0)
+  let(cx = Float(mouse_x) / 128.0)
+  let(cy = Float(mouse_y) / 128.0)
+  let(i = 0)
+  while(i < 256 and square(zx) + square(zy) < 4.0,
+  {
+    let(tmp = square(zx) - square(zy) + cx)
+    zy *= 2.0 * zx
+    zy += cy
+    zx = tmp
+    i += 1
+  }
+  )
+  { abs(Int(zy)) << 21 } + { i << 13 } + { abs(Int(zx)) << 5 }
+}
+)
 GUI(mouse_julia)

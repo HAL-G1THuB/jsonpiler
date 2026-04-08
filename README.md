@@ -1,6 +1,7 @@
 # Jsonpiler — JSON Syntax Programming Language
 
-**Jsonpiler** is a compiler and runtime for a programming language that uses **JSON** or **JSPL (Jsonpiler Structured Programming Language)** as its syntax.  It converts a JSON-based program into **x86\_64 Windows PE** machine code, links it, and executes the result.
+**Jsonpiler** is a compiler and runtime for a programming language that uses **JSON** or **JSPL (Jsonpiler Structured Programming Language)** as its syntax.  
+It converts a JSON-based program into **x86\_64 Windows PE** machine code, links it, and executes the result.
 Jsonpiler bundles an assembler and linker purpose-built for its IR and PE output on Windows.
 
 [日本語 README](https://github.com/HAL-G1THuB/jsonpiler/blob/main/README-ja.md)
@@ -65,17 +66,42 @@ These are present on standard Windows installations.
 
 ---
 
-## Install & Run
+## Installation and Execution
+
+### Running JSPL
+
+// Explanation about the extension
+
+- Install the [VSCode extension](https://marketplace.visualstudio.com/items?itemName=H4LVS.jsplsyntax).
+- Create a `.jspl` file, then click the `Run JSPL` button in the top-right corner of the editor to execute it.
+
+### Running the Executable Directly
+
+#### From the GitHub Repository
+
+```bash
+git clone "https://github.com/HAL-G1THub/jsonpiler.git"
+cd "jsonpiler/extension/bin"
+jsonpiler.exe
+```
+
+#### From Cargo
 
 ```bash
 cargo install jsonpiler
-
-# Compile and execute a JSON program
-jsonpiler <input.json | input.jspl> [args passed to the produced .exe]
+cd "<home directory>/.cargo/bin"
+jsonpiler.exe
 ```
 
-- `<input.json | input.jspl>` must be UTF-8 encoded.
-- Any additional arguments are forwarded to the generated executable at runtime.
+#### Execution
+
+```bash
+# Compile and run a JSON | JSPL program
+jsonpiler "<input.json | input.jspl>" "[arguments for generated exe]"
+```
+
+- The file encoding of `<input.json | input.jspl>` must be UTF-8.
+- Additional arguments are passed to the generated executable.
 
 ---
 
@@ -94,14 +120,14 @@ Browse ready-to-run samples in [examples/](https://github.com/HAL-G1THuB/jsonpil
 Minimal example:
 
 ```json
-{ "=": ["a", "title"], "message": [{"$": "a"}, "345"], "+": [1, 2, 3] }
+{ "=": [{ "$": "a" }, "title"], "message": [{ "$": "a" }, "345"], "+": [1, 2, 3] }
 ```
 
 JSPL:
 
 ```jspl
 a = "title"
-message($a, "345")
+message(a, "345")
 1 + 2 + 3
 ```
 
@@ -109,7 +135,8 @@ message($a, "345")
 
 - A Jsonpiler program is a single JSON object whose keys are evaluated **sequentially**.
 - `"="` assigns the string `"title"` to the variable `a`.
-- `"message"` prints the value of `a` followed by `"345"`.
+- `"message"` displays a message box
+  with the value of `a` as the title and `"345"` as the text.
 - `"+"` computes the sum of `1`, `2`, and `3`, i.e., **6**.
 
 The program’s **final expression value** becomes the process **exit code**. Running under `cargo run` may look like this (Windows reports process exit code 6):
@@ -135,18 +162,9 @@ Example of the above sample code written in JSPL:
 
 ```jspl
 a = "title"
-message($a, "345")
-+(1, 2, 3)
+message(a, "345")
+1 + 2 + 3
 ```
-
-| Differences from JSON         | JSON                                  | JSPL                                          |
-| ----------------------------- | ------------------------------------- | --------------------------------------------- |
-| **Curly braces `{}`**         | Required                              | Optional for top-level blocks                 |
-| **Function call syntax**      | Explicit form like `{"sum": [1,2,3]}` | Natural syntax like `sum(1, 2, 3)`            |
-| **Identifier notation**       | All keys must be quoted `"string"`    | Unquoted identifiers are allowed              |
-| **Infix notation**            | Not supported                         | `1 + 10` → expanded to `{ "+": [1, 10] }`     |
-| **Variable reference syntax** | Explicit form like `{"$": "name"}`    | Can be written as `$name`                     |
-| **Comments**                  | Not allowed (by spec)                 | Supported via `# comment`                     |
 
 ---
 
@@ -155,17 +173,25 @@ message($a, "345")
 **Input:**
 
 ```json
-{ "message": ["title", { "$": "doesn't_exist" }] }
+{ "message": ["title", { "$": "does_not_exist" }] }
+```
+
+```jspl
+message("title", does_not_exist)
 ```
 
 **Output:**
 
 ```text
-Compilation error: Undefined variables: `doesn't_exist`
-Error occurred on line: 1
-Error position:
-{ "message": ["title", { "$": "doesn't_exist" }] }
-                              ^^^^^^^^^^^^^^^
+╭- CompilationError ----------
+| Undefined variable:
+|   does_not_exist
+|-----------------------------
+| input.jspl:1:18
+|-----------------------------
+| message("title", does_not_exist)
+|                  ^^^^^^^^^^^^^^
+╰-----------------------------
 ```
 
 ---

@@ -3,44 +3,80 @@
 ## scope
 
 ```jspl
-scope(Block) -> Any
+scope(Any) -> Any
 ```
 
 It introduces a new scope and evaluates the expression in order and returns the result.
 
 ```jspl
-scope({
-  x = 1
-  $x
-}) => 1
+scope(let(x = 1))
+x 
+
+=>
+
+╭- CompilationError ----------
+| Undefined variable:
+|   x
+|-----------------------------
+| input.jspl:2:1
+|-----------------------------
+| x
+| ^
+╰-----------------------------
 ```
 
-## = / global
+## let / global / =
 
 ```jspl
-Str (Literal) = Any
+let(Ident = Any)
   -> Null
 ```
 
+Creates a **local variable** with the specified name and assigns the given value.
+Returns `null` after creation.
+
+---
+
 ```jspl
-Str (Literal) global Any
+global(Ident = Any)
   -> Null
 ```
 
-Assigns the given value to the specified variable name.  
+Creates a **global variable** with the specified name and assigns the given value.
+Returns `null` after creation.
+
+---
+
+```jspl
+Ident = Any
+  -> Null
+```
+
+Reassigns a value to an **existing variable**.
 Returns `null` after assignment.
-Assigned to local scope for `=` and to global scope for `global`.
-`global` and `=` support reassignment.
+
+`=` is used **only for reassignment** and does not create variables
+
+---
 
 Currently, the following types are **not assignable** and **not reassignable**:
 
-- Array  
-- Object  
+- Array
+- Object
 
 ## $
 
 ```jspl
-$Str (Literal) -> Any (Local or Global Variable)
+Ident -> Any (Variable)
 ```
 
 Returns the value bound to the given variable name.
+
+```jspl
+x
+y
+
+$(abc)
+
+あいう
+```

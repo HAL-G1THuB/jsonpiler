@@ -1,0 +1,116 @@
+import("random.jspl", rand_range)
+global(D = 4)
+global(LIMIT = 20)
+define(digit_at, { n: Int; pos: Int }, Int,
+  { while(pos > 0, { n /= 10; pos -= 1 }); n % 10 }
+)
+define(bulls_cows, { guess: Int; target: Int }, Bool,
+{
+  let(bull = 0)
+  let(cow = 0)
+  let(i = 0)
+  while(i < D,
+  {
+    let(g = digit_at(guess, i))
+    let(t = digit_at(target, i))
+    if(g == t, { bull += 1; i += 1; continue() })
+    let(j = 0)
+    while(j < D,
+      { if(g == digit_at(target, j) and i != j, { cow += 1; break() }); j += 1 }
+    )
+    i += 1
+  }
+  )
+  print(Str(bull), " Bull")
+  if(bull != 1, print("s"))
+  print("\n")
+  if(bull == D, ret(true))
+  print(Str(cow), " Cow")
+  if(cow != 1, print("s"))
+  print("\n")
+  false
+}
+)
+define(str_to_int, s: Str, Int,
+{
+  let(i = 0)
+  let(n = 0)
+  while(true,
+  {
+    let(ch = slice(s, i, i + 1))
+    if(ch == "", ret(n))
+    let(d = 0)
+    while(d <= 9, { if(Str(d) == ch, break()); d += 1 })
+    if(d == 10, ret(-1))
+    n *= 10
+    n += d
+    i += 1
+  }
+  )
+  -1
+}
+)
+define(random_unique, {}, Int,
+{
+  while(true,
+  {
+    let(result = 0)
+    let(i = 0)
+    while(i < D,
+    {
+      let(n = rand_range(10))
+      if(i == 0, n = rand_range(9) + 1)
+      let(is_dup = false)
+      let(j = 0)
+      while(j < i,
+        { if(digit_at(result, j) == n, { is_dup = true; break() }); j += 1 }
+      )
+      if(not(is_dup), { result = result * 10 + n; i += 1 })
+    }
+    )
+    ret(result)
+  }
+  )
+  0
+}
+)
+define(check_unique, g: Int, Bool,
+{
+  let(is_unique = true)
+  let(i = 0)
+  while(i < D,
+  {
+    let(j = i + 1)
+    while(j < D,
+      { if(digit_at(g, i) == digit_at(g, j), { is_unique = false; break() }); j += 1 }
+    )
+    i += 1
+  }
+  )
+  is_unique
+}
+)
+global(target = random_unique())
+print("Bulls and Cows Game\n")
+print("Guess a ", Str(D), "-digit number with different digits (0-9).\n")
+print("Enter q to quit.\n")
+print("You have ", Str(LIMIT), " turns.\n")
+print(
+  "Bulls: correct digit in the correct position\n",
+  "Cows: correct digit in the wrong position\n"
+)
+let(turn = 1)
+while(turn <= LIMIT,
+{
+  print("\nTurn ", Str(turn), "/", Str(LIMIT), "\nInput: ")
+  let(s = input())
+  if(slice(s, 0, 1) == "q", { print("\nQuit\n"); break() })
+  if(len(s) != D, { print("\nInput must be ", Str(D), " digits\n"); continue() })
+  let(g = str_to_int(s))
+  if(g == -1, { print("\nInvalid number\n"); continue() })
+  if(not(check_unique(g)), { print("\nDigits must be different\n"); continue() })
+  if(bulls_cows(g, target), { print("\nCorrect!\n"); break() })
+  turn += 1
+}
+)
+if(turn > LIMIT, print("\nGame over.\n", "The number was ", Str(target), ".\n"))

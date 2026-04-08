@@ -4,10 +4,10 @@
 
 ```jspl
 define(
-  name: Str (Literal),
+  name: Ident,
   params: TypeAnnotations,
-  return_type: Str (Literal),
-  body: Block
+  return_type: Ident,
+  body: Any
 ) -> "Null"
 ```
 
@@ -21,7 +21,7 @@ Registers a user-defined function with the following parameters:
 The `define` keyword also introduces a new scope.
 
 ```jspl
-define(by_two, {n: Int}, Int, $n + $n)
+define(by_two, n: Int, Int, n + n)
 by_two(2) => 4
 ```
 
@@ -44,17 +44,19 @@ by_two(2) => 4
 ## if
 
 ```jspl
-if([condition: Bool, then: Block], ...) -> "Null"
+if([Bool, Any], ...) -> "Null"
+if(Bool, Any) -> "Null"
 ```
 
-Evaluates each condition in order. If a condition evaluates to `true`, the corresponding `then` expression is executed.
+Evaluates each condition in order. If a condition evaluates to `true`,
+the corresponding `then` expression is executed.
 Regardless of which branch is taken, the overall result is always `null`.
 
 ```jspl
 if(
-[1 == 1, message("1 == 1✨", "`then` branch.")]
-[1 == 2, message(1 == 2🤔", "`else if` branch.")]
-[true, message("1 == ?🤣", "`else` branch.")]
+  [1 == 1, message("1 == 1✨", "`then` branch.")]
+  [1 == 2, message(1 == 2🤔", "`else if` branch.")]
+  [true, message("1 == ?🤣", "`else` branch.")]
 )
   => null
 ```
@@ -70,21 +72,23 @@ Returns `null`.
 
 ```jspl
 i = 0
-while($i < 5
-  scope({
-    message("Loop", "");
-    i += 1
-  })
+while(
+  i < 5,
+{
+  message("Loop", "");
+  i += 1
+}
 )
 ```
 
 ## include
 
 ```jspl
-include(path: Str (Literal), functions: Str (Literal), ...) -> "Null"
+include(path: Str (Literal), functions: Ident, ...) -> "Null"
 ```
 
-Executes the specified file and includes the specified function in the namespace.
+Executes the specified file at startup
+and includes the specified function in the namespace.
 The path is relative to the current file.
 This function does not affect existing variables.
 If the same file is included more than once, no new code is generated,

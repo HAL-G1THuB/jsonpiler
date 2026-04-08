@@ -1,7 +1,7 @@
 # GUI
 
 ```jspl
-GUI(render: Str (Literal)) -> Null
+GUI(render: Ident) -> Null
 ```
 
 render draws each pixel.
@@ -14,16 +14,18 @@ mouse_x: -256~...
 mouse_y: -256~...
 
 ```jspl
-define(draw_pixel, { x: Int; y: Int; frame: Int; mouse_x: Int; mouse_y: Int },
+define(
+  draw_pixel,
+  { x: Int; y: Int; frame: Int; mouse_x: Int; mouse_y: Int },
   Int,
   {
     r = 0
     g = 0
     b = 0
-    if([$x > 0, r = 255])
-    if([$y < 0, g = 255])
-    if([{ $x + $y } > 0, b = 255])
-    { $r * 256 * 256 } + { $g * 256 } + $b
+    if([x > 0, r = 255])
+    if([y < 0, g = 255])
+    if([x + y > 0, b = 255])
+    r << 16 + g << 8 + b
   }
 )
 GUI(draw_pixel)

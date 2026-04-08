@@ -1,0 +1,6 @@
+import("fib.jspl", fib_recursive)
+import("lcm.jspl", gcd)
+import("is_prime.jspl", is_prime)
+let(x = gcd(fib_recursive(10), len(Str(-1234567890))))
+assert(is_prime(x), "x is not prime number")
+x

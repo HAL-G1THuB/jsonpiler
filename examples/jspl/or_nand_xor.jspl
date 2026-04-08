@@ -3,10 +3,11 @@
 # If each operation evaluates to true,
 # The name of the operation is printed.
 # Therefore, all operations will be printed.
-
-flag_true = true
-flag_false = false
-
-if([    $flag_false or  $flag_true,  print("or\n") ])
-if([not($flag_false and $flag_true), print("nand\n")])
-if([    $flag_false xor $flag_true,  print("xor\n")])
+main(
+{
+  let(flag_false = false)
+  if(flag_false or true, print("or\n"))
+  if(not(flag_false and true), print("nand\n"))
+  if(flag_false xor true, print("xor\n"))
+}
+)

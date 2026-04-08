@@ -40,3 +40,11 @@ Returns the given value.
 ```jspl
 value(8) => 8
 ```
+
+## main
+
+```jspl
+main(Any) -> Any or Null
+```
+
+Evaluate the `Block` when the file is executed as the main program.

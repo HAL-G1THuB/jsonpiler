@@ -1,180 +1,154 @@
-ball_x global 0.0
-ball_y global 0.0
-ball_vx global -15.0
-ball_vy global 10.0
-score_p1 global 0
-score_p2 global 0
-pos_p1 global 0.0
-
-width global 512.0
-height global 512.0
-paddle_w global 8.0
-paddle_h global 64.0
-ball_r global 20.0
-square_r global Int($ball_r * $ball_r)
-left_x global { $width / -2.0 }
-right_x global { $width / 2.0 }
-score_per_line global 5
-paddle_h_half global { $paddle_h / 2.0 }
-collision_x global Int($right_x - $ball_r)
-p1_surface global { $left_x + $paddle_w }
-p2_surface global { $right_x - $paddle_w }
-
-p1_top global { $pos_p1 + $paddle_h_half }
-p1_bottom global { $pos_p1 - $paddle_h_half }
-p2_top global $paddle_h_half
-p2_bottom global -: $paddle_h_half
-include("random.jspl", rand_range)
-
-define(square, { n: Float }, Float, $n * $n)
-
-define(rgb, { r: Int; g: Int; b: Int }, Int,
-  { $r * 256 * 256 } + { $g * 256 } + $b
-)
-
-define(
-  in_score_cell,
-  { px: Float; py: Float; score: Int; invert_x: Bool }, Bool, {
-  base_x = -248
-  base_y = 248
-  if([$invert_x, base_x *= -1])
-  score_size = 24
-  spacing = 8
-  score_span = { $score_size + $spacing }
-  row = { { $base_y - Int($py) } / $score_span }
-  column = 0
-  paddle_surface = { Int($px) - $base_x }
-  if([$invert_x, paddle_surface = -: $paddle_surface])
-  column = { { $paddle_surface / $score_span } % $score_per_line }
-  index = { { $row * $score_per_line } + $column }
-  cell_y = { $base_y - { $row * $score_span } - $score_size }
-  cell_offset = { $column * $score_span }
-  cell_x = $base_x
-  if(
-    [$invert_x, cell_x -= { $cell_offset + $score_size }],
-    [true,      cell_x +=   $cell_offset]
-  )
-  if([
-    { $index < $score } and {
-      { Int($px + 1.0) - $score_size } <= $cell_x <= Int($px) } and {
-      { Int($py + 1.0) - $score_size } <= $cell_y <= Int($py) },
-    ret(true)
-  ])
-  false
-})
-define(update, { x: Int; y: Int; frame: Int; mx: Int; my: Int }, Null, {
-  bx = { $ball_x + $ball_vx }
-  by = { $ball_y + $ball_vy }
-  vx = $ball_vx
-  vy = $ball_vy
-  follow_ratio = { { 256.0 - $bx } / 1024.0 }
-  p1_cy = { { $pos_p1 + { $follow_ratio * $by } } / { 1.0 + $follow_ratio } }
-  if(
-    [Int($pos_p1 - $p1_cy) > 16, p1_cy = { $pos_p1 - 16.0 } ],
-    [Int($pos_p1 - $p1_cy) < -16, p1_cy = { $pos_p1 + 16.0 } ]
-  )
-  p2_cy = Float($my)
-  pos_p1 global $p1_cy
-  p1_top global { $p1_cy + $paddle_h_half }
-  p1_bottom global { $p1_cy - $paddle_h_half }
-  p2_top global { $p2_cy + $paddle_h_half }
-  p2_bottom global { $p2_cy - $paddle_h_half }
-  if([ Int($by) < -: $collision_x, { by = Float(-: $collision_x); vy *= -1.0 } ])
-  if([ Int($by) > $collision_x, { by = Float($collision_x); vy *= -1.0 } ])
-  if([
-    {
-      { Int($bx - $ball_r) <= Int($p1_surface) } and {
-        Int($p1_bottom) <= Int($by) <= Int($p1_top) }
+define(square, n: Float, Float, n * n)
+global(ball_x = 0.0)
+global(ball_y = 0.0)
+global(ball_vx = -15.0)
+global(ball_vy = 10.0)
+global(score_p1 = 0)
+global(score_p2 = 0)
+global(pos_p1 = 0.0)
+global(width = 512.0)
+global(height = 512.0)
+global(paddle_w = 8.0)
+global(paddle_h = 64.0)
+global(ball_r = 20.0)
+global(left_x = width / -2.0)
+global(right_x = width / 2.0)
+global(paddle_w_half = 4)
+global(paddle_h_half = paddle_h / 2.0)
+global(collision_x = height / 2.0 - ball_r)
+global(p1_surface = left_x + paddle_w)
+global(p1_cx = -252)
+global(p2_surface = right_x - paddle_w)
+global(p2_cx = 252)
+global(p1_cy = 0.0)
+import("random.jspl", rand_range)
+define(rgb, { r: Int; g: Int; b: Int }, Int, r * 256 * 256 + g * 256 + b)
+define(paddle_hit, { paddle_surface: Float; paddle_cy: Float; dir: Int }, Bool,
+{
+  let(dx = ball_x - paddle_surface)
+  let(p_bottom = paddle_cy - paddle_h_half)
+  let(p_top = paddle_cy + paddle_h_half)
+  let(dy_bottom = ball_y - p_bottom)
+  let(dy_top = ball_y - p_top)
+  let(rect_x_ok = abs(dx) <= ball_r)
+  let(rect_y_ok = p_bottom <= ball_y <= p_top)
+  let(collision_rect = rect_x_ok and rect_y_ok)
+  let(d2_corner_bottom = square(dx) + square(dy_bottom))
+  let(d2_corner_top = square(dx) + square(dy_top))
+  if({
+      collision_rect
     } or {
-      Int(square($bx - $p1_surface) + square($by - $p1_bottom)) <= $square_r
+      d2_corner_bottom <= square(ball_r)
     } or {
-      Int(square($bx - $p1_surface) + square($by - $p1_top)) <= $square_r
+      d2_corner_top <= square(ball_r)
     },
-    {
-    speed = sqrt(square($vx) + square($vy))
+  {
+    let(speed = sqrt(square(ball_vx) + square(ball_vy)))
     speed *= 1.05
-    hit_pos = { { $by - $p1_cy } / $paddle_h_half }
-    if(
-      [Int($hit_pos * 100.0) > 90, hit_pos = 0.9],
-      [Int($hit_pos * 100.0) < -90, hit_pos = -0.9]
-    )
-    vy = { $hit_pos * $speed }
-    vx = abs(sqrt(square($speed) - square($vy)))
-    bx = { $p1_surface + $ball_r }
-    }
-  ])
-  if([
-    {
-      { Int($bx + $ball_r) >= Int($p2_surface) } and {
-        Int($p2_bottom) <= Int($by) <= Int($p2_top) }
-    } or {
-      Int(square($bx - $p2_surface) + square($by - $p2_bottom)) <= $square_r
-    } or {
-      Int(square($bx - $p2_surface) + square($by - $p2_top)) <= $square_r
-    },
-    {
-      speed = sqrt(square($vx) + square($vy))
-      speed *= 1.05
-      hit_pos = { { $by - $p2_cy } / $paddle_h_half }
-      if(
-        [Int($hit_pos * 100.0) > 90, hit_pos = 0.9],
-        [Int($hit_pos * 100.0) < -90, hit_pos = -0.9]
-      )
-      vy = { $hit_pos * $speed }
-      vx = -: abs(sqrt(square($speed) - square($vy)))
-      bx = { $p2_surface - $ball_r }
-    }
-  ])
-  if([ Int($bx) < Int($left_x - $ball_r),
-    {
-      score_p2 += 1
-      bx = 0.0
-      by = 0.0
-      vx = 15.0
-      vy = Float(rand_range(41) - 20)
-    }
-  ])
-  if([ Int($bx) > Int($right_x + $ball_r),
-    {
-      score_p1 += 1
-      bx = 0.0
-      by = 0.0
-      vx = -15.0
-      vy = Float(rand_range(41) - 20)
-    }
-  ])
-  ball_x global $bx
-  ball_y global $by
-  ball_vx global $vx
-  ball_vy global $vy
-})
-define(ping_pong, { x: Int; y: Int; frame: Int; mx: Int; my: Int }, Int, {
-  if([$x == $y == -256, update($x, $y, $frame, $mx, $my)])
-  px = { Float($x) + 0.5 }
-  py = { Float($y) + 0.5 }
-  p2_cy = Float($my)
-  dist2 = { square($px - $ball_x) + square($py - $ball_y) }
-  if([Int($dist2) < $square_r, { ret(rgb(255,255,0)) }])
-  if([
-    { Int($left_x)    <= Int($px) <= Int($p1_surface) } and {
-      Int($p1_bottom) <= Int($py) <= Int($p1_top) },
-    ret(rgb(0,255,255))
-  ])
-  if([
-    { Int($p2_surface) <= Int($px) <= Int($right_x) } and {
-      Int($p2_bottom)  <= Int($py) <= Int($p2_top) },
-    ret(rgb(255,0,255))
-  ])
-  if([in_score_cell($px, $py, $score_p2, true), ret(rgb(255,0,255))])
-  if([in_score_cell($px, $py, $score_p1, false), ret(rgb(0,255,255))])
-  if([{ $x == 0 } and { { { {abs($y) + 8} / 16 } % 2 } == 0 }, ret(rgb(255,255,255))])
-  rgb(0,0,0)
-})
-GUI(ping_pong)
-print("CPU Score: ")
-
-print(Str($score_p1))
-print("\nPlayer Score: ")
-
-print(Str($score_p2))
-print("\n")
+    let(hit_pos = { ball_y - paddle_cy } / paddle_h_half)
+    if([ hit_pos > 0.9, hit_pos = 0.9 ], [ hit_pos < -0.9, hit_pos = -0.9 ])
+    ball_vy = hit_pos * speed
+    ball_vx = abs(sqrt(square(speed) - square(ball_vy))) * Float(dir)
+    ball_x = paddle_surface + ball_r * Float(dir)
+    ret(true)
+  }
+  )
+  false
+}
+)
+define(in_score_cell, { x: Int; y: Int; score: Int; invert_x: Bool }, Bool,
+{
+  let(score_per_line = 5)
+  let(base_x = -248)
+  let(base_y = 248)
+  if(invert_x, base_x *= -1)
+  let(score_size = 24)
+  let(spacing = 8)
+  let(score_span = score_size + spacing)
+  let(row = { base_y - y } / score_span)
+  let(column = 0)
+  let(paddle_surface = x - base_x)
+  if(invert_x, paddle_surface = -: paddle_surface)
+  column = { paddle_surface / score_span } % score_per_line
+  let(index = row * score_per_line + column)
+  let(cell_y = base_y - row * score_span - score_size)
+  let(cell_offset = column * score_span)
+  let(cell_x = base_x)
+  if([ invert_x, cell_x -= cell_offset + score_size ], [ true, cell_x += cell_offset ])
+  let(in_cell_x = x + 1 - score_size <= cell_x <= x)
+  let(in_cell_y = y + 1 - score_size <= cell_y <= y)
+  if(index < score and in_cell_x and in_cell_y, ret(true))
+  false
+}
+)
+define(update, my: Int, Null,
+{
+  ball_x += ball_vx
+  ball_y += ball_vy
+  let(follow_ratio = { 256.0 - ball_x } / 1024.0)
+  p1_cy = { pos_p1 + follow_ratio * ball_y } / { 1.0 + follow_ratio }
+  if(
+    [ pos_p1 - p1_cy > 16.0, p1_cy = pos_p1 - 16.0 ],
+    [ pos_p1 - p1_cy < -16.0, p1_cy = pos_p1 + 16.0 ]
+  )
+  let(p2_cy = Float(my))
+  pos_p1 = p1_cy
+  paddle_hit(p1_surface, p1_cy, 1)
+  paddle_hit(p2_surface, p2_cy, -1)
+  if(ball_y < -: collision_x, { ball_y = -: collision_x; ball_vy *= -1.0 })
+  if(ball_y > collision_x, { ball_y = collision_x; ball_vy *= -1.0 })
+  let(left_pass = ball_x < left_x - ball_r)
+  let(right_pass = ball_x > right_x + ball_r)
+  if(left_pass,
+  {
+    score_p2 += 1
+    ball_x = 0.0
+    ball_y = 0.0
+    ball_vx = 15.0
+    ball_vy = Float(rand_range(21) - 10)
+  }
+  )
+  if(right_pass,
+  {
+    score_p1 += 1
+    ball_x = 0.0
+    ball_y = 0.0
+    ball_vx = -15.0
+    ball_vy = Float(rand_range(21) - 10)
+  }
+  )
+}
+)
+define(in_rect, { x: Int; y: Int; cx: Int; cy: Int; w_half: Int; h_half: Int }, Bool,
+{
+  let(in_x = cx - w_half <= x <= cx + w_half)
+  let(in_y = cy - h_half <= y <= cy + h_half)
+  in_x and in_y
+}
+)
+define(ping_pong, { x: Int; y: Int; _frame: Int; _mx: Int; my: Int }, Int,
+{
+  if(x == y == -256, update(my))
+  let(dist2 = square(Float(x) - ball_x) + square(Float(y) - ball_y))
+  if(dist2 < square(ball_r), ret(rgb(255, 255, 0)))
+  if(in_rect(x, y, p1_cx, Int(p1_cy), paddle_w_half, Int(paddle_h_half)),
+    ret(rgb(0, 255, 255))
+  )
+  if(in_rect(x, y, p2_cx, my, paddle_w_half, Int(paddle_h_half)), ret(rgb(255, 0, 255)))
+  if(in_score_cell(x, y, score_p2, true), ret(rgb(255, 0, 255)))
+  if(in_score_cell(x, y, score_p1, false), ret(rgb(0, 255, 255)))
+  let(center = x == 0 == { { abs(y) + 8 } / 16 } % 2)
+  if(center, ret(rgb(255, 255, 255)))
+  rgb(0, 0, 0)
+}
+)
+main(
+{
+  GUI(ping_pong)
+  print("CPU Score: ")
+  print(Str(score_p1))
+  print("\nPlayer Score: ")
+  print(Str(score_p2))
+  print("\n")
+}
+)

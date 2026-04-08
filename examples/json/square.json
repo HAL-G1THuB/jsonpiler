@@ -1,8 +1,8 @@
 {
   "define": [
-    "square",
-    { "n": "Int" },
-    "Int",
+    { "$": "square" },
+    { "n": { "$": "Int" } },
+    { "$": "Int" },
     { "*": [{ "$": "n" }, { "$": "n" }] }
   ],
   "message": ["", "This program returns 4^2 + 5^2 = 41."],

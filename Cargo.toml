@@ -1,6 +1,6 @@
 [package]
 name = "jsonpiler"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
 license = "Apache-2.0"
@@ -10,7 +10,11 @@ keywords = ["json", "parser", "compiler", "cli"]
 [[bin]]
 name = "jsonpiler"
 path = "src/main.rs"
+doc = false
+[lib]
+doc = false
 [profile.release]
+opt-level = 0
 panic = "abort"
 [badges]
 maintenance = { status = "actively-developed" }
@@ -43,5 +47,5 @@ as_conversions = "allow"
 exit = "allow"
 wildcard_imports = "allow"
 default_numeric_fallback = "allow"
-cast_sign_loss = "allow"
 partial_pub_fields = "allow"
+format_push_string = "allow"

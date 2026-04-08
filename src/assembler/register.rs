@@ -12,15 +12,11 @@ pub(crate) enum Register {
   Rdi = 7,
   R8 = 8,
   R9 = 9,
-  #[expect(dead_code)]
   R10 = 10,
-  #[expect(dead_code)]
   R11 = 11,
   R12 = 12,
   R13 = 13,
-  #[expect(dead_code)]
   R14 = 14,
-  #[expect(dead_code)]
   R15 = 15,
 }
 impl Register {
@@ -45,5 +41,8 @@ impl Register {
   }
   pub(crate) fn rex(self) -> u8 {
     u8::from(R8 <= self)
+  }
+  pub(crate) fn rex_size(self) -> u32 {
+    u32::from(R8 <= self)
   }
 }

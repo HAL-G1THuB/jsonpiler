@@ -1,6 +1,16 @@
-# This program computes fib(10) = 55.
-define(fib, { n: Int }, Int, {
-  if( [ $n > 1, ret(fib($n - 1) + fib($n - 2)) ] )
-  $n
-})
-fib(10)
+# This program computes fib(10) * 2 = 110.
+define(fib_recursive, n: Int, Int,
+  { if(n <= 1, ret(n)); fib_recursive(n - 1) + fib_recursive(n - 2) }
+)
+define(fib_loop, n: Int, Int,
+{
+  if(n <= 1, ret(n))
+  let(a = 0)
+  let(b = 1)
+  let(i = 2)
+  while(i <= n, { let(t = a + b); a = b; b = t; i += 1 })
+  b
+}
+)
+export(fib_recursive, fib_loop)
+fib_recursive(10) + fib_loop(10)

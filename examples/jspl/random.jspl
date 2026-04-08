@@ -1,12 +1,10 @@
-define(rand_range, { max: Int }, Int,
-  {
-    assert(0 < $max, concat(
-      "The argument to rand_range ",
-      "must be greater than zero."
-    ))
-    rand = random()
-    if([$rand == { -128 * 256 * 65536 * 65536 * 65536 }, ret(0)])
-    abs($rand) % $max
-  }
+define(rand_range, max: Int, Int,
+{
+  assert(0 < max, concat("The argument to rand_range ", "must be greater than zero."))
+  let(rand = random())
+  if(rand == 1 << 63, ret(0))
+  abs(rand) % max
+}
 )
-rand_range(100)
+export(rand_range)
+main(rand_range(100))

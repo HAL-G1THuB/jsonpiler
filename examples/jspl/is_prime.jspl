@@ -1,15 +1,21 @@
-define(is_prime, { n: Int }, Bool, {
+define(is_prime, n: Int, Bool,
+{
   if(
-    [$n <= 1, ret(false)],
-    [$n <= 3, ret(true)],
-    [{ { $n % 2 } == 0 } or { { $n % 3 } == 0 }, ret(false)]
+    [ n <= 1, ret(false) ],
+    [ n <= 3, ret(true) ],
+    [ n % 2 == 0 or n % 3 == 0, ret(false) ]
   )
-  i = 5
-  while({$i * $i} <= $n, {
-    if([{ { $n % $i } == 0 } or { { $n % { $i + 2 } } == 0 }, ret(false)])
-    i += 6
-  })
+  let(i = 5)
+  while(i * i <= n,
+    { if(n % i == 0 or n % { i + 2 } == 0, ret(false)); i += 6 }
+  )
   true
-})
-flag = is_prime(511)
-if([$flag, print("511 is a prime\n")], [true, print("511 is not a prime\n")])
+}
+)
+export(is_prime)
+main(
+{
+  let(flag = is_prime(511))
+  if([ flag, print("511 is a prime\n") ], [ true, print("511 is not a prime\n") ])
+}
+)

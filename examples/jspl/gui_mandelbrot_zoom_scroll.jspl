@@ -1,0 +1,69 @@
+define(square, x: Float, Float, x * x)
+define(rgb, { r: Int; g: Int; b: Int }, Int, { { r << 8 } + g << 8 } + b)
+define(mandelbrot, { cr: Float; ci: Float }, Int,
+{
+  let(zr = 0.0)
+  let(zi = 0.0)
+  let(i = 0)
+  while(i < 96 and square(zr) + square(zi) < 4.0,
+  {
+    let(tmp = square(zr) - square(zi))
+    tmp += cr
+    zi *= 2.0 * zr
+    zi += ci
+    zr = tmp
+    i += 1
+  }
+  )
+  i
+}
+)
+global(center_x = 0.0)
+global(center_y = 0.0)
+global(zoom = 64.0)
+define(update, { frame: Int; mx: Int; my: Int }, Null,
+{
+  let(tmp_frame = frame % 180)
+  if(tmp_frame == 0, { center_x = 0.0; center_y = 0.0; zoom = 64.0 })
+  while(168 > tmp_frame > 0, { zoom *= 1.004; tmp_frame -= 5 })
+  let(threshold = 64)
+  let(scroll = sqrt(sqrt(zoom) * zoom))
+  if(abs(mx) > threshold,
+  {
+    let(sign_x = mx / abs(mx))
+    center_x += Float(mx - threshold * sign_x) / scroll / 64.0
+  }
+  )
+  if(abs(my) > threshold,
+  {
+    let(sign_y = my / abs(my))
+    center_y += Float(my - threshold * sign_y) / scroll / 64.0
+  }
+  )
+}
+)
+define(mandelbrot_scroll, { x: Int; y: Int; frame: Int; mx: Int; my: Int }, Int,
+{
+  if(x == y == -256, update(frame, mx, my))
+  let(fx = Float(x))
+  let(fy = Float(y))
+  fx /= zoom
+  fy /= zoom
+  fx += center_x
+  fy += center_y
+  let(iter = mandelbrot(fx, fy))
+  if(iter == 96, ret(0))
+  let(t = { iter % 16 } * 16)
+  let(q = { 15 - iter % 16 } * 16)
+  if(
+    [ iter < 16, ret(rgb(255, t, 0)) ],
+    [ iter < 32, ret(rgb(q, 255, 0)) ],
+    [ iter < 48, ret(rgb(0, 255, t)) ],
+    [ iter < 64, ret(rgb(0, q, 255)) ],
+    [ iter < 80, ret(rgb(t, 0, 255)) ],
+    [ iter < 96, ret(rgb(255, 0, q)) ]
+  )
+  rgb(0, 0, 0)
+}
+)
+GUI(mandelbrot_scroll)

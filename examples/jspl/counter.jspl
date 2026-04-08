@@ -1,7 +1,4 @@
-define(repeat_print, { str: Str; cnt: Int }, Null, {
-  while($cnt > 0, {
-    print($str)
-    cnt -= 1
-  })
-})
+define(repeat_print, { str: Str; cnt: Int }, Null,
+  while(cnt > 0, { print(str); cnt -= 1 })
+)
 repeat_print("repeat 5 times\n", 5)

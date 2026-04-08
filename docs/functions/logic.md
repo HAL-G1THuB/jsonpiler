@@ -10,20 +10,24 @@ If the given boolean is `false`, an error is generated at runtime.
 
 ```jspl
 assert(false, "Assertion failed")
-...
-RuntimeError:
-  AssertionError:
-   Assertion failed
-Error at assert.jspl line: 1 column: 6
-Error position: 
-assert(false, "Assertion failed")
-       ^^^^^
+
+=>
+
+╭- RuntimeError --------------
+| AssertionError:
+|   Assertion failed
+|-----------------------------
+| input.jspl:1:8
+|-----------------------------
+| assert(false, "Assertion failed")
+|        ^^^^^
+╰-----------------------------
 ```
 
 ## not
 
 ```jspl
-not(Bool or Int") -> Bool or Int
+not(Bool or Int) -> Bool or Int
 ```
 
 Returns the NOT of the given boolean or integer.

@@ -2,3 +2,5 @@
 /target/
 /.ignore/
 /.vscode/
+/extension/dist
+*.vsix

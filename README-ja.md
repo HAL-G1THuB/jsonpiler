@@ -68,14 +68,40 @@ Jsonpilerに GUI をサポートする関数が追加されました。
 
 ## インストールと実行
 
-```bash
-cargo install jsonpiler
+### JSPLを実行する場合
 
-# JSON プログラムをコンパイルして実行
-jsonpiler <input.json | input.jspl> [生成exeへの引数]
+//拡張機能についての説明
+
+- [VSCode 拡張機能](https://marketplace.visualstudio.com/items?itemName=H4LVS.jsplsyntax)をインストールします。
+- `.jspl` ファイルを作成し、エディタ右上の `Run JSPL` ボタンをクリックすることで実行できます。
+
+### 直接実行ファイルを動かす場合
+
+#### Githubリポジトリから
+
+```bash
+git clone "https://github.com/HAL-G1THub/jsonpiler.git"
+cd "jsonpiler/extension/bin"
+jsonpiler.exe
 ```
 
-- `<input.json | input.jspl>` は UTF-8 である必要があります。
+#### cargoから
+
+```bash
+cargo install jsonpiler
+cd "<ホームディレクトリ>/.cargo/bin"
+jsonpiler.exe
+```
+
+#### 実行
+
+```bash
+# JSON | JSPL プログラムをコンパイルして実行
+jsonpiler "<input.json | input.jspl>" "[生成exeへの引数]"
+```
+
+- `<input.json | input.jspl>` のファイルエンコーディングは
+    UTF-8 である必要があります。
 - 追加の引数は生成された実行ファイルに渡されます。
 
 ---
@@ -87,19 +113,23 @@ jsonpiler <input.json | input.jspl> [生成exeへの引数]
 
 ---
 
-## 使用例
+## 例
 
-準備済みサンプルは [examples/](<https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples>) にあります。
+準備済みサンプルは [examples/](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples) にあります。
 
-最小例:
+コード例:
 
 ```json
-{ "=": ["a", "title"], "message": [{ "$": "a" }, "345"], "+": [1, 2, 3] }
+{
+  "=": [{ "$": "a" }, "title"],
+  "message": [{ "$": "a" }, "345"],
+  "+": [1, 2, 3]
+}
 ```
 
 ```jspl
 a = "title"
-message($a, "345")
+message(a, "345")
 1 + 2 + 3
 ```
 
@@ -107,7 +137,8 @@ message($a, "345")
 
 - Jsonpiler プログラムは単一の JSON オブジェクトで構成され、キーは **順次評価** されます。
 - `"="` は文字列 `"title"` を変数 `a` に代入します。
-- `"message"` は `a` の値に `"345"` を連結して表示します。
+- `"message"` は `a` の値をタイトルとし、
+  `"345"` をテキストとしたメッセージボックスを表示します。
 - `"+"` は `1 + 2 + 3` を計算し、結果は **6** です。
 
 プログラムの **最終式の値** はプロセスの **終了コード** になります。
@@ -136,17 +167,6 @@ message($a, "345")
 +(1, 2, 3)
 ```
 
-| JSPL-JSON の相違点 | JSON                                | JSPL                                 |
-| ------------------ | ----------------------------------- | ------------------------------------ |
-| **波括弧 `{}`**    | 必須                                | トップレベルブロックに限り省略可能   |
-| **関数呼び出し**   | `{"sum": [1,2,3]}` のような明示形式 | `sum(1, 2, 3)` の自然な関数形式      |
-| **識別子記法**     | 全て `"文字列"`                     | `"`を必要としない識別子が使える      |
-| **中置記法**       | 不可                                | `1 + 10` → `{ "+": [1, 10] }` に変換 |
-| **変数参照**       | `{"$": "name"}` のような明示形式    | `$name` で記述可能                   |
-| **コメント**       | 不可（仕様上）                      | `# comment`で記述可能                |
-
----
-
 ---
 
 ## エラー・警告の例
@@ -154,17 +174,25 @@ message($a, "345")
 **入力:**
 
 ```json
-{ "message": ["title", { "$": "doesn't_exist" }] }
+{ "message": ["title", { "$": "does_not_exist" }] }
+```
+
+```jspl
+message("title", does_not_exist)
 ```
 
 **出力:**
 
 ```text
-Compilation error: Undefined variables: `doesn't_exist`
-Error occurred on line: 1
-Error position:
-{ "message": ["title", { "$": "doesn't_exist" }] }
-                              ^^^^^^^^^^^^^^^
+╭- CompilationError ----------
+| Undefined variable:
+|   does_not_exist
+|-----------------------------
+| input.jspl:1:18
+|-----------------------------
+| message("title", does_not_exist)
+|                  ^^^^^^^^^^^^^^
+╰-----------------------------
 ```
 
 ---

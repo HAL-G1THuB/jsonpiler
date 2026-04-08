@@ -7,7 +7,7 @@ pub(crate) enum Disp {
 impl Disp {
   pub(crate) fn encode(self, base_bits: u8) -> Vec<u8> {
     match self {
-      Disp::Byte(int) => vec![int as u8],
+      Disp::Byte(int) => vec![int.cast_unsigned()],
       Disp::Dword(int) => int.to_le_bytes().to_vec(),
       Disp::Zero if base_bits == 5 => vec![0],
       Disp::Zero => vec![],

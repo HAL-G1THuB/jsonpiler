@@ -1,13 +1,6 @@
-define(gcd, { a: Int; b: Int }, Int, {
-  while($b != 0, {
-    temp = $b
-    b = { $a % $b }
-    a = $temp
-  })
-  $a
-})
-define(lcm, { a: Int; b: Int }, Int,
-  { $a * $b } / gcd($a, $b)
+define(gcd, { a: Int; b: Int }, Int,
+  { while(b != 0, { let(temp = b); b = a % b; a = temp }); a }
 )
-print("This program computes lcm(12, 18) = 36.\n")
-lcm(12, 18)
+define(lcm, { a: Int; b: Int }, Int, { a * b } / gcd(a, b))
+export(lcm, gcd)
+main({ print("This program computes lcm(12, 18) = 36.\n"); lcm(12, 18) })

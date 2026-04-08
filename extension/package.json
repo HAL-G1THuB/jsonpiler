@@ -1,0 +1,68 @@
+{
+  "publisher": "H4LVS",
+  "name": "jsplsyntax",
+  "displayName": "Jsonpiler",
+  "description": "Provides language server and language features for JSPL.",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.103.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "icon": "images/icon.jpg",
+  "main": "dist/extension.js",
+  "activationEvents": [],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HAL-G1THuB/jsonpiler.git"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "jspl.run",
+        "title": "Run JSPL"
+      }
+    ],
+    "configuration": {
+      "title": "JSPL Settings",
+      "properties": {}
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "jspl.run",
+          "when": "editorLangId == jspl",
+          "group": "navigation"
+        }
+      ]
+    },
+    "languages": [
+      {
+        "id": "jspl",
+        "aliases": [
+          "JSPL",
+          "jspl"
+        ],
+        "extensions": [
+          ".jspl"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "jspl",
+        "scopeName": "source.jspl",
+        "path": "./syntaxes/jspl.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "jspl",
+        "path": "./snippets/jspl.code-snippets"
+      }
+    ]
+  }
+}
