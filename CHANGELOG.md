@@ -10,6 +10,11 @@
 
 ### jsonpiler 0.9
 
+#### 0.9.2
+
+- Changed:
+  - Version information is now automatically generated from `Cargo.toml`
+
 #### 0.9.1
 
 - Fixed

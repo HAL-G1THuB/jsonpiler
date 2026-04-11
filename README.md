@@ -27,10 +27,10 @@ Jsonpiler now has a function to support GUI.
 
 ## What’s New
 
-### 0.9.1
+### 0.9.2
 
-- Fixed
-  - Issue where `!=` did not work correctly with `Str`
+- Changed:
+  - Version information is now automatically generated from `Cargo.toml`
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 

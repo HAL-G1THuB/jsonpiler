@@ -1,12 +1,28 @@
 pub mod version {
-  #[macro_export]
-  macro_rules! version {
-    () => {
-      "0.9.1"
-    };
+  pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+  pub const VER_MAJOR_MINOR: [u8; 2] = split_version();
+  const fn parse_ver_number(bytes: &[u8], i: &mut usize) -> u8 {
+    let mut value = 0;
+    while *i < bytes.len() {
+      let byte = bytes[*i];
+      if byte < b'0' || byte > b'9' {
+        break;
+      }
+      value = value * 10 + (byte - b'0');
+      *i += 1;
+    }
+    value
   }
-  pub const VER_MAJOR: u8 = 0;
-  pub const VER_MINOR: u8 = 9;
+  const fn split_version() -> [u8; 2] {
+    let bytes = VERSION.as_bytes();
+    let mut i = 0;
+    let major = parse_ver_number(bytes, &mut i);
+    if i < bytes.len() && bytes[i] == b'.' {
+      i += 1;
+    }
+    let minor = parse_ver_number(bytes, &mut i);
+    [major, minor]
+  }
 }
 pub mod dll {
   pub const GDI32: &str = "gdi32.dll";
@@ -99,7 +115,6 @@ pub mod symbols {
   );
 }
 pub mod runtime_err {
-  use crate::version;
   pub const ZERO_DIVISION: &str = "Division by zero";
   pub const TOO_LARGE_SHIFT: &str = "Shift amount exceeds 63 bits";
   pub const ACCESS_VIOLATION: &str = "AccessViolation";
@@ -135,7 +150,7 @@ https://github.com/HAL-G1THuB/jsonpiler/issues/new
 Include:
 - source
 - version: ",
-    version!(),
+    env!("CARGO_PKG_VERSION"),
     "
 - error code: `"
   );

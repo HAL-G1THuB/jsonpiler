@@ -103,7 +103,8 @@ impl Assembler {
       OPTIONAL_HEADER_SIZE.to_le_bytes(),
       COFF_CHARACTERISTICS.to_le_bytes(),
       PE32PLUS.to_le_bytes(),
-      [VER_MAJOR, VER_MINOR],
+      // [(8byte), (8byte)].len() = 2
+      VER_MAJOR_MINOR,
       sect[Text as usize].1.v_size.to_le_bytes(),
       data_size.to_le_bytes(),
       sect[Bss as usize].1.v_size.to_le_bytes(),

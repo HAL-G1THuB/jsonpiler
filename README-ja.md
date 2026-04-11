@@ -28,10 +28,10 @@ Jsonpilerに GUI をサポートする関数が追加されました。
 
 ## 更新情報
 
-### 0.9.1
+### 0.9.2
 
-- 修正
-  - `Str`に対する`!=`が正しく機能しない問題
+- 変更
+  - バージョン情報を`Cargo.toml`から自動生成するようになった
 
 詳細は **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG-ja.md)** を参照してください。
 

@@ -58,7 +58,7 @@ pub(crate) use crate::utility::other::{
 pub(crate) use crate::utility::scope::{Scope, Variable};
 pub(crate) use crate::utility::*;
 pub(crate) use crate::{
-  arg, arg_custom, built_in, err, extend, parse_err, symbol, unwrap_arg, version, write_all,
+  arg, arg_custom, built_in, err, extend, parse_err, symbol, unwrap_arg, write_all,
 };
 pub(crate) use core::mem::{replace, take};
 pub(crate) use std::{

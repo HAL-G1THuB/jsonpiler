@@ -35,7 +35,7 @@ impl Jsonpiler {
         server.main();
       }
       "help" => help_message(&program_name),
-      "version" => println!("jsonpiler version {}", version!()),
+      "version" => println!("jsonpiler version {VERSION}"),
       "format" => {
         file = next_file!(args, program_name);
         let source = fs::read(&file).map_err(io_err)?;
