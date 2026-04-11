@@ -135,7 +135,7 @@ init_gui => {"GUI", SPECIAL, Exact(1), {
     CallApi(get_message_w),
     IncR(Rax),
     LogicRR(Test, Rax, Rax),
-    JCc(E, self.symbols[WIN_HANDLER]),
+    JCc(E, self.handlers.win),
     DecR(Rax),
     LogicRR(Test, Rax, Rax),
     JCc(E, exit_gui),

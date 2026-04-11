@@ -25,26 +25,24 @@ impl Jsonpiler {
       let full_path = folder.join(Path::new(&path)).canonicalize();
       (full_path.map_err(|val| pos.with(val))?.to_string_lossy().to_string(), pos)
     };
-    let mut includes = BTreeSet::new();
+    let mut imports = BTreeSet::new();
     for _ in 1..func.len {
-      let arg = func.arg()?.into_ident("Function name")?;
-      includes.insert(arg.val);
+      imports.insert(func.arg()?.into_ident("Function name")?.val);
     }
     if self.parsers[pos.file as usize].file == file {
       return err!(pos, RecursiveInclude(file));
     }
     if let Some(file_idx) = self.parsers.iter().position(|parser| parser.file == file) {
       for (name, val) in &self.parsers[file_idx].exports {
-        if includes.contains(name) {
+        if let Some(import_func) = imports.take(name) {
           if self.user_defined.get(name).is_none_or(|u_d| u_d.pos.file as usize != file_idx) {
             self.check_defined(name, pos, scope)?;
           }
-          self.user_defined.entry(name.to_owned()).or_insert(val.clone());
-          includes.remove(name);
+          self.user_defined.entry(import_func).or_insert(val.clone());
         }
       }
-      if !includes.is_empty() {
-        return err!(pos, IncludeFuncNotFound(includes));
+      if !imports.is_empty() {
+        return err!(pos, IncludeFuncNotFound(imports));
       }
       return Ok(Null(Lit(())));
     }
@@ -52,31 +50,24 @@ impl Jsonpiler {
     let old_globals = take(&mut self.globals);
     let old_user_defined = take(&mut self.user_defined);
     self.root_id.push((root_id, vec![]));
-    if fs::metadata(&file).map_err(|val| pos.with(val))?.len() > u64::from(GB) {
+    let file_size = fs::metadata(&file).map_err(|val| pos.with(val))?.len();
+    if file_size > u64::from(GB) {
       return err!(pos, TooLargeFile);
     }
-    let is_jspl = match Path::new(&file).extension().map(|ext| ext.to_string_lossy()) {
-      Some(ext) if ext == "jspl" => true,
-      Some(ext) if ext == "json" => false,
-      _ => return err!(pos, UnsupportedFile),
-    };
     let source = fs::read(&file).map_err(|val| pos.with(val))?;
     let file_idx = self.parsers.len();
-    self.parsers.push(Parser::new(
-      source,
-      u32::try_from(file_idx)?,
-      file,
-      self.parsers[0].file.clone(),
-    ));
-    let mut total_size = 0;
-    for parser in &self.parsers {
-      total_size += parser.source.len();
-    }
+    let root_file = self.parsers[0].file.clone();
+    self.parsers.push(Parser::new(source, u32::try_from(file_idx)?, file.clone(), root_file));
+    let total_size = self.parsers.iter().map(|parser| parser.source.len()).sum::<usize>();
     if total_size > GB as usize {
       return err!(pos, TooLargeFile);
     }
     let mut try_include = || -> ErrOR<()> {
-      let parsed = self.parsers[file_idx].parse(is_jspl)?;
+      let parsed = match Path::new(&file).extension().map(|ext| ext.to_string_lossy()) {
+        Some(ext) if ext == "jspl" => self.parsers[file_idx].parse_jspl(),
+        Some(ext) if ext == "json" => self.parsers[file_idx].parse_json(),
+        _ => return err!(pos, UnsupportedFile),
+      }?;
       let old_scope = scope.change(root_id);
       let epilogue = self.id();
       let result = self.eval(parsed, scope)?.val;
@@ -85,8 +76,7 @@ impl Jsonpiler {
       self.drop_all_scope(scope);
       self.drop_global(scope);
       scope.check_free()?;
-      let mut insts = vec![];
-      insts.extend_from_slice(&scope.replace(old_scope));
+      let mut insts = scope.replace(old_scope);
       insts.push(Lbl(epilogue));
       self.use_function(self.root_id[0].0, root_id);
       self.link_function(root_id, &insts, stack_size);
@@ -94,7 +84,7 @@ impl Jsonpiler {
       Ok(())
     };
     let mut result = try_include();
-    if let Err(Compilation(_, pos_vec)) = &mut result {
+    if let Err(Compilation(_, pos_vec) | Parse(_, pos_vec)) = &mut result {
       pos_vec.push(pos);
     }
     result?;
@@ -103,16 +93,22 @@ impl Jsonpiler {
     }
     self.globals = old_globals;
     self.user_defined = old_user_defined;
+    self.import_functions(imports, file_idx, pos, scope)?;
+    Ok(Null(Lit(())))
+  }
+  fn import_functions(
+    &mut self,
+    mut imports: BTreeSet<String>,
+    file_idx: usize,
+    pos: Position,
+    scope: &mut Scope,
+  ) -> ErrOR<()> {
     for (name, val) in &self.parsers[file_idx].exports {
-      if includes.contains(name) {
+      if let Some(import_func) = imports.take(name) {
         self.check_defined(name, pos, scope)?;
-        self.user_defined.insert(name.to_owned(), val.clone());
-        includes.remove(name);
+        self.user_defined.insert(import_func, val.clone());
       }
     }
-    if !includes.is_empty() {
-      return err!(pos, IncludeFuncNotFound(includes));
-    }
-    Ok(Null(Lit(())))
+    if imports.is_empty() { Ok(()) } else { err!(pos, IncludeFuncNotFound(imports)) }
   }
 }

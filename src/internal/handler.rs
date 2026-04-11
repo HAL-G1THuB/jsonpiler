@@ -1,10 +1,17 @@
 use crate::prelude::*;
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Handlers {
+  pub ctrl_c: LabelId,
+  pub err: Option<LabelId>,
+  pub seh: LabelId,
+  pub win: LabelId,
+}
 impl Jsonpiler {
-  pub(crate) fn ctrl_c_handler(&mut self, caller: LabelId) -> ErrOR<LabelId> {
+  pub(crate) fn ctrl_c_handler(&mut self, caller: LabelId) -> ErrOR<()> {
     const SIZE: i32 = 0x30;
-    let id = symbol!(self, caller, CTRL_C_HANDLER);
+    self.use_function(caller, self.handlers.ctrl_c);
     let code = Local(Tmp, -0x8);
-    let print_e = self.get_print_e(id)?;
+    let print_e = self.get_print_e(self.handlers.ctrl_c)?;
     let new_line = Global(self.global_str("\n| "));
     let mut insts = vec![];
     extend!(
@@ -24,9 +31,9 @@ impl Jsonpiler {
       self.ctrl_c_match(6, "System shutdown"),
       [Call(print_e), LeaRM(Rcx, Global(self.global_str(ERR_END))), Call(print_e), Clear(Rax)]
     );
-    self.use_function(self.root_id[0].0, id);
-    self.link_function(id, &insts, SIZE);
-    Ok(id)
+    //    self.use_function(self.root_id[0].0, id);
+    self.link_function(self.handlers.ctrl_c, &insts, SIZE);
+    Ok(())
   }
   pub(crate) fn ctrl_c_match(&mut self, err_code: u32, err: &'static str) -> Vec<Inst> {
     vec![
@@ -67,7 +74,13 @@ impl Jsonpiler {
   }
   pub(crate) fn err_handler(&mut self, caller: LabelId) -> ErrOR<LabelId> {
     const SIZE: i32 = 0x30;
-    let id = symbol!(self, caller, ERR_HANDLER);
+    if let Some(id) = self.handlers.err {
+      self.use_function(caller, id);
+      return Ok(id);
+    }
+    let id = self.id();
+    self.use_function(caller, id);
+    self.handlers.err = Some(id);
     let err = Local(Long, -0x08);
     let args = Local(Long, -0x10);
     let file = Local(Long, -0x18);
@@ -123,9 +136,9 @@ impl Jsonpiler {
     self.link_not_return(id, &[LeaRM(Rcx, hidden_err), Call(print_e), mov_d(Rcx, 1)], SIZE);
     Ok(id)
   }
-  pub(crate) fn seh_handler(&mut self, caller: LabelId) -> ErrOR<LabelId> {
+  pub(crate) fn seh_handler(&mut self, caller: LabelId) -> ErrOR<()> {
     const SIZE: i32 = 0x20;
-    let id = symbol!(self, caller, SEH_HANDLER);
+    self.use_function(caller, self.handlers.seh);
     let matched = self.id();
     let epilogue = self.id();
     let std_e = Global(self.symbols[STD_E]);
@@ -171,8 +184,8 @@ impl Jsonpiler {
       self.write_err_msg("`\n", tmp)?,
       [Lbl(epilogue), mov_q(Rcx, Rbx), CallApi(exit_process)]
     );
-    self.link_function_no_seh(id, &insts, SIZE);
-    Ok(id)
+    self.link_function_no_seh(self.handlers.seh, &insts, SIZE);
+    Ok(())
   }
   pub(crate) fn seh_match(
     &mut self,
@@ -189,14 +202,15 @@ impl Jsonpiler {
       JCc(E, matched),
     ])
   }
-  pub(crate) fn win_handler(&mut self, caller: LabelId) -> ErrOR<LabelId> {
+  pub(crate) fn win_handler(&mut self, caller: LabelId) -> ErrOR<()> {
     const SIZE: i32 = 0x70;
-    let id = symbol!(self, caller, WIN_HANDLER);
+    self.use_function(caller, self.handlers.win);
     let exit = self.id();
     let format_msg = self.import(KERNEL32, "FormatMessageW");
     let get_last_err = self.import(KERNEL32, "GetLastError");
     let local_free = self.import(KERNEL32, "LocalFree");
-    let print_e = self.get_print_e(id)?;
+    let print_e = self.get_print_e(self.handlers.win)?;
+    let u16_to_8 = self.get_u16_to_8(self.handlers.win)?;
     let digit = self.id();
     let hex_loop = self.id();
     let store = self.id();
@@ -225,7 +239,7 @@ impl Jsonpiler {
         JCc(E, exit),
         mov_q(Rcx, msg),
         mov_d(Rdx, 65001),
-        Call(self.get_u16_to_8(id)?),
+        Call(u16_to_8),
         mov_q(multi_byte, Rax),
       ],
       self.write_err_msg(INTERNAL_ERR, tmp)?,
@@ -266,8 +280,8 @@ impl Jsonpiler {
       self.write_err_msg("`\n", tmp)?,
       [Lbl(exit), mov_q(Rcx, msg), CallApi(local_free), mov_q(Rcx, Rdi)]
     );
-    self.link_not_return(id, &insts, SIZE);
-    Ok(id)
+    self.link_not_return(self.handlers.win, &insts, SIZE);
+    Ok(())
   }
   pub(crate) fn write_err_msg(&mut self, text: &'static str, tmp: Address) -> ErrOR<Vec<Inst>> {
     let write_file = self.import(KERNEL32, "WriteFile");

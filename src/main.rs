@@ -6,7 +6,7 @@ fn main() {
   #[allow(dead_code)]
   const _: () = ();
   #[expect(clippy::print_stderr)]
-  match Jsonpiler::default().main() {
+  match Jsonpiler::new().main() {
     Err(err) => {
       eprintln!("{err}");
       exit(1)

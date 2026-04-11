@@ -28,7 +28,7 @@ impl Assembler {
       JCc(_, id) => self.sizeof_jmp(*id, size, 6)?,
       Jmp(id) => self.sizeof_jmp(*id, size, 5)?,
       CallApiCheck(api) => self
-        .sizeof_alias(&[CallApi(*api), LogicRR(Test, Rax, Rax), JCc(E, self.win_handler)], size)?,
+        .sizeof_alias(&[CallApi(*api), LogicRR(Test, Rax, Rax), JCc(E, self.handlers.win)], size)?,
       UComISd(xmm, xmm2) | ArithSd(_, xmm, xmm2) | SqrtSd(xmm, xmm2) => {
         1 + (xmm.rex_size() | xmm2.rex_size()) + 2 + 1
       }

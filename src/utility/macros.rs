@@ -39,12 +39,7 @@ macro_rules! arg { ($self:ident, $func:expr, ($($kind:tt)+) => $body:ident) => {
     } else {
       let $body = Default::default();
       let expected = $($kind)+.as_type();
-      return Err(args_type_err(
-        $func.nth,
-        &$func.name,
-        vec![expected],
-        arg.map_ref(Json::as_type)
-      ));
+      return Err(args_type_err($func.nth, &$func.name, vec![expected], arg.map_ref(Json::as_type)));
     }
   }};
 }
@@ -55,12 +50,7 @@ macro_rules! arg_custom {
     if let $($kind)+ = arg.val {
       arg.pos.with($body)
     } else {
-      return Err(args_type_err(
-        $func.nth,
-        &$func.name,
-        $expected,
-        arg.map_ref(Json::as_type)
-      ));
+      return Err(args_type_err($func.nth, &$func.name, $expected, arg.map_ref(Json::as_type)));
     }
   }};
 }
@@ -71,11 +61,7 @@ macro_rules! unwrap_arg {
     if let $($kind)+ = arg.val {
       arg.pos.with($body)
     } else {
-      return Err(type_err(
-        $name.into(),
-        $expected,
-        arg.map_ref(Json::as_type)
-      ));
+      return Err(type_err($name.into(), $expected,arg.map_ref(Json::as_type)));
     }
   }};
 }

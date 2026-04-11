@@ -11,9 +11,7 @@ Jsonpiler bundles an assembler and linker purpose-built for its IR and PE output
 - [AI-generated docs: ![badge](https://deepwiki.com/badge.svg)](https://deepwiki.com/HAL-G1THuB/jsonpiler)
 - [VSCode Extensions](https://marketplace.visualstudio.com/items?itemName=H4LVS.jsplsyntax)
 
-> 🚨 **Windows only (x64)** — Jsonpiler targets 64-bit Windows and produces native PE executables.
-
----
+> 🚨 **Windows only (x64)** — Jsonpiler generates PE (Portable Executable) files for 64-bit Windows.
 
 ## GUI
 
@@ -27,42 +25,14 @@ Jsonpiler now has a function to support GUI.
 
 [Source code of the program to draw the Mandelbrot set with GUI](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/gui_mandelbrot_zoom.jspl)
 
----
-
 ## What’s New
 
-#### 0.9.0
+### 0.9.1
 
-- Added
-  - Commands: `format`, `server`
-  - New functions: `confirm`, `main`, `<<`, `>>`
-  - Formatting feature and an LSP server for diagnostics and error reporting
-  - Local variable definition with `let` (`variable = value`)
-  - Global variable definition with `global` (`variable = value`)
-  - Comparison functions now support `Float`
-  - Operator precedence
-
-- Changed
-  - Syntax for variable definition and reassignment has been separated
-  - `=` is now used exclusively for reassignment
-  - In `if([cond, any])`, the `[]` can be omitted when only a single condition–value pair is present
-  - `concat` now concatenates non-literal values as well
-  - Unexpected memory leaks are now detected at runtime
-    (memory leaks are not expected by design)
-  - When loading other files with `include`, they are executed at startup rather than at the time of first load
-  - Warnings are now emitted for unused variables and arguments
-    This warning can be suppressed by prefixing the variable name with `_`
-  - `len` now returns the number of characters in a string rather than the byte length
-  - The function name invoked by `GUI` is now displayed in the window title bar
-  - Only user-defined functions that are used, along with the functions they depend on, are linked
-  - Now generates an error for arithmetic overflow in non-release builds
-- Removed
-  - `cargo doc`
-  - Functions: `'`, `eval`
+- Fixed
+  - Issue where `!=` did not work correctly with `Str`
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
-
----
 
 ## Requirements
 
@@ -76,13 +46,20 @@ No external toolchains or libraries are required.
 
 These are present on standard Windows installations.
 
----
+## Extensions
+
+Extensions are available to help you write JSPL comfortably in VSCode.
+
+- **Auto-formatting**: Formats your code to keep it easy to read.
+- **Syntax highlighting**: Highlights JSPL keywords and operators in different colors.
+- **Run Button**: Run your program with a single click using the button in the top-right corner of the editor.
+- **LSP Support**: Provides real-time error detection and formatting features.
+
+[VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=H4LVS.jsplsyntax)
 
 ## Installation and Execution
 
 ### Running JSPL
-
-// Explanation about the extension
 
 - Install the [VSCode extension](https://marketplace.visualstudio.com/items?itemName=H4LVS.jsplsyntax).
 - Create a `.jspl` file, then click the `Run JSPL` button in the top-right corner of the editor to execute it.
@@ -115,15 +92,11 @@ jsonpiler "<input.json | input.jspl>" "[arguments for generated exe]"
 - The file encoding of `<input.json | input.jspl>` must be UTF-8.
 - Additional arguments are passed to the generated executable.
 
----
-
 ## Language & Function References
 
 [Language Spec (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md)
 
 [Function Reference (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md)
-
----
 
 ## Examples
 
@@ -159,16 +132,9 @@ error: process didn't exit successfully: `jsonpiler.exe test.json` (exit code: 6
 
 This is expected behavior and not an error in Jsonpiler itself.
 
----
-
 ## JSPL
 
 Jsonpiler can compile its own language, **JSPL (Jsonpiler Structured Programming Language)**.
-JSPL is designed to express function definitions,conditionals,
-function calls, and variable assignments in a natural and intuitive form.
-All JSPL code is internally transformed into the same JSON-based intermediate representation (IR),
-ensuring full compatibility with the existing Jsonpiler compilation infrastructure
-while making programs easier to write and understand.
 For more details, see the language specification above.
 Example of the above sample code written in JSPL:
 
@@ -177,8 +143,6 @@ a = "title"
 message(a, "345")
 1 + 2 + 3
 ```
-
----
 
 ## Diagnostics (Errors & Warnings)
 
@@ -205,8 +169,6 @@ message("title", does_not_exist)
 |                  ^^^^^^^^^^^^^^
 ╰-----------------------------
 ```
-
----
 
 ## Pipeline Overview
 
@@ -264,20 +226,14 @@ Json::Object([
   end
 ```
 
----
-
 ## Notes
 
 - Output is a native **PE executable** for Windows x64.
 - If you see a non-zero exit code under Cargo, it likely reflects your program’s final value.
 
----
-
 ## License
 
 This project’s license is specified in the repository.
-
----
 
 ## Contributing
 
@@ -287,5 +243,3 @@ Issues and PRs are welcome! If you find a bug, please include the following info
 
 - The JSON program (minimal reproduction if possible)
 - Jsonpiler version
-
----

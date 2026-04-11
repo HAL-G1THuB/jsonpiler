@@ -2,7 +2,7 @@ pub mod version {
   #[macro_export]
   macro_rules! version {
     () => {
-      "0.9.0"
+      "0.9.1"
     };
   }
   pub const VER_MAJOR: u8 = 0;
@@ -58,7 +58,7 @@ pub mod format_config {
 }
 pub mod assembly_consts {
   use crate::Register::{self, R8, R9, Rcx, Rdx};
-  pub const REGS: [Register; 4] = [Rcx, Rdx, R8, R9];
+  pub const ARG_REGS: [Register; 4] = [Rcx, Rdx, R8, R9];
   pub const IMAGE_BASE: u64 = 0x1_4000_0000;
   pub const FILE_ALIGNMENT: u32 = 0x200;
   pub const SECTION_ALIGNMENT: u32 = 0x1000;
@@ -87,10 +87,6 @@ pub mod symbols {
     HEAP,
     LEAK_CNT,
     CRITICAL_SECTION,
-    SEH_HANDLER,
-    WIN_HANDLER,
-    ERR_HANDLER,
-    CTRL_C_HANDLER,
     INPUT,
     PRINT,
     PRINT_N,
@@ -143,7 +139,7 @@ Include:
     "
 - error code: `"
   );
-  pub const COMMAND: &str = "\
+  pub const COMMAND: &str = "
 Commands:
 
 version

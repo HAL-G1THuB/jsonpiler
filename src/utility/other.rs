@@ -3,7 +3,6 @@ use core::ops::Add;
 use std::vec::IntoIter;
 pub(crate) type BuiltinPtr = fn(&mut Jsonpiler, &mut BuiltIn, &mut Scope) -> ErrOR<Json>;
 pub(crate) type Dll = (String, Vec<String>);
-pub(crate) type ErrOR<T> = Result<T, JsonpilerErr>;
 pub(crate) type FileId = u32;
 pub(crate) type LabelId = u32;
 #[derive(Debug, Clone)]

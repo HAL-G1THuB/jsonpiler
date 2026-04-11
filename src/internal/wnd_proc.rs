@@ -250,7 +250,7 @@ impl Jsonpiler {
         CallApi(get_last_err),
         mov_d(Rcx, 5),
         LogicRR(Cmp, Rax, Rcx),
-        JCc(Ne, self.symbols[WIN_HANDLER]),
+        JCc(Ne, self.handlers.win),
         Lbl(ignore_epilogue),
       ],
       IGNORE_SIZE,

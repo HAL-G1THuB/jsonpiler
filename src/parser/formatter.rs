@@ -34,7 +34,7 @@ impl Parser {
     self.comment(out, offset, indentation, size >= LINE_MAX);
   }
   pub(crate) fn format(&mut self) -> Option<String> {
-    let parsed = self.parse(true).ok()?;
+    let parsed = self.parse_jspl().ok()?;
     let mut out = String::new();
     let size = self.sizeof_json(&parsed)?;
     for (_, comment) in self.comments.range(..=parsed.pos.offset) {

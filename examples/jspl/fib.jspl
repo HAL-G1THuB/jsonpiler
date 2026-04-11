@@ -12,5 +12,5 @@ define(fib_loop, n: Int, Int,
   b
 }
 )
+assert(fib_recursive(10) == fib_loop(10) == 55, "fib error")
 export(fib_recursive, fib_loop)
-fib_recursive(10) + fib_loop(10)

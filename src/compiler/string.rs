@@ -76,6 +76,7 @@ built_in! {self, func, scope, string;
   }},
   slice => {"slice", COMMON, Range(2, 3), {
     let str_chars_len = self.str_chars_len(scope.id)?;
+    let utf8_slice = self.get_utf8_slice(scope.id)?;
     let string = arg!(self, func, (Str(x)) => x).val;
     if func.len == 3 {
       scope.extend(&mov_int(Rdx, arg!(self, func, (Int(x)) => x).val));
@@ -84,8 +85,7 @@ built_in! {self, func, scope, string;
       scope.extend(&[self.mov_str(Rcx, string.clone()), Call(str_chars_len), mov_q(R8, Rax)]);
       scope.extend(&mov_int(Rdx, arg!(self, func, (Int(x)) => x).val));
     }
-    scope.push(self.mov_str(Rcx, string));
-    scope.push(Call(self.get_utf8_slice(scope.id)?));
+    scope.extend(&[self.mov_str(Rcx, string), Call(utf8_slice)]);
     scope.ret_str(Rax)
   }}
 }

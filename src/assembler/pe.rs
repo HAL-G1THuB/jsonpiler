@@ -66,7 +66,7 @@ impl Assembler {
         [0o11, sub_rsp_size, 4, Rbp as u8, sub_rsp_size, 1],
         ((size >> 3).cast_unsigned() as u16).to_le_bytes(),
         [u8::try_from(mov_rbp_rsp)?, 3, u8::try_from(push_rbp)?, (Rbp as u8) << 4u8],
-        self.get_rva(self.seh_handler)?.to_le_bytes()
+        self.get_rva(self.handlers.seh)?.to_le_bytes()
       );
     }
     Ok(xdata)

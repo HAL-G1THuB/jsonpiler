@@ -46,7 +46,7 @@ impl Jsonpiler {
           Call(str_eq),
         ]);
         if func.name == "!=" {
-          scope.push(UnaryRb(Neg, Rax));
+          scope.push(UnaryRb(Not, Rax));
         }
         scope.ret_bool(Rax)
       }

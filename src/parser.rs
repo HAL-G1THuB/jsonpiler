@@ -3,7 +3,6 @@ mod format_block;
 mod formatter;
 mod jspl;
 use crate::prelude::*;
-pub(crate) type ParseErrOR<T> = Result<T, WithPos<ParseErr>>;
 #[derive(Clone)]
 pub(crate) struct Comment {
   leading: bool,
@@ -83,6 +82,11 @@ impl Parser {
       warns: vec![],
     }
   }
+  fn next(&mut self) -> ParseErrOR<u8> {
+    self.pos.offset += 1;
+    self.check_eof()?;
+    Ok(self.peek())
+  }
   fn peek(&self) -> u8 {
     self.source[self.pos.offset as usize]
   }
@@ -114,22 +118,6 @@ impl Parser {
   }
 }
 impl Parser {
-  pub(crate) fn parse(&mut self, is_jspl: bool) -> ParseErrOR<WithPos<Json>> {
-    if !is_jspl {
-      return self.parse_json();
-    }
-    if self.skip_ws_comment(true).is_err() {
-      return Ok(self.pos.with(Null(Lit(()))));
-    }
-    let mut pos = self.pos;
-    let val = self.parse_block(true)?;
-    self.set_size(&mut pos);
-    if self.skip_ws_comment(true).is_err() {
-      Ok(pos.with(val))
-    } else {
-      parse_err!(self.pos, ExpectedToken(TokenKind::Eof))
-    }
-  }
   fn parse_array(&mut self) -> ParseErrOR<Json> {
     self.expect(b'[')?;
     self.skip_ws()?;
@@ -154,6 +142,19 @@ impl Parser {
       parse_err!(self.pos, ExpectedToken(TokenKind::Eof))
     }
   }
+  pub(crate) fn parse_jspl(&mut self) -> ParseErrOR<WithPos<Json>> {
+    if self.skip_ws_comment(true).is_err() {
+      return Ok(self.pos.with(Null(Lit(()))));
+    }
+    let mut pos = self.pos;
+    let val = self.parse_block(true)?;
+    self.set_size(&mut pos);
+    if self.skip_ws_comment(true).is_err() {
+      Ok(pos.with(val))
+    } else {
+      parse_err!(self.pos, ExpectedToken(TokenKind::Eof))
+    }
+  }
   #[expect(clippy::cast_possible_truncation)]
   fn parse_keyword(&mut self, keyword: &'static str, value: Json) -> ParseErrOR<Json> {
     let mut pos = self.pos;
@@ -167,14 +168,14 @@ impl Parser {
     let mut pos = self.pos;
     let mut float = false;
     let negative = self.consume_if(b'-')?;
-    if self.consume_if_multi(b"0")? {
+    if self.consume_if(b'0')? {
       if self.follow_digit() {
         return parse_err!(pos, UnexpectedToken(TokenKind::Digits));
       }
     } else {
       self.skip_digits(pos)?;
     }
-    if self.consume_if_multi(b".").is_ok_and(|bool| bool) {
+    if self.consume_if(b'.').is_ok_and(|bool| bool) {
       float = true;
       self.skip_digits(pos)?;
     }
@@ -234,39 +235,33 @@ impl Parser {
       }
       match self.peek() {
         b'\n' => return parse_err!(self.pos, UnterminatedLiteral),
-        b'\\' => {
-          self.pos.offset += 1;
-          self.check_eof()?;
-          match self.peek() {
-            b'u' => {
-              let mut code_point = 0;
-              for _ in 0..4 {
-                self.pos.offset += 1;
-                self.check_eof()?;
-                let ch = self.peek();
-                code_point = (code_point << 4)
-                  | u32::from(match ch {
-                    b'0'..=b'9' => ch - b'0',
-                    b'a'..=b'f' => ch - b'a' + 10,
-                    b'A'..=b'F' => ch - b'A' + 10,
-                    _ => return parse_err!(pos, UnexpectedToken(TokenKind::Esc('u'))),
-                  });
-              }
-              let Some(ch) = char::from_u32(code_point) else {
-                return parse_err!(pos, UnexpectedToken(TokenKind::Esc('u')));
-              };
-              bytes.extend_from_slice(ch.encode_utf8(&mut [0; 4]).as_bytes());
+        b'\\' => match self.next()? {
+          b'u' => {
+            let mut code_point = 0;
+            for _ in 0..4 {
+              let ch = self.next()?;
+              code_point = (code_point << 4)
+                | u32::from(match ch {
+                  b'0'..=b'9' => ch - b'0',
+                  b'a'..=b'f' => ch - b'a' + 10,
+                  b'A'..=b'F' => ch - b'A' + 10,
+                  _ => return parse_err!(pos, UnexpectedToken(TokenKind::Esc('u'))),
+                });
             }
-            esc @ (b'/' | b'"' | b'\\') => bytes.push(esc),
-            b'b' => bytes.push(b'\x08'),
-            b'f' => bytes.push(b'\x0C'),
-            b'r' => bytes.push(b'\r'),
-            b'n' => bytes.push(b'\n'),
-            b't' => bytes.push(b'\t'),
-            ctrl if ctrl.is_ascii_control() => return parse_err!(self.pos, InvalidChar),
-            esc => return parse_err!(self.pos, UnexpectedToken(TokenKind::Esc(char::from(esc)))),
+            let Some(ch) = char::from_u32(code_point) else {
+              return parse_err!(pos, UnexpectedToken(TokenKind::Esc('u')));
+            };
+            bytes.extend_from_slice(ch.encode_utf8(&mut [0; 4]).as_bytes());
           }
-        }
+          esc @ (b'/' | b'"' | b'\\') => bytes.push(esc),
+          b'b' => bytes.push(b'\x08'),
+          b'f' => bytes.push(b'\x0C'),
+          b'r' => bytes.push(b'\r'),
+          b'n' => bytes.push(b'\n'),
+          b't' => bytes.push(b'\t'),
+          ctrl if ctrl.is_ascii_control() => return parse_err!(self.pos, InvalidChar),
+          esc => return parse_err!(self.pos, UnexpectedToken(TokenKind::Esc(char::from(esc)))),
+        },
         ctrl if ctrl.is_ascii_control() => return parse_err!(self.pos, InvalidChar),
         byte => bytes.push(byte),
       }

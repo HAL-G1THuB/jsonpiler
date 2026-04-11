@@ -44,17 +44,11 @@ built_in! {self, func, scope, define;
     let stack_size = scope.resolve_stack_size()?;
     let mut insts = vec![];
     for (idx, Memory(addr, size)) in args.into_iter().enumerate() {
-      let tmp_reg = *REGS.get(idx).unwrap_or(&Rax);
+      let tmp_reg = *ARG_REGS.get(idx).unwrap_or(&Rax);
       if tmp_reg == Rax {
         insts.push(mov_q(Rax, Local(Tmp, i32::try_from(idx * 8 + 16)?)));
       }
-      insts.push(
-        if size == Size(1) {
-          mov_b(addr, tmp_reg)
-        } else {
-          mov_q(addr, tmp_reg)
-        }
-      );
+      insts.extend_from_slice(&ret_memory(Memory(addr, size), tmp_reg, tmp_reg));
     }
     insts.extend_from_slice(&scope.replace(old_scope));
     insts.push(Lbl(epilogue));

@@ -17,8 +17,8 @@ const TYPE_ANNOTATIONS: [&str; 5] = [
   r#"{"label":"Str","kind":7,"insertText":" Str; "}"#,
   r#"{"label":"Null","kind":7,"insertText":" Null; "}"#,
 ];
-#[derive(Default)]
-struct Server {
+#[derive(Debug, Clone)]
+pub(crate) struct Server {
   pub sources: HashMap<String, (String, BTreeSet<String>)>,
 }
 impl Server {
@@ -32,10 +32,10 @@ impl Server {
   #[expect(clippy::print_stderr)]
   fn handle(&mut self, msg: String) -> Option<()> {
     let mut json_parser = Parser::new(msg.into_bytes(), 0, String::new(), String::new());
-    let json = match json_parser.parse(false).map(|parsed| parsed.val) {
+    let json = match json_parser.parse_json().map(|parsed| parsed.val) {
       Ok(json) => json,
       Err(err) => {
-        let mut jsonpiler = Jsonpiler::default();
+        let mut jsonpiler = Jsonpiler::new();
         jsonpiler.parsers.push(json_parser);
         eprintln!("{}", jsonpiler.format_err(&err.into()));
         return None;
@@ -79,7 +79,7 @@ impl Server {
       let range = change.val.get("range")?;
       if !matches!(range, Object(Lit(_))) {
         let source = (text, BTreeSet::new());
-        Jsonpiler::default().publish_diagnostics(&uri, &source, self);
+        Jsonpiler::new().publish_diagnostics(&uri, &source, self);
         self.sources.insert(uri, source);
         return Some(());
       }
@@ -87,7 +87,7 @@ impl Server {
       let start = range_offset(&source.0, range.get("start")?)?;
       let end = range_offset(&source.0, range.get("end")?)?;
       source.0.replace_range(start..end, &text);
-      Jsonpiler::default().publish_diagnostics(&uri, &source.clone(), self);
+      Jsonpiler::new().publish_diagnostics(&uri, &source.clone(), self);
     }
     Some(())
   }
@@ -96,7 +96,7 @@ impl Server {
     let mut t_d = params.take("textDocument")?;
     let uri = t_d.take("uri")?.into_str()?;
     let source = (t_d.take("text")?.into_str()?, BTreeSet::new());
-    Jsonpiler::default().publish_diagnostics(&uri, &source, self);
+    Jsonpiler::new().publish_diagnostics(&uri, &source, self);
     self.sources.insert(uri, source);
     Some(())
   }
@@ -126,6 +126,15 @@ impl Server {
   #[expect(clippy::needless_pass_by_value, clippy::unused_self)]
   pub(crate) fn m_initialize(&mut self, json: Json) -> Option<()> {
     json.response(INITIALIZE)
+  }
+  #[expect(clippy::print_stderr)]
+  pub(crate) fn main(&mut self) {
+    eprintln!("SERVER STARTED");
+    while read().map(|msg| self.handle(msg)).is_some() {}
+    eprintln!("SERVER TERMINATED");
+  }
+  pub(crate) fn new() -> Self {
+    Server { sources: HashMap::new() }
   }
 }
 impl Parser {
@@ -173,12 +182,12 @@ impl Jsonpiler {
     for reload_uri in reload {
       clear_diag(reload_uri);
       if let Some(source) = server.get_source(reload_uri) {
-        Jsonpiler::default().publish_diagnostics(reload_uri, &source, server);
+        Jsonpiler::new().publish_diagnostics(reload_uri, &source, server);
       }
     }
     let file = uri_to_path(uri);
     let mut first_parser = Parser::new(text.clone().into_bytes(), 0, file.clone(), file);
-    let parsed = first_parser.parse(true);
+    let parsed = first_parser.parse_jspl();
     self.parsers.push(first_parser);
     let mut diag_map = BTreeMap::new();
     match parsed {
@@ -247,13 +256,6 @@ impl Json {
 }
 pub(crate) fn notify(method: &str, args: &str) -> Option<()> {
   write(&format!(r#"{{"jsonrpc":"2.0","method":"{method}","params":{{{args}}}}}"#))
-}
-#[expect(clippy::print_stderr)]
-pub(crate) fn server_main() {
-  eprintln!("SERVER STARTED");
-  let mut server = Server::default();
-  while read().map(|msg| server.handle(msg)).is_some() {}
-  eprintln!("SERVER TERMINATED");
 }
 fn read() -> Option<String> {
   let mut stdin = BufReader::new(io::stdin());

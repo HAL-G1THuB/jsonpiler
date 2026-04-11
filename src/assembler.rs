@@ -10,11 +10,10 @@ use sizeof::*;
 pub(crate) type Api = (u32, u32);
 pub(crate) struct Assembler {
   dlls: Vec<Dll>,
+  handlers: Handlers,
   labels: HashMap<u32, (Section, u32)>,
   root_id: LabelId,
   rva: [u32; NUMBER_OF_SECTIONS as usize],
-  seh_handler: LabelId,
-  win_handler: LabelId,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Scale {
@@ -308,20 +307,8 @@ impl Assembler {
     }
     Ok(self.rva[IData as usize] + lookup_offset + func_idx * 8)
   }
-  pub(crate) fn new(
-    dlls: Vec<Dll>,
-    root_id: LabelId,
-    win_handler: LabelId,
-    seh_handler: LabelId,
-  ) -> Self {
-    Self {
-      labels: HashMap::new(),
-      rva: [0; NUMBER_OF_SECTIONS as usize],
-      dlls,
-      root_id,
-      win_handler,
-      seh_handler,
-    }
+  pub(crate) fn new(dlls: Vec<Dll>, root_id: LabelId, handlers: Handlers) -> Self {
+    Self { labels: HashMap::new(), rva: [0; NUMBER_OF_SECTIONS as usize], dlls, root_id, handlers }
   }
 }
 impl Inst {

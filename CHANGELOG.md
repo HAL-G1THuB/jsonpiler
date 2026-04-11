@@ -10,6 +10,11 @@
 
 ### jsonpiler 0.9
 
+#### 0.9.1
+
+- Fixed
+  - Issue where `!=` did not work correctly with `Str`
+
 #### 0.9.0
 
 - Added

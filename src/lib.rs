@@ -6,13 +6,13 @@ mod prelude;
 mod server;
 mod utility;
 use prelude::*;
-#[derive(Default)]
 pub struct Jsonpiler {
   builtin: HashMap<String, BuiltInInfo>,
   data: Vec<DataLbl>,
   dlls: Vec<Dll>,
   functions: BTreeMap<LabelId, CompiledFunc>,
   globals: BTreeMap<String, WithPos<Variable>>,
+  handlers: Handlers,
   id_seed: LabelId,
   parsers: Vec<Parser>,
   release: bool,

@@ -71,7 +71,7 @@ impl Assembler {
       LogicRR(lo, dst, src) => RM::Reg(*src).encode(1, &[*lo as u8 + 1], *dst),
       Clear(reg) => RM::Reg(*reg).encode(0, &[0x31], *reg),
       CallApiCheck((dll, func)) => self.encode_alias(
-        &[CallApi((*dll, *func)), LogicRR(Test, Rax, Rax), JCc(E, self.win_handler)],
+        &[CallApi((*dll, *func)), LogicRR(Test, Rax, Rax), JCc(E, self.handlers.win)],
         size,
       )?,
       Custom(bytes) => bytes.to_vec(),

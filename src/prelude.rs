@@ -19,6 +19,7 @@ pub(crate) use crate::assembler::{
   rm::RM,
   sect_header::SectionHeader,
 };
+pub(crate) use crate::internal::handler::Handlers;
 pub(crate) use crate::json::{
   Json::{self, *},
   JsonType::{self, *},
@@ -27,17 +28,19 @@ pub(crate) use crate::json::{
 pub(crate) use crate::parser::error::{
   Arity::{self, *},
   CompilationErr::*,
+  ErrOR,
   InternalErr::*,
   JsonpilerErr::{self, *},
   NameKind::*,
   ParseErr::{self, *},
+  ParseErrOR,
   RuntimeErr::{self, *},
   TokenKind,
   Warning::{self, *},
   args_type_err, type_err, wrap_text,
 };
-pub(crate) use crate::parser::{Comment, ParseErrOR, Parser, Position};
-pub(crate) use crate::server::server_main;
+pub(crate) use crate::parser::{Comment, Parser, Position};
+pub(crate) use crate::server::Server;
 pub(crate) use crate::utility::consts::{
   assembly_consts::*, builtin_flags::*, custom_insts::*, dll::*, format_config::*, gui_config::*,
   runtime_err::*, symbols::*, version::*,
@@ -46,7 +49,7 @@ pub(crate) use crate::utility::move_json::*;
 pub(crate) use crate::utility::other::{
   Address::{self, *},
   Bind::{self, *},
-  BuiltIn, BuiltInInfo, BuiltinPtr, CompiledFunc, Dll, ErrOR, FileId, LabelId,
+  BuiltIn, BuiltInInfo, BuiltinPtr, CompiledFunc, Dll, FileId, LabelId,
   Lifetime::*,
   Memory,
   MemoryType::{self, *},

@@ -30,7 +30,10 @@ impl Jsonpiler {
     let mut file = next_file!(args, program_name);
     let mut build_only = false;
     match file.as_ref() {
-      "server" => server_main(),
+      "server" => {
+        let mut server = Server::new();
+        server.main();
+      }
       "help" => help_message(&program_name),
       "version" => println!("jsonpiler version {}", version!()),
       "format" => {
@@ -78,7 +81,7 @@ impl Jsonpiler {
       Clear(Rcx),
       DecR(Rcx),
       LogicRR(Cmp, Rax, Rcx),
-      JCc(E, self.symbols[WIN_HANDLER]),
+      JCc(E, self.handlers.win),
       mov_q(Global(std_n), Rax),
     ]
   }
@@ -100,7 +103,6 @@ impl Jsonpiler {
 }
 impl Jsonpiler {
   pub(crate) fn compile(&mut self, json: WithPos<Json>) -> ErrOR<()> {
-    self.register_builtin();
     let data_minimum = self.id();
     self.data.push(Byte(data_minimum, 0x00));
     let heap = self.bss(8, 8);
@@ -169,7 +171,7 @@ impl Jsonpiler {
         CallApiCheck(set_console_output_cp),
         CallApiCheck(get_process_heap),
         mov_q(Global(heap), Rax),
-        LeaRM(Rcx, Global(self.symbols[CTRL_C_HANDLER])),
+        LeaRM(Rcx, Global(self.handlers.ctrl_c)),
         Clear(Rdx),
         IncR(Rdx),
         CallApiCheck(set_ctrl_c_handler),
@@ -338,31 +340,50 @@ impl Jsonpiler {
     let source = fs::read(&file).map_err(io_err)?;
     let exe_path = Path::new(&file).with_extension("exe");
     let exe = exe_path.to_string_lossy().to_string();
-    let is_jspl = match Path::new(&file).extension().map(|ext| ext.to_string_lossy()) {
-      Some(jspl) if jspl == "jspl" => true,
-      Some(json) if json == "json" => false,
-      _ => return Err(format!("{COMPILATION_ERR}\n| {UnsupportedFile}{ERR_END}")),
-    };
     let full = full_path(&file).map_err(io_err)?;
     let first_parser = Parser::new(source, 0, full.clone(), full);
     self.parsers.push(first_parser);
-    let parsed = self.parsers[0].parse(is_jspl).map_err(|err| self.format_err(&err.into()))?;
+    let parsed = match Path::new(&file).extension().map(|ext| ext.to_string_lossy()) {
+      Some(jspl) if jspl == "jspl" => self.parsers[0].parse_jspl(),
+      Some(json) if json == "json" => self.parsers[0].parse_json(),
+      _ => return Err(format!("{COMPILATION_ERR}\n| {UnsupportedFile}{ERR_END}")),
+    }
+    .map_err(|err| self.format_err(&err.into()))?;
     self.compile(parsed).map_err(|err| self.format_err(&err))?;
     let (insts, seh) = self.resolve_calls();
-    Assembler::new(
-      take(&mut self.dlls),
-      self.root_id[0].0,
-      self.symbols[WIN_HANDLER],
-      self.symbols[SEH_HANDLER],
-    )
-    .assemble(&insts, take(&mut self.data), &self.parsers[0].file, seh)
-    .map_err(|err| self.format_err(&err))?;
+    Assembler::new(take(&mut self.dlls), self.root_id[0].0, self.handlers)
+      .assemble(&insts, take(&mut self.data), &self.parsers[0].file, seh)
+      .map_err(|err| self.format_err(&err))?;
     if build_only {
       return Ok(0);
     }
     check_platform()?;
     let exe_full = env::current_dir().map_err(io_err)?.join(exe);
     Ok(Command::new(exe_full).args(args).status().map_err(io_err)?.code().unwrap_or(0))
+  }
+  #[must_use]
+  #[inline]
+  pub fn new() -> Self {
+    let mut jsonpiler = Self {
+      builtin: HashMap::new(),
+      data: vec![],
+      dlls: vec![],
+      functions: BTreeMap::new(),
+      globals: BTreeMap::new(),
+      id_seed: 0,
+      parsers: vec![],
+      release: false,
+      root_id: vec![],
+      startup: vec![],
+      str_cache: HashMap::new(),
+      symbols: HashMap::new(),
+      handlers: Handlers::default(),
+      user_defined: BTreeMap::new(),
+    };
+    jsonpiler.register_builtin();
+    jsonpiler.handlers =
+      Handlers { ctrl_c: jsonpiler.id(), seh: jsonpiler.id(), win: jsonpiler.id(), err: None };
+    jsonpiler
   }
   pub(crate) fn register_func(
     &mut self,
@@ -372,6 +393,12 @@ impl Jsonpiler {
     arity: Arity,
   ) {
     self.builtin.insert(name.into(), BuiltInInfo { arity, builtin_ptr, scoped, skip_eval });
+  }
+}
+impl Default for Jsonpiler {
+  #[inline]
+  fn default() -> Self {
+    Jsonpiler::new()
   }
 }
 impl Jsonpiler {
@@ -440,22 +467,22 @@ impl Jsonpiler {
 }
 #[expect(clippy::print_stdout)]
 fn help_message(program_name: &str) {
-  println!("Usage: {program_name} <input.jspl | input.json> [args for .exe]\n{COMMAND}");
+  println!("Usage: {program_name} <input.jspl | input.json> [args for .exe]{COMMAND}");
 }
 fn check_platform() -> Result<(), String> {
   if !cfg!(target_os = "windows") {
-    return Err(platform_err("is only supported on Windows x64"));
+    return Err(platform_err("Windows x64"));
   }
   if !cfg!(target_arch = "x86_64") {
-    return Err(platform_err("requires x86_64 architecture"));
+    return Err(platform_err("x86_64 architecture"));
   }
   if !is_x86_feature_detected!("sse2") {
-    return Err(platform_err("requires a CPU with SSE2 support"));
+    return Err(platform_err("a CPU with SSE2 support"));
   }
   Ok(())
 }
 fn platform_err(reason: &'static str) -> String {
-  format!("{PLATFORM_ERR}\n| The generated executable {reason}{ERR_END}")
+  format!("{PLATFORM_ERR}\n| The generated executable requires {reason}{ERR_END}")
 }
 #[expect(clippy::needless_pass_by_value)]
 fn io_err(err: Error) -> String {

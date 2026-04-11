@@ -1,5 +1,7 @@
 use crate::prelude::*;
 use std::{num, path};
+pub(crate) type ParseErrOR<T> = Result<T, WithPos<ParseErr>>;
+pub(crate) type ErrOR<T> = Result<T, JsonpilerErr>;
 #[derive(Debug, Clone)]
 pub(crate) enum JsonpilerErr {
   Compilation(CompilationErr, Vec<Position>),

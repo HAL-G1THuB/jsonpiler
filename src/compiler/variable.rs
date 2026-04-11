@@ -38,7 +38,8 @@ impl Jsonpiler {
         if is_global {
           self.critical_sect(scope, ENTER);
         }
-        let size = val.val.as_type().mem_type(val.pos)?.size();
+        let val_type = val.val.as_type();
+        let size = val_type.mem_type(val.pos)?.size();
         let memory = match reassign {
           Ok(memory) => {
             if let Memory(addr, Heap(_)) = memory {
@@ -55,7 +56,7 @@ impl Jsonpiler {
             Size(size),
           ),
         };
-        let value = val.val.as_type().to_json(val.pos, memory.0)?;
+        let value = val_type.to_json(val.pos, memory.0)?;
         scope.extend(&self.mov_json(Rax, val.clone(), Some(scope.id))?);
         scope.extend(&ret_memory(memory, Rcx, Rax));
         self.drop_json(val.val, scope, false);
@@ -66,8 +67,8 @@ impl Jsonpiler {
       }
     };
     if let Err(is_g) = reassign {
-      if is_g { &mut self.globals } else { scope.innermost() }
-        .insert(var.val.clone(), var.pos.with(Variable::new(value)));
+      let target = if is_g { &mut self.globals } else { scope.innermost() };
+      target.insert(var.val.clone(), var.pos.with(Variable::new(value)));
     }
     Ok(reassign.is_ok())
   }

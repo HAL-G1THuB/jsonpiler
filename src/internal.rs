@@ -1,4 +1,4 @@
-mod handler;
+pub(crate) mod handler;
 mod input;
 mod print_n;
 mod random;
