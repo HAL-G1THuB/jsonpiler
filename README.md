@@ -27,10 +27,10 @@ Jsonpiler now has a function to support GUI.
 
 ## What’s New
 
-### 0.9.2
+### 0.9.3
 
 - Changed:
-  - Version information is now automatically generated from `Cargo.toml`
+  - Improved the mechanism for tracking whether a function has been used
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 
@@ -50,10 +50,10 @@ These are present on standard Windows installations.
 
 Extensions are available to help you write JSPL comfortably in VSCode.
 
+- **LSP Support**: Provides real-time error detection and formatting features.
 - **Auto-formatting**: Formats your code to keep it easy to read.
 - **Syntax highlighting**: Highlights JSPL keywords and operators in different colors.
 - **Run Button**: Run your program with a single click using the button in the top-right corner of the editor.
-- **LSP Support**: Provides real-time error detection and formatting features.
 
 [VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=H4LVS.jsplsyntax)
 
@@ -70,7 +70,7 @@ Extensions are available to help you write JSPL comfortably in VSCode.
 
 ```bash
 git clone "https://github.com/HAL-G1THub/jsonpiler.git"
-cd "jsonpiler/extension/bin"
+cd "./jsonpiler/extension/bin"
 jsonpiler.exe
 ```
 
@@ -131,18 +131,6 @@ error: process didn't exit successfully: `jsonpiler.exe test.json` (exit code: 6
 ```
 
 This is expected behavior and not an error in Jsonpiler itself.
-
-## JSPL
-
-Jsonpiler can compile its own language, **JSPL (Jsonpiler Structured Programming Language)**.
-For more details, see the language specification above.
-Example of the above sample code written in JSPL:
-
-```jspl
-a = "title"
-message(a, "345")
-1 + 2 + 3
-```
 
 ## Diagnostics (Errors & Warnings)
 

@@ -6,11 +6,8 @@ fn main() {
   #[allow(dead_code)]
   const _: () = ();
   #[expect(clippy::print_stderr)]
-  match Jsonpiler::new().main() {
-    Err(err) => {
-      eprintln!("{err}");
-      exit(1)
-    }
-    Ok(exit_code) => exit(exit_code),
-  }
+  exit(Jsonpiler::new().main().unwrap_or_else(|err| {
+    eprintln!("{err}");
+    1
+  }))
 }

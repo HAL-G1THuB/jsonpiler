@@ -31,11 +31,12 @@ impl Server {
   }
   #[expect(clippy::print_stderr)]
   fn handle(&mut self, msg: String) -> Option<()> {
-    let mut json_parser = Parser::new(msg.into_bytes(), 0, String::new(), String::new());
+    let mut jsonpiler = Jsonpiler::new();
+    let mut json_parser =
+      Parser::new(msg.into_bytes(), 0, String::new(), String::new(), jsonpiler.id());
     let json = match json_parser.parse_json().map(|parsed| parsed.val) {
       Ok(json) => json,
       Err(err) => {
-        let mut jsonpiler = Jsonpiler::new();
         jsonpiler.parsers.push(json_parser);
         eprintln!("{}", jsonpiler.format_err(&err.into()));
         return None;
@@ -110,7 +111,7 @@ impl Server {
       None
     })?;
     let file = uri_to_path(uri);
-    let mut parser = Parser::new(source.0.into_bytes(), 0, file.clone(), file);
+    let mut parser = Parser::new(source.0.into_bytes(), 0, file.clone(), file, 0);
     let text = match parser.format() {
       Some(text) => {
         format!(
@@ -186,7 +187,7 @@ impl Jsonpiler {
       }
     }
     let file = uri_to_path(uri);
-    let mut first_parser = Parser::new(text.clone().into_bytes(), 0, file.clone(), file);
+    let mut first_parser = Parser::new(text.clone().into_bytes(), 0, file.clone(), file, self.id());
     let parsed = first_parser.parse_jspl();
     self.parsers.push(first_parser);
     let mut diag_map = BTreeMap::new();

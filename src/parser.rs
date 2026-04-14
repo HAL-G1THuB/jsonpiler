@@ -11,6 +11,7 @@ pub(crate) struct Comment {
 #[derive(Clone)]
 pub(crate) struct Parser {
   comments: BTreeMap<u32, Comment>,
+  pub dep: Dependency,
   pub exports: BTreeMap<String, WithPos<UserDefinedInfo>>,
   pub file: String,
   pub pos: Position,
@@ -71,7 +72,13 @@ impl Parser {
     str::from_utf8(&self.source[pos.offset as usize..pos.end() as usize])
       .or(parse_err!(pos, InvalidChar))
   }
-  pub(crate) fn new(source: Vec<u8>, file_idx: u32, file: String, root_file: String) -> Self {
+  pub(crate) fn new(
+    source: Vec<u8>,
+    file_idx: u32,
+    file: String,
+    root_file: String,
+    id: LabelId,
+  ) -> Self {
     Self {
       pos: Position { line: 1, offset: 0, size: 0, file: file_idx, info: INFO_NONE },
       source,
@@ -80,6 +87,7 @@ impl Parser {
       comments: BTreeMap::new(),
       exports: BTreeMap::new(),
       warns: vec![],
+      dep: Dependency { id, uses: vec![] },
     }
   }
   fn next(&mut self) -> ParseErrOR<u8> {

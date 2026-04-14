@@ -1,4 +1,5 @@
 pub mod version {
+  pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
   pub const VERSION: &str = env!("CARGO_PKG_VERSION");
   pub const VER_MAJOR_MINOR: [u8; 2] = split_version();
   const fn parse_ver_number(bytes: &[u8], i: &mut usize) -> u8 {
@@ -121,13 +122,9 @@ pub mod runtime_err {
   pub const STACK_OVERFLOW: &str = "StackOverflow";
   pub const EXCEPTION_OCCURRED: &str = "ExceptionOccurred";
   pub const WARNING: &str = "\n\u{256d}- Warning -------------------";
-  pub const IO_ERR: &str = "\n\u{256d}- IOError -------------------";
-  pub const COMPILATION_ERR: &str = "\n\u{256d}- CompilationError ----------";
-  pub const PARSE_ERR: &str = "\n\u{256d}- ParseError ----------------";
-  pub const INTERNAL_ERR: &str = "\n\u{256d}- InternalError -------------";
+  pub const INTERNAL_ERR: &str = "InternalError";
   pub const SYSTEM_EXIT: &str = "\n\u{256d}- Exit ----------------------";
   pub const RUNTIME_ERR: &str = "\n\u{256d}- RuntimeError --------------";
-  pub const PLATFORM_ERR: &str = "\n\u{256d}- PlatformError -------------";
   pub const WIN_API_ERR: &str = "\n| WinApiError:\n|   ";
   pub const ERR_END: &str = "\n\u{2570}-----------------------------\n";
   pub const ERR_SEPARATE: &str = "\n|-----------------------------\n| ";

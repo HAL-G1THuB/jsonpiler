@@ -266,7 +266,8 @@ impl Assembler {
         if len_u32(&bytes)? != size {
           is_invalid_inst = true;
           eprintln!(
-            "{INTERNAL_ERR}\n| actual: {} != expected: {size} {inst:?}{ERR_END}",
+            "{}\n| actual: {} != expected: {size} {inst:?}{ERR_END}",
+            make_header(INTERNAL_ERR),
             len_u32(&bytes)?,
           );
         }

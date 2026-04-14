@@ -16,7 +16,6 @@ pub struct Jsonpiler {
   id_seed: LabelId,
   parsers: Vec<Parser>,
   release: bool,
-  root_id: Vec<(LabelId, Vec<LabelId>)>,
   startup: Vec<Inst>,
   str_cache: HashMap<String, LabelId>,
   symbols: HashMap<&'static str, LabelId>,

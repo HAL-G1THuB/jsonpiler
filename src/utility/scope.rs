@@ -153,6 +153,15 @@ impl Scope {
   pub(crate) fn take_body(self) -> Vec<Inst> {
     self.body
   }
+  pub(crate) fn tmp(&mut self, size: i32, align: i32, func: &mut BuiltIn) -> ErrOR<Address> {
+    Ok(Local(Tmp, self.tmp_offset(size, align, func)?))
+  }
+  pub(crate) fn tmp_offset(&mut self, size: i32, align: i32, func: &mut BuiltIn) -> ErrOR<i32> {
+    let tmp = self.alloc(size, align)?;
+    let memory = Memory(Local(Tmp, tmp), Size(size));
+    func.free_list.insert(memory);
+    Ok(tmp)
+  }
   pub(crate) fn update_args_count(&mut self, size: u32) {
     self.args_count = self.args_count.max(size);
   }

@@ -10,6 +10,11 @@
 
 ### jsonpiler 0.9
 
+#### 0.9.3
+
+- Changed:
+  - Improved the mechanism for tracking whether a function has been used
+
 #### 0.9.2
 
 - Changed:

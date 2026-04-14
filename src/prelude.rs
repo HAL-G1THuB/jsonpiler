@@ -37,7 +37,7 @@ pub(crate) use crate::parser::error::{
   RuntimeErr::{self, *},
   TokenKind,
   Warning::{self, *},
-  args_type_err, type_err, wrap_text,
+  args_type_err, make_header, type_err,
 };
 pub(crate) use crate::parser::{Comment, Parser, Position};
 pub(crate) use crate::server::Server;
@@ -49,7 +49,7 @@ pub(crate) use crate::utility::move_json::*;
 pub(crate) use crate::utility::other::{
   Address::{self, *},
   Bind::{self, *},
-  BuiltIn, BuiltInInfo, BuiltinPtr, CompiledFunc, Dll, FileId, LabelId,
+  BuiltIn, BuiltInInfo, BuiltInPtr, CompiledFunc, Dependency, Dll, FileId, LabelId,
   Lifetime::*,
   Memory,
   MemoryType::{self, *},

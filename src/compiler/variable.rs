@@ -42,9 +42,7 @@ impl Jsonpiler {
         let size = val_type.mem_type(val.pos)?.size();
         let memory = match reassign {
           Ok(memory) => {
-            if let Memory(addr, Heap(_)) = memory {
-              self.heap_free(addr, scope);
-            }
+            self.heap_free_memory(memory, scope);
             memory
           }
           Err(is_g) => Memory(

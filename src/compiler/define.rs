@@ -27,7 +27,7 @@ built_in! {self, func, scope, define;
     let ret_type = JsonType::from_string(&func.arg()?.into_ident("Type annotation")?.val);
     let epilogue = self.id();
     scope.epilogue = Some((epilogue, ret_type.clone()));
-    self.user_defined.insert(name.val.clone(), name.pos.with(UserDefinedInfo { id, params, ret_type: ret_type.clone(), uses: vec![] }));
+    self.user_defined.insert(name.val.clone(), name.pos.with(UserDefinedInfo { params, ret_type: ret_type.clone(), dep: Dependency{id, uses: vec![]} }));
     let ret = self.eval(func.arg()?, scope)?;
     if ret_type != ret.val.as_type() {
       let ret_val = format!("Function `{}`'s return value", name.val);
@@ -67,9 +67,8 @@ built_in! {self, func, scope, define;
     }
     for locals in scope.locals.clone().into_iter().chain(iter::once(scope.local_top.clone())) {
       for local in locals.into_values() {
-        if let Some(Memory(addr @ Local(..), Heap(_))) =  local.val.val.memory()
-        {
-          self.heap_free(addr, scope);
+        if let Some(memory) = local.val.val.memory() {
+          self.heap_free_memory(memory, scope);
         }
       }
     }

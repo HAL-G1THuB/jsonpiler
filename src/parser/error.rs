@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use std::{num, path};
+use std::{io::Error, num, path};
 pub(crate) type ParseErrOR<T> = Result<T, WithPos<ParseErr>>;
 pub(crate) type ErrOR<T> = Result<T, JsonpilerErr>;
 #[derive(Debug, Clone)]
@@ -133,18 +133,18 @@ impl JsonpilerErr {
       IO(_) | Internal(_) => vec![],
     }
   }
-  pub(crate) fn title(&self) -> &'static str {
-    match self {
-      Compilation(..) => COMPILATION_ERR,
-      Parse(..) => PARSE_ERR,
-      Internal(_) => INTERNAL_ERR,
-      IO(_) => IO_ERR,
-    }
+  pub(crate) fn title(&self) -> String {
+    make_header(match self {
+      Compilation(..) => "CompilationError",
+      Parse(..) => "ParseError",
+      Internal(_) => "InternalError",
+      IO(_) => "IOError",
+    })
   }
 }
 impl Jsonpiler {
   pub(crate) fn format_err(&self, err: &JsonpilerErr) -> String {
-    let mut err_str = err.title().to_owned();
+    let mut err_str = err.title().clone();
     err_str.push_str(&wrap_text(&err.to_string(), 28));
     let pos_vec = err.pos_vec();
     if !pos_vec.is_empty() {
@@ -158,6 +158,10 @@ impl Jsonpiler {
       err_str.push_str(&issue_msg);
     }
     err_str
+  }
+  #[expect(clippy::needless_pass_by_value)]
+  pub(crate) fn io_err(&self, err: Error) -> String {
+    self.format_err(&IO(err.to_string()))
   }
 }
 impl Parser {
@@ -383,7 +387,7 @@ pub(crate) fn type_err(
 fn char_width(char: char) -> usize {
   if char.is_ascii() { 1 } else { 2 }
 }
-pub(crate) fn wrap_text(string: &str, max_width: usize) -> String {
+fn wrap_text(string: &str, max_width: usize) -> String {
   let mut result = String::new();
   for line in string.lines() {
     for wrapped in wrap_line(line, max_width) {
@@ -423,4 +427,11 @@ fn wrap_line(string: &str, max_width: usize) -> Vec<String> {
     result.push(current);
   }
   result
+}
+pub(crate) fn make_header(title: &str) -> String {
+  const PREFIX: &str = "\n\u{256d}-";
+  const SPACES: usize = 2;
+  let base_len = PREFIX.chars().count() + title.chars().count() + SPACES;
+  let dash_len = 30usize.saturating_sub(base_len);
+  format!("{PREFIX} {title} {}", "-".repeat(dash_len))
 }

@@ -3,16 +3,12 @@ built_in! {self, func, scope, string;
   f_concat =>{"concat", COMMON, AtLeast(1), {
     let heap_alloc = self.import(KERNEL32, "HeapAlloc");
     let str_len = self.str_len(scope.id)?;
-    let tmp_s = Local(Tmp, scope.alloc(8, 8)?);
-    func.push_free_tmp(Memory(tmp_s, Size(8)));
-    let tmp_d = Local(Tmp, scope.alloc(8, 8)?);
-    func.push_free_tmp(Memory(tmp_d, Size(8)));
-    let acc_len = Local(Tmp, scope.alloc(8, 8)?);
-    func.push_free_tmp(Memory(acc_len, Size(8)));
+    let tmp_s = scope.tmp(8, 8, func)?;
+    let tmp_d = scope.tmp(8, 8, func)?;
+    let acc_len = scope.tmp(8, 8, func)?;
     let buffer = Local(Tmp, scope.alloc(8, 8)?);
     let first_string = arg!(self, func, (Str(x)) => x).val;
-    let first_len = Local(Tmp, scope.alloc(8, 8)?);
-    func.push_free_tmp(Memory(first_len, Size(8)));
+    let first_len = scope.tmp(8, 8, func)?;
     let mut string_vec = vec![(first_string.clone(), first_len)];
     scope.extend(&[
       mov_q(tmp_s, Rsi),
@@ -24,8 +20,7 @@ built_in! {self, func, scope, string;
     ]);
     for _ in 2..=func.len {
       let string = arg!(self, func, (Str(x)) => x).val;
-      let len = Local(Tmp, scope.alloc(8, 8)?);
-      func.push_free_tmp(Memory(len, Size(8)));
+      let len = scope.tmp(8, 8, func)?;
       string_vec.push((string.clone(), len));
       scope.extend(&[
         self.mov_str(Rcx, string),

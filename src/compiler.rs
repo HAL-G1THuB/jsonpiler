@@ -3,7 +3,6 @@ mod compare;
 mod compound;
 mod control;
 mod define;
-mod evaluate;
 mod gui;
 mod intrinsic;
 mod io;
@@ -12,7 +11,7 @@ mod module;
 mod string;
 mod variable;
 use crate::prelude::*;
-use std::{env, io::Error, process::Command};
+use std::{env, process::Command};
 macro_rules! next_file {
   ($args:ident, $program_name:ident) => {{
     let Some(next_file) = $args.next() else {
@@ -26,7 +25,7 @@ impl Jsonpiler {
   #[expect(clippy::print_stdout)]
   fn command_line(&mut self) -> Result<Option<(String, bool, env::Args)>, String> {
     let mut args = env::args();
-    let program_name = args.next().unwrap_or("jsonpiler.exe".into());
+    let program_name = args.next().unwrap_or(PKG_NAME.into());
     let mut file = next_file!(args, program_name);
     let mut build_only = false;
     match file.as_ref() {
@@ -35,18 +34,14 @@ impl Jsonpiler {
         server.main();
       }
       "help" => help_message(&program_name),
-      "version" => println!("jsonpiler version {VERSION}"),
+      "version" => println!("{PKG_NAME} version {VERSION}"),
       "format" => {
         file = next_file!(args, program_name);
-        let source = fs::read(&file).map_err(io_err)?;
-        self.parsers.push(Parser::new(
-          source,
-          0,
-          full_path(&file).map_err(io_err)?,
-          self.parsers[0].file.clone(),
-        ));
+        let source = fs::read(&file).map_err(|err| self.io_err(err))?;
+        let full_path = full_path(&file).map_err(|err| self.io_err(err))?;
+        self.parsers.push(Parser::new(source, 0, full_path, self.parsers[0].file.clone(), 0));
         if let Some(out) = self.parsers[0].format() {
-          fs::write(file, out).map_err(io_err)?;
+          fs::write(file, out).map_err(|err| self.io_err(err))?;
         }
       }
       _ => {
@@ -91,7 +86,6 @@ impl Jsonpiler {
     self.compound();
     self.control();
     self.define();
-    self.evaluate();
     self.module();
     self.gui();
     self.logic();
@@ -105,31 +99,23 @@ impl Jsonpiler {
   pub(crate) fn compile(&mut self, json: WithPos<Json>) -> ErrOR<()> {
     let data_minimum = self.id();
     self.data.push(Byte(data_minimum, 0x00));
-    let heap = self.bss(8, 8);
-    self.symbols.insert(HEAP, heap);
-    let flag_gui = self.bss(1, 1);
-    self.symbols.insert(FLAG_GUI, flag_gui);
-    let std_o = self.bss(8, 8);
-    self.symbols.insert(STD_O, std_o);
-    let std_e = self.bss(8, 8);
-    self.symbols.insert(STD_E, std_e);
-    let std_i = self.bss(8, 8);
-    self.symbols.insert(STD_I, std_i);
-    let leak = self.bss(4, 4);
-    self.symbols.insert(LEAK_CNT, leak);
+    self.symbol(FLAG_GUI, 1);
+    let heap = self.symbol(HEAP, 8);
+    let std_o = self.symbol(STD_O, 8);
+    let std_e = self.symbol(STD_E, 8);
+    let std_i = self.symbol(STD_I, 8);
+    let leak = self.symbol(LEAK_CNT, 4);
     let set_console_cp = self.import(KERNEL32, "SetConsoleCP");
     let set_console_output_cp = self.import(KERNEL32, "SetConsoleOutputCP");
     let get_process_heap = self.import(KERNEL32, "GetProcessHeap");
     let get_std_handle = self.import(KERNEL32, "GetStdHandle");
     let set_ctrl_c_handler = self.import(KERNEL32, "SetConsoleCtrlHandler");
-    let root_id = self.id();
-    self.root_id = vec![(root_id, vec![])];
     let epilogue = self.id();
-    self.seh_handler(root_id)?;
-    self.win_handler(root_id)?;
-    self.ctrl_c_handler(root_id)?;
-    let print_e = self.get_print_e(root_id)?;
-    let mut scope = Scope::new(root_id);
+    let mut scope = Scope::new(self.parsers[0].dep.id);
+    self.seh_handler(scope.id)?;
+    self.win_handler(scope.id)?;
+    self.ctrl_c_handler(scope.id)?;
+    let print_e = self.get_print_e(scope.id)?;
     let result = self.eval(json, &mut scope)?.val;
     let tmp = scope.alloc(8, 8)?;
     scope.extend(&mov_int(Rcx, if let Int(int) = result { int } else { Lit(0) }));
@@ -143,7 +129,7 @@ impl Jsonpiler {
       LogicRR(Test, Rcx, Rcx),
       CMovCc(E, Rcx, Rax),
       JCc(E, epilogue),
-      self.mov_str(Rcx, Lit(INTERNAL_ERR.into())),
+      self.mov_str(Rcx, Lit(make_header(INTERNAL_ERR))),
       Call(print_e),
       self.mov_str(Rcx, Lit("\n| Memory leak detected".into())),
       Call(print_e),
@@ -158,7 +144,7 @@ impl Jsonpiler {
     ]);
     scope.free(tmp, Size(8));
     scope.check_free()?;
-    self.check_unused_functions(self.root_id[0].1.clone());
+    self.check_unused_functions(self.parsers[0].dep.clone());
     let stack_size = scope.resolve_stack_size()?;
     let mut insts = vec![];
     extend!(
@@ -184,7 +170,7 @@ impl Jsonpiler {
       take(&mut self.startup),
       scope.take_body(),
     );
-    self.link_not_return_function(self.root_id[0].0, &insts, stack_size);
+    self.link_not_return_function(self.parsers[0].dep.id, &insts, stack_size);
     Ok(())
   }
   pub(crate) fn drop_all_scope(&mut self, scope: &mut Scope) {
@@ -203,20 +189,18 @@ impl Jsonpiler {
       if !global.val.used && !name.starts_with('_') {
         self.warn(global.pos, UnusedName(GlobalVar, name));
       }
-      if let Some(Memory(addr, Heap(_))) = global.val.val.memory() {
-        self.heap_free(addr, scope);
+      if let Some(memory) = global.val.val.memory() {
+        self.heap_free_memory(memory, scope);
       }
     }
   }
   #[expect(clippy::needless_pass_by_value)]
   pub(crate) fn drop_json(&mut self, json: Json, scope: &mut Scope, force: bool) {
-    if let Some(Memory(Local(lifetime, offset), size)) = json.memory()
+    if let Some(memory @ Memory(Local(lifetime, offset), size)) = json.memory()
       && (force || lifetime == Tmp)
     {
       scope.free(offset, size);
-      if matches!(size, Heap(_)) {
-        self.heap_free(Local(lifetime, offset), scope);
-      }
+      self.heap_free_memory(memory, scope);
     }
   }
   pub(crate) fn drop_scope(&mut self, scope: &mut Scope) {
@@ -261,13 +245,13 @@ impl Jsonpiler {
       self.free_all(&mut func, scope);
       return Ok(result);
     }
-    let Some(UserDefinedInfo { id, params, ret_type, .. }) =
+    let Some(UserDefinedInfo { dep, params, ret_type }) =
       self.user_defined.get_mut(&name.val).map(|u_d| u_d.val.clone())
     else {
       return err!(name.pos, UndefinedFunc(name.val.clone()));
     };
-    self.use_function(scope.id, id);
-    self.use_u_d(id, scope.id)?;
+    self.use_function(scope.id, dep.id);
+    self.use_u_d(scope.id, dep.id)?;
     let ret = name.pos.with(ret_type);
     let mut func = self.func_info((name, args), false, scope)?;
     let params_len = len_u32(&params)?;
@@ -280,7 +264,7 @@ impl Jsonpiler {
       }
       self.mov_args_json(func.nth - 1, scope, arg, true)?;
     }
-    scope.push(Call(id));
+    scope.push(Call(dep.id));
     let ret_json = scope.ret_json(&ret, Rax)?;
     self.free_all(&mut func, scope);
     Ok(ret_json)
@@ -298,32 +282,32 @@ impl Jsonpiler {
     Ok(tmp_json)
   }
   pub(crate) fn free_all(&mut self, func: &mut BuiltIn, scope: &mut Scope) {
-    for (start, size) in &take(&mut func.free_vec) {
-      if matches!(*size, Heap(_)) {
-        self.heap_free(Local(Tmp, *start), scope);
+    for memory in &take(&mut func.free_list) {
+      self.heap_free_memory(*memory, scope);
+      if let Memory(Local(Tmp, start), mem_type) = memory {
+        scope.free(*start, *mem_type);
       }
-      scope.free(*start, *size);
     }
   }
   pub(crate) fn func_info(
     &mut self,
-    (WithPos { val: name, pos }, arg): KeyVal,
+    (WithPos { val: name, pos }, val): KeyVal,
     skip_eval: bool,
     scope: &mut Scope,
   ) -> ErrOR<BuiltIn> {
-    let args_vec = if let Array(Lit(args)) = arg.val { args } else { vec![arg] };
+    let args_vec = if let Array(Lit(args)) = val.val { args } else { vec![val] };
     let args = if skip_eval { args_vec } else { self.eval_args(args_vec, scope)? };
     let mut func = BuiltIn {
       len: len_u32(&args)?,
       name,
       pos,
       args: vec![].into_iter(),
-      free_vec: vec![],
+      free_list: BTreeSet::new(),
       nth: 0,
     };
     if !skip_eval {
-      for memory in args.iter().filter_map(|var_arg| var_arg.val.memory()) {
-        func.push_free_tmp(memory);
+      for arg in &args {
+        func.push_free_tmp(arg.val.memory());
       }
     }
     func.args = args.into_iter();
@@ -334,32 +318,33 @@ impl Jsonpiler {
     let Some((file, build_only, args)) = self.command_line()? else {
       return Ok(0);
     };
-    if fs::metadata(&file).map_err(io_err)?.len() > u64::from(GB) {
-      return Err(format!("{COMPILATION_ERR}\n| {TooLargeFile}{ERR_END}"));
+    if fs::metadata(&file).map_err(|err| self.io_err(err))?.len() > u64::from(GB) {
+      return Err(self.format_err(&Compilation(TooLargeFile, vec![])));
     }
-    let source = fs::read(&file).map_err(io_err)?;
+    let source = fs::read(&file).map_err(|err| self.io_err(err))?;
     let exe_path = Path::new(&file).with_extension("exe");
     let exe = exe_path.to_string_lossy().to_string();
-    let full = full_path(&file).map_err(io_err)?;
-    let first_parser = Parser::new(source, 0, full.clone(), full);
+    let full = full_path(&file).map_err(|err| self.io_err(err))?;
+    let first_parser = Parser::new(source, 0, full.clone(), full, self.id());
     self.parsers.push(first_parser);
     let parsed = match Path::new(&file).extension().map(|ext| ext.to_string_lossy()) {
       Some(jspl) if jspl == "jspl" => self.parsers[0].parse_jspl(),
       Some(json) if json == "json" => self.parsers[0].parse_json(),
-      _ => return Err(format!("{COMPILATION_ERR}\n| {UnsupportedFile}{ERR_END}")),
+      _ => return Err(self.format_err(&Compilation(UnsupportedFile, vec![]))),
     }
     .map_err(|err| self.format_err(&err.into()))?;
     self.compile(parsed).map_err(|err| self.format_err(&err))?;
     let (insts, seh) = self.resolve_calls();
-    Assembler::new(take(&mut self.dlls), self.root_id[0].0, self.handlers)
+    Assembler::new(take(&mut self.dlls), self.parsers[0].dep.id, self.handlers)
       .assemble(&insts, take(&mut self.data), &self.parsers[0].file, seh)
       .map_err(|err| self.format_err(&err))?;
     if build_only {
       return Ok(0);
     }
     check_platform()?;
-    let exe_full = env::current_dir().map_err(io_err)?.join(exe);
-    Ok(Command::new(exe_full).args(args).status().map_err(io_err)?.code().unwrap_or(0))
+    let exe_full = env::current_dir().map_err(|err| self.io_err(err))?.join(exe);
+    let status = Command::new(exe_full).args(args).status().map_err(|err| self.io_err(err))?;
+    Ok(status.code().unwrap_or(0))
   }
   #[must_use]
   #[inline]
@@ -373,7 +358,6 @@ impl Jsonpiler {
       id_seed: 0,
       parsers: vec![],
       release: false,
-      root_id: vec![],
       startup: vec![],
       str_cache: HashMap::new(),
       symbols: HashMap::new(),
@@ -389,7 +373,7 @@ impl Jsonpiler {
     &mut self,
     name: &str,
     (scoped, skip_eval): (bool, bool),
-    builtin_ptr: BuiltinPtr,
+    builtin_ptr: BuiltInPtr,
     arity: Arity,
   ) {
     self.builtin.insert(name.into(), BuiltInInfo { arity, builtin_ptr, scoped, skip_eval });
@@ -402,21 +386,17 @@ impl Default for Jsonpiler {
   }
 }
 impl Jsonpiler {
-  pub(crate) fn check_unused_functions(&mut self, root_uses: Vec<LabelId>) {
-    let mut visited = root_uses;
-    let mut reachable = BTreeSet::new();
-    while let Some(id) = visited.pop() {
-      if !reachable.insert(id) {
-        continue;
-      }
-      if let Some((_, u_d)) = self.user_defined.iter().find(|(_, u_d)| u_d.val.id == id) {
-        for &next in &u_d.val.uses {
-          visited.push(next);
-        }
-      }
-    }
+  pub(crate) fn check_unused_functions(&mut self, mut root_dep: Dependency) {
+    let reachable = root_dep.reachable(
+      &self
+        .user_defined
+        .values()
+        .map(|u_d| &u_d.val.dep)
+        .chain(self.parsers.iter().map(|parser| &parser.dep))
+        .collect::<Vec<&Dependency>>(),
+    );
     for (name, u_d) in self.user_defined.clone() {
-      if !reachable.contains(&u_d.val.id)
+      if !reachable.contains(&u_d.val.dep.id)
         && !name.starts_with('_')
         && !self.parsers[u_d.pos.file as usize].exports.contains_key(&name)
       {
@@ -425,43 +405,32 @@ impl Jsonpiler {
     }
   }
   pub(crate) fn resolve_calls(&mut self) -> (Vec<Inst>, Vec<(LabelId, LabelId, i32)>) {
-    let (reachable, seh) = self.resolve_reachable_func();
+    let reachable = self.parsers[0].dep.clone().reachable(
+      &self.functions.values().map(|compiled| &compiled.dep).collect::<Vec<&Dependency>>(),
+    );
+    let mut seh = vec![];
+    for compiled in self.functions.values().filter(|compiled| reachable.contains(&compiled.dep.id))
+    {
+      if let Some((end, stack_size)) = compiled.seh {
+        seh.push((compiled.dep.id, end, stack_size));
+      }
+    }
     let insts = reachable
       .into_iter()
-      .filter_map(|reachable_id| self.functions.remove(&reachable_id))
-      .flat_map(|asm_func| asm_func.insts)
-      .collect::<Vec<_>>();
+      .filter_map(|id| self.functions.remove(&id))
+      .flat_map(|compiled| compiled.insts)
+      .collect::<Vec<Inst>>();
     (insts, seh)
   }
-  fn resolve_reachable_func(&self) -> (BTreeSet<LabelId>, Vec<(LabelId, LabelId, i32)>) {
-    let mut seh = vec![];
-    let mut visited = vec![self.root_id[0].0];
-    let mut reachable = BTreeSet::new();
-    while let Some(id) = visited.pop() {
-      if !reachable.insert(id) {
-        continue;
-      }
-      if let Some(asm_func) = self.functions.get(&id) {
-        if let Some((end, stack_size)) = asm_func.seh {
-          seh.push((id, end, stack_size));
-        }
-        for &next in &asm_func.uses {
-          visited.push(next);
-        }
-      }
-    }
-    (reachable, seh)
-  }
-  pub(crate) fn use_u_d(&mut self, id: LabelId, caller: LabelId) -> ErrOR<()> {
-    if let Some((_, root_uses)) = self.root_id.iter_mut().rfind(|(root_id, _)| *root_id == caller) {
-      root_uses.push(id);
-    } else if let Some((_, u_d)) =
-      self.user_defined.iter_mut().find(|(_, u_d)| u_d.val.id == caller)
-    {
-      u_d.val.uses.push(id);
+  pub(crate) fn use_u_d(&mut self, caller: LabelId, id: LabelId) -> ErrOR<()> {
+    let dep = if let Some(root) = self.parsers.iter_mut().rfind(|root| root.dep.id == caller) {
+      &mut root.dep
+    } else if let Some(u_d) = self.user_defined.values_mut().find(|u_d| u_d.val.dep.id == caller) {
+      &mut u_d.val.dep
     } else {
       return Err(Internal(UnknownLabel));
-    }
+    };
+    dep.uses.push(id);
     Ok(())
   }
 }
@@ -481,10 +450,9 @@ fn check_platform() -> Result<(), String> {
   }
   Ok(())
 }
-fn platform_err(reason: &'static str) -> String {
-  format!("{PLATFORM_ERR}\n| The generated executable requires {reason}{ERR_END}")
-}
-#[expect(clippy::needless_pass_by_value)]
-fn io_err(err: Error) -> String {
-  format!("{IO_ERR}{}{ERR_END}", wrap_text(&err.to_string(), 28))
+fn platform_err(requirement: &'static str) -> String {
+  format!(
+    "{}\n| The generated executable requires {requirement}{ERR_END}",
+    make_header("PlatformError")
+  )
 }

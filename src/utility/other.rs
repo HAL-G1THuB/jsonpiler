@@ -1,7 +1,7 @@
 use crate::prelude::*;
 use core::ops::Add;
 use std::vec::IntoIter;
-pub(crate) type BuiltinPtr = fn(&mut Jsonpiler, &mut BuiltIn, &mut Scope) -> ErrOR<Json>;
+pub(crate) type BuiltInPtr = fn(&mut Jsonpiler, &mut BuiltIn, &mut Scope) -> ErrOR<Json>;
 pub(crate) type Dll = (String, Vec<String>);
 pub(crate) type FileId = u32;
 pub(crate) type LabelId = u32;
@@ -14,29 +14,34 @@ impl<T: Copy> Copy for Bind<T> {}
 #[derive(Debug, Clone)]
 pub(crate) struct BuiltIn {
   pub args: IntoIter<WithPos<Json>>,
-  pub free_vec: Vec<(i32, MemoryType)>,
+  pub free_list: BTreeSet<Memory>,
   pub len: u32,
   pub name: String,
   pub nth: u32,
   pub pos: Position,
 }
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq)]
 pub(crate) struct Memory(pub Address, pub MemoryType);
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
 pub(crate) enum MemoryType {
   // Some(size) -> size < 8byte | None -> ptr
   Heap(Option<i32>),
   Size(i32),
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq)]
 pub(crate) enum Address {
   Global(LabelId),
   Local(Lifetime, i32),
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq)]
 pub(crate) enum Lifetime {
   Long,
   Tmp,
+}
+#[derive(Debug, Clone)]
+pub(crate) struct Dependency {
+  pub id: LabelId,
+  pub uses: Vec<LabelId>,
 }
 #[derive(Debug, Clone, Default)]
 pub(crate) struct WithPos<T> {
@@ -46,47 +51,38 @@ pub(crate) struct WithPos<T> {
 impl<T: Copy> Copy for WithPos<T> {}
 #[derive(Debug, Clone)]
 pub(crate) struct UserDefinedInfo {
-  pub id: LabelId,
+  pub dep: Dependency,
   pub params: Vec<JsonType>,
   pub ret_type: JsonType,
-  pub uses: Vec<LabelId>,
 }
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BuiltInInfo {
   pub arity: Arity,
-  pub builtin_ptr: BuiltinPtr,
+  pub builtin_ptr: BuiltInPtr,
   pub scoped: bool,
   pub skip_eval: bool,
 }
 #[derive(Debug, Clone)]
 pub(crate) struct CompiledFunc {
-  //  pub id: LabelId,
+  pub dep: Dependency,
   pub insts: Vec<Inst>,
   pub seh: Option<(LabelId, i32)>,
-  pub uses: Vec<LabelId>,
 }
-// pub trait Uses {
-//   fn id(&self) -> LabelId;
-//   fn uses(&self) -> &[LabelId];
-// }
-// impl Uses for CompiledFunc {
-//   fn id(&self) -> LabelId {
-//     self.id
-//   }
-//   fn uses(&self) -> &[LabelId] {
-//     &self.uses
-//   }
-// }
-// impl Uses for UserDefinedInfo {
-//   fn id(&self) -> LabelId {
-//     self.id
-//   }
-//   fn uses(&self) -> &[LabelId] {
-//     &self.uses
-//   }
-// }
-// // impl Uses for Variable {
-// // }
+impl Dependency {
+  pub(crate) fn reachable(&mut self, dep_vec: &[&Dependency]) -> BTreeSet<LabelId> {
+    let mut stack = vec![self.id];
+    let mut reachable = BTreeSet::new();
+    while let Some(id) = stack.pop() {
+      if !reachable.insert(id) {
+        continue;
+      }
+      if let Some(item) = dep_vec.iter().find(|item| item.id == id) {
+        stack.extend_from_slice(&item.uses);
+      }
+    }
+    reachable
+  }
+}
 impl Default for Address {
   fn default() -> Self {
     Local(Tmp, 0)
@@ -107,9 +103,9 @@ impl BuiltIn {
     self.nth += 1;
     self.args.next().ok_or_else(|| Internal(ArgNotFound(self.name.clone(), self.nth)))
   }
-  pub(crate) fn push_free_tmp(&mut self, memory: Memory) {
-    if let Memory(Local(Tmp, offset), size) = memory {
-      self.free_vec.push((offset, size));
+  pub(crate) fn push_free_tmp(&mut self, memory_opt: Option<Memory>) {
+    if let Some(memory @ Memory(Local(Tmp, _), _)) = memory_opt {
+      self.free_list.insert(memory);
     }
   }
 }

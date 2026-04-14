@@ -39,11 +39,12 @@ impl Jsonpiler {
     }
     insts.extend_from_slice(body);
     if let Some(end) = end_opt {
-      if !is_return {
+      if is_return {
+        if is_function {
+          insts.extend_from_slice(&[AddRId(Rsp, stack_size), Pop(Rbp), Custom(RET)]);
+        }
+      } else {
         insts.push(CallApi(self.import(KERNEL32, "ExitProcess")));
-      }
-      if is_function && is_return {
-        insts.extend_from_slice(&[AddRId(Rsp, stack_size), Pop(Rbp), Custom(RET)]);
       }
       insts.push(Lbl(end));
     }
@@ -55,9 +56,8 @@ impl Jsonpiler {
       Entry::Vacant(entry) => {
         entry.insert(CompiledFunc {
           insts,
-          uses: vec![],
+          dep: Dependency { id, uses: vec![] },
           seh: end_opt.map(|end| (end, stack_size)),
-          /*id,*/
         });
       }
     }
@@ -71,10 +71,15 @@ impl Jsonpiler {
     self.link_label(id, insts, stack_size, Some(end), true, false);
   }
   pub(crate) fn use_function(&mut self, caller: LabelId, id: LabelId) {
-    self
-      .functions
-      .entry(caller)
-      .and_modify(|asm_func| asm_func.uses.push(id))
-      .or_insert(CompiledFunc { insts: vec![], uses: vec![id], seh: None /*id: caller*/ });
+    match self.functions.entry(caller) {
+      Entry::Occupied(mut entry) => entry.get_mut().dep.uses.push(id),
+      Entry::Vacant(entry) => {
+        entry.insert(CompiledFunc {
+          insts: vec![],
+          dep: Dependency { id: caller, uses: vec![id] },
+          seh: None,
+        });
+      }
+    }
   }
 }

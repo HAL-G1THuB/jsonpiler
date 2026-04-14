@@ -67,15 +67,17 @@ impl Jsonpiler {
   pub(crate) fn global_w_chars<T: Into<String>>(&mut self, value: T) -> u32 {
     self.cache_string(value.into(), true)
   }
-  pub(crate) fn heap_free(&mut self, addr: Address, scope: &mut Scope) {
-    let heap_free = self.import(KERNEL32, "HeapFree");
-    scope.extend(&[
-      mov_q(Rcx, Global(self.symbols[HEAP])),
-      Clear(Rdx),
-      mov_q(R8, addr),
-      CallApiCheck(heap_free),
-      DecMd(Global(self.symbols[LEAK_CNT])),
-    ]);
+  pub(crate) fn heap_free_memory(&mut self, Memory(addr, mem_type): Memory, scope: &mut Scope) {
+    if matches!(mem_type, Heap(_)) {
+      let heap_free = self.import(KERNEL32, "HeapFree");
+      scope.extend(&[
+        mov_q(Rcx, Global(self.symbols[HEAP])),
+        Clear(Rdx),
+        mov_q(R8, addr),
+        CallApiCheck(heap_free),
+        DecMd(Global(self.symbols[LEAK_CNT])),
+      ]);
+    }
   }
   // Overflow is unlikely
   pub(crate) fn id(&mut self) -> u32 {
@@ -93,6 +95,11 @@ impl Jsonpiler {
       self.dlls[idx].1.len() - 1
     });
     (idx as u32, idx2 as u32)
+  }
+  pub(crate) fn symbol(&mut self, symbol: &'static str, size: u32) -> u32 {
+    let id = self.bss(size, size);
+    self.symbols.insert(symbol, id);
+    id
   }
 }
 pub(crate) fn align_up(num: usize, align: usize) -> ErrOR<usize> {

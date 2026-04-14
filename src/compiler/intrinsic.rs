@@ -1,23 +1,32 @@
 use crate::prelude::*;
-built_in! {self, func, scope, intrinsic;
+built_in! {self, func, _scope, intrinsic;
   __alloc => {"__alloc", COMMON, Exact(1), {
     let heap_alloc = self.import(KERNEL32, "HeapAlloc");
     let leak = Global(self.symbols[LEAK_CNT]);
-    scope.extend(&[mov_q(Rcx, Global(self.symbols[HEAP])), mov_d(Rdx, 8)]);
-    scope.extend(&mov_int(R8, arg!(self, func, (Int(x)) => x).val));
-    scope.extend(&[CallApi(heap_alloc), IncMd(leak)]);
-    Ok(Int(Var(scope.ret(Rax)?)))
+    _scope.extend(&[mov_q(Rcx, Global(self.symbols[HEAP])), mov_d(Rdx, 8)]);
+    _scope.extend(&mov_int(R8, arg!(self, func, (Int(x)) => x).val));
+    _scope.extend(&[CallApi(heap_alloc), IncMd(leak)]);
+    Ok(Int(Var(_scope.ret(Rax)?)))
   }},
   __free => {"__free", COMMON, Exact(1), {
     let heap_free = self.import(KERNEL32, "HeapFree");
     let leak = Global(self.symbols[LEAK_CNT]);
-    scope.extend(&[mov_q(Rcx, Global(self.symbols[HEAP])), Clear(Rdx)]);
-    scope.extend(&mov_int(R8, arg!(self, func, (Int(x)) => x).val));
-    scope.extend(&[CallApiCheck(heap_free), DecMd(leak)]);
+    _scope.extend(&[mov_q(Rcx, Global(self.symbols[HEAP])), Clear(Rdx)]);
+    _scope.extend(&mov_int(R8, arg!(self, func, (Int(x)) => x).val));
+    _scope.extend(&[CallApiCheck(heap_free), DecMd(leak)]);
     Ok(Null(Lit(())))
   }},
-  __win_api => {"__win_api", SPECIAL, AtLeast(3), { self.windows_api(false, func, scope) }},
-  __win_api_check => {"__win_api_check", SPECIAL, AtLeast(3), { self.windows_api(true, func, scope) }},
+  __win_api => {"__win_api", SPECIAL, AtLeast(3), { self.windows_api(false, func, _scope) }},
+  __win_api_check => {"__win_api_check", SPECIAL, AtLeast(3), { self.windows_api(true, func, _scope) }},
+  list => {"list", COMMON, AtLeast(0), { Ok(Array(Lit(take(&mut func.args).collect()))) }},
+  name_is_main => {"main", SPECIAL, Exact(1), {
+    if self.parsers[0].file == self.parsers[func.pos.file as usize].file {
+      Ok(self.eval(func.arg()?, _scope)?.val)
+    } else {
+      Ok(Null(Lit(())))
+    }
+  }},
+  value => {"value", COMMON, Exact(1), { Ok(func.arg()?.val) }},
 }
 impl Jsonpiler {
   pub(crate) fn windows_api(
@@ -35,9 +44,7 @@ impl Jsonpiler {
     scope.update_args_count(func.len - 3);
     for idx in 0..func.len - 3 {
       let arg = self.eval(func.arg()?, scope)?;
-      if let Some(memory) = arg.val.memory() {
-        func.push_free_tmp(memory);
-      }
+      func.push_free_tmp(arg.val.memory());
       self.mov_args_json(idx, scope, arg, false)?;
     }
     scope.push(if check { CallApiCheck(api) } else { CallApi(api) });

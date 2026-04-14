@@ -49,7 +49,6 @@ impl Jsonpiler {
     let root_id = self.id();
     let old_globals = take(&mut self.globals);
     let old_user_defined = take(&mut self.user_defined);
-    self.root_id.push((root_id, vec![]));
     let file_size = fs::metadata(&file).map_err(|val| pos.with(val))?.len();
     if file_size > u64::from(GB) {
       return err!(pos, TooLargeFile);
@@ -57,30 +56,29 @@ impl Jsonpiler {
     let source = fs::read(&file).map_err(|val| pos.with(val))?;
     let file_idx = self.parsers.len();
     let root_file = self.parsers[0].file.clone();
-    self.parsers.push(Parser::new(source, u32::try_from(file_idx)?, file.clone(), root_file));
+    self.parsers.push(Parser::new(
+      source,
+      u32::try_from(file_idx)?,
+      file.clone(),
+      root_file,
+      root_id,
+    ));
     let total_size = self.parsers.iter().map(|parser| parser.source.len()).sum::<usize>();
     if total_size > GB as usize {
       return err!(pos, TooLargeFile);
     }
+    let old_scope = scope.change(root_id);
     let mut try_include = || -> ErrOR<()> {
       let parsed = match Path::new(&file).extension().map(|ext| ext.to_string_lossy()) {
         Some(ext) if ext == "jspl" => self.parsers[file_idx].parse_jspl(),
         Some(ext) if ext == "json" => self.parsers[file_idx].parse_json(),
         _ => return err!(pos, UnsupportedFile),
       }?;
-      let old_scope = scope.change(root_id);
-      let epilogue = self.id();
       let result = self.eval(parsed, scope)?.val;
-      let stack_size = scope.resolve_stack_size()?;
       self.drop_json(result, scope, false);
       self.drop_all_scope(scope);
       self.drop_global(scope);
       scope.check_free()?;
-      let mut insts = scope.replace(old_scope);
-      insts.push(Lbl(epilogue));
-      self.use_function(self.root_id[0].0, root_id);
-      self.link_function(root_id, &insts, stack_size);
-      self.startup.push(Call(root_id));
       Ok(())
     };
     let mut result = try_include();
@@ -88,9 +86,11 @@ impl Jsonpiler {
       pos_vec.push(pos);
     }
     result?;
-    if let Some((_, root_uses)) = self.root_id.pop() {
-      self.check_unused_functions(root_uses);
-    }
+    let stack_size = scope.resolve_stack_size()?;
+    self.link_function(root_id, &scope.replace(old_scope), stack_size);
+    self.use_function(self.parsers[0].dep.id, root_id);
+    self.startup.push(Call(root_id));
+    self.check_unused_functions(self.parsers[file_idx].dep.clone());
     self.globals = old_globals;
     self.user_defined = old_user_defined;
     self.import_functions(imports, file_idx, pos, scope)?;

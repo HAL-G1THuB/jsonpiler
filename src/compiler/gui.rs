@@ -6,8 +6,8 @@ init_gui => {"GUI", SPECIAL, Exact(1), {
     let Some(render) = self.user_defined.get(&name.val).map(|u_d|u_d.val.clone()) else {
       return err!(name.pos, UndefinedFunc(name.val));
     };
-    self.use_function(scope.id, render.id);
-    self.use_u_d(render.id, scope.id)?;
+    self.use_function(scope.id, render.dep.id);
+    self.use_u_d(scope.id, render.dep.id)?;
     if render.params.len() != 5
     {
       return err!(
@@ -26,7 +26,7 @@ init_gui => {"GUI", SPECIAL, Exact(1), {
     if render.ret_type != IntT {
       return Err(type_err("`render`'s return value".into(), vec![IntT], name.pos.with(render.ret_type.clone())));
     }
-    render.id
+    render.dep.id
   };
   scope.update_args_count(12);
   let get_module_handle = self.import(KERNEL32, "GetModuleHandleW");
@@ -45,14 +45,10 @@ init_gui => {"GUI", SPECIAL, Exact(1), {
   let class_name = Global(self.global_w_chars(TITLE));
   let window_name = Global(self.global_w_chars(name.val));
   let wnd_proc = self.get_wnd_proc(scope.id, render_id)?;
-  let wnd_cls = scope.alloc(0x50, 8)?;
-  func.push_free_tmp(Memory(Local(Tmp, wnd_cls), Size(0x50)));
-  let msg = Local(Tmp, scope.alloc(0x30, 8)?);
-  func.push_free_tmp(Memory(msg, Size(0x30)));
-  let hwnd = Local(Tmp, scope.alloc(8, 8)?);
-  func.push_free_tmp(Memory(hwnd, Size(8)));
-  let size_rect = scope.alloc(0x10, 8)?;
-  func.push_free_tmp(Memory(Local(Tmp, size_rect), Size(0x10)));
+  let msg = scope.tmp(0x30, 8, func)?;
+  let hwnd = scope.tmp(8, 8, func)?;
+  let wnd_cls = scope.tmp_offset(0x50, 8, func)?;
+  let size_rect = scope.tmp_offset(0x10, 8, func)?;
   let left = size_rect;
   let top = size_rect + 4;
   let right = size_rect + 8;

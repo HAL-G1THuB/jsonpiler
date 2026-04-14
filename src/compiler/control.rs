@@ -74,6 +74,7 @@ built_in! {self, func, scope, control;
     scope.loop_labels.push((start, end, scope.locals.len()));
     scope.push(Lbl(start));
     cond = self.eval(take(&mut cond), scope)?;
+    func.push_free_tmp(cond.val.memory());
     let condition = unwrap_arg!(self, cond, "`while` condition", vec![BoolT], (Bool(x)) => x);
     match condition.val {
       Lit(reachable) => {
@@ -82,7 +83,6 @@ built_in! {self, func, scope, control;
         }
       }
       Var(memory) => {
-        func.push_free_tmp(memory);
         scope.extend(&mov_memory(Rax, memory));
         scope.extend(&[LogicRbRb(Test, Rax, Rax), JCc(E, end)]);
       }
@@ -115,9 +115,7 @@ impl Jsonpiler {
     func: &mut BuiltIn,
     scope: &mut Scope,
   ) -> ErrOR<()> {
-    if let Some(memory) = memory_opt {
-      func.push_free_tmp(memory);
-    }
+    func.push_free_tmp(memory_opt);
     let json = self.eval_with_scope(expr, scope)?.val;
     self.drop_json(json, scope, false);
     self.free_all(func, scope);
@@ -135,8 +133,8 @@ impl Jsonpiler {
     };
     for locals in scope.locals.get(idx..).unwrap_or_default().to_owned() {
       for local in locals.into_values() {
-        if let Some(Memory(addr @ Local(..), Heap(_))) = local.val.val.memory() {
-          self.heap_free(addr, scope);
+        if let Some(memory) = local.val.val.memory() {
+          self.heap_free_memory(memory, scope);
         }
       }
     }

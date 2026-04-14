@@ -149,7 +149,7 @@ impl Jsonpiler {
     extend!(
       insts,
       [mov_q(Rbx, Ref(Rcx))],
-      self.write_err_msg(INTERNAL_ERR, tmp)?,
+      self.write_err_msg(&make_header(INTERNAL_ERR), tmp)?,
       self.write_err_msg("\n| ", tmp)?,
       self.seh_match(0xFD, STACK_OVERFLOW, matched)?,
       self.seh_match(5, ACCESS_VIOLATION, matched)?,
@@ -242,7 +242,7 @@ impl Jsonpiler {
         Call(u16_to_8),
         mov_q(multi_byte, Rax),
       ],
-      self.write_err_msg(INTERNAL_ERR, tmp)?,
+      self.write_err_msg(&make_header(INTERNAL_ERR), tmp)?,
       self.write_err_msg(WIN_API_ERR, tmp)?,
       [mov_q(Rcx, multi_byte), Call(print_e)],
       self.write_err_msg(ERR_END, tmp)?,
@@ -283,7 +283,7 @@ impl Jsonpiler {
     self.link_not_return(self.handlers.win, &insts, SIZE);
     Ok(())
   }
-  pub(crate) fn write_err_msg(&mut self, text: &'static str, tmp: Address) -> ErrOR<Vec<Inst>> {
+  pub(crate) fn write_err_msg(&mut self, text: &str, tmp: Address) -> ErrOR<Vec<Inst>> {
     let write_file = self.import(KERNEL32, "WriteFile");
     Ok(vec![
       mov_q(Rcx, Global(self.symbols[STD_E])),

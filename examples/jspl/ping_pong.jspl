@@ -137,7 +137,7 @@ define(ping_pong, { x: Int; y: Int; _frame: Int; _mx: Int; my: Int }, Int,
   if(in_rect(x, y, p2_cx, my, paddle_w_half, Int(paddle_h_half)), ret(rgb(255, 0, 255)))
   if(in_score_cell(x, y, score_p2, true), ret(rgb(255, 0, 255)))
   if(in_score_cell(x, y, score_p1, false), ret(rgb(0, 255, 255)))
-  let(center = x == 0 == { { abs(y) + 8 } / 16 } % 2)
+  let(center = x == { { abs(y) + 8 } / 16 } % 2 == 0)
   if(center, ret(rgb(255, 255, 255)))
   rgb(0, 0, 0)
 }
@@ -145,10 +145,7 @@ define(ping_pong, { x: Int; y: Int; _frame: Int; _mx: Int; my: Int }, Int,
 main(
 {
   GUI(ping_pong)
-  print("CPU Score: ")
-  print(Str(score_p1))
-  print("\nPlayer Score: ")
-  print(Str(score_p2))
-  print("\n")
+  print("CPU Score: ", Str(score_p1), "\n")
+  print("Player Score: ", Str(score_p2), "\n")
 }
 )
