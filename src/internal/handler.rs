@@ -160,9 +160,6 @@ impl Jsonpiler {
         mov_d(Rsi, len_u32(EXCEPTION_OCCURRED.as_bytes())?),
         LeaRM(R13, Global(self.global_str("R0000"))),
         Lbl(matched),
-        CMovCc(E, Rdi, Rcx),
-        CMovCc(E, Rsi, Rdx),
-        CMovCc(E, R13, R12),
         mov_q(Rcx, std_e),
         mov_q(Rdx, Rdi),
         mov_d(R8, Rsi),
@@ -196,9 +193,9 @@ impl Jsonpiler {
   ) -> ErrOR<Vec<Inst>> {
     Ok(vec![
       mov_d(Rax, 0xC000_0000 | err_code),
-      LeaRM(Rcx, Global(self.global_str(err))),
-      mov_d(Rdx, len_u32(err.as_bytes())?),
-      LeaRM(R12, Global(self.global_str(format!("R{err_code:04X}")))),
+      LeaRM(Rdi, Global(self.global_str(err))),
+      mov_d(Rsi, len_u32(err.as_bytes())?),
+      LeaRM(R13, Global(self.global_str(format!("R{err_code:04X}")))),
       LogicRR(Cmp, Rbx, Rax),
       JCc(E, matched),
     ])
@@ -288,7 +285,7 @@ impl Jsonpiler {
     let write_file = self.import(KERNEL32, "WriteFile");
     Ok(vec![
       mov_q(Rcx, Global(self.symbols[STD_E])),
-      mov_q(Rdx, Global(self.global_str(text))),
+      LeaRM(Rdx, Global(self.global_str(text))),
       mov_d(R8, len_u32(text.as_bytes())?),
       LeaRM(R9, tmp),
       Clear(Rax),

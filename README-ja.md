@@ -1,6 +1,6 @@
 # Jsonpiler — JSON 構文プログラミング言語
 
-[英語(English)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/README-ja.md)
+[English](https://github.com/HAL-G1THuB/jsonpiler/blob/main/README.md)
 
 **Jsonpiler** は **JSON** と **JSPL (Jsonpiler Structured Programming Language)** を文法として使うプログラミング言語のコンパイラ兼実行環境です。
 JSON で書かれたプログラムを **x86_64 Windows PE** 形式の機械語に変換し、リンクして実行します。
@@ -24,14 +24,14 @@ Jsonpilerに GUI をサポートする関数が追加されました。
 
 [ジュリア集合をGUIで描くプログラムのソースコード](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/gui_julia_mouse.jspl)
 
-[マンデルブロ集合をGUIで描くプログラムのソースコード](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/gui_mandelbrot_zoom.jspl)
+[マンデルブロ集合をGUIで描くプログラムのソースコード](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/gui_mandelbrot_zoom_scroll.jspl)
 
 ## 更新情報
 
-### 0.9.4
+### 0.9.5
 
-- 追加
-  - メモリのタイプを表す `MemoryType` 構造体
+- 修正
+  - 内部エラーメッセージが正しく表示されない問題
 
 詳細は **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG-ja.md)** を参照してください。
 

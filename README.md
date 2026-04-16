@@ -23,14 +23,14 @@ Jsonpiler now has a function to support GUI.
 
 [Source code of the program to draw the Julia set with GUI](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/gui_julia_mouse.jspl)
 
-[Source code of the program to draw the Mandelbrot set with GUI](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/gui_mandelbrot_zoom.jspl)
+[Source code of the program to draw the Mandelbrot set with GUI](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/gui_mandelbrot_zoom_scroll.jspl)
 
 ## What’s New
 
-### 0.9.4
+### 0.9.5
 
-- Added
-  - The `MemoryType` structure, which represents memory types
+- Fixed
+  - An issue where internal error messages were not displayed correctly
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 

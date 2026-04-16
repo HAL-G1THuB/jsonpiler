@@ -10,6 +10,11 @@
 
 ### jsonpiler 0.9
 
+#### 0.9.5
+
+- Fixed
+  - An issue where internal error messages were not displayed correctly
+
 #### 0.9.4
 
 - Added
