@@ -1,6 +1,6 @@
 use crate::prelude::*;
 use std::{io::Error, num, path};
-pub(crate) type ParseErrOR<T> = Result<T, WithPos<ParseErr>>;
+pub(crate) type ParseErrOR<T> = Result<T, Pos<ParseErr>>;
 pub(crate) type ErrOR<T> = Result<T, JsonpilerErr>;
 #[derive(Debug, Clone)]
 pub(crate) enum JsonpilerErr {
@@ -90,8 +90,8 @@ pub(crate) enum NameKind {
   LocalVar,
   UserDefinedFunc,
 }
-impl From<WithPos<ParseErr>> for JsonpilerErr {
-  fn from(WithPos { val: err, pos }: WithPos<ParseErr>) -> Self {
+impl From<Pos<ParseErr>> for JsonpilerErr {
+  fn from(Pos { val: err, pos }: Pos<ParseErr>) -> Self {
     Parse(err, vec![pos])
   }
 }
@@ -105,8 +105,8 @@ impl From<io::Error> for JsonpilerErr {
     IO(err.to_string())
   }
 }
-impl From<WithPos<io::Error>> for JsonpilerErr {
-  fn from(err: WithPos<io::Error>) -> Self {
+impl From<Pos<io::Error>> for JsonpilerErr {
+  fn from(err: Pos<io::Error>) -> Self {
     Compilation(IncludeIOError(err.val.to_string()), vec![err.pos])
   }
 }
@@ -149,7 +149,8 @@ impl Jsonpiler {
     let pos_vec = err.pos_vec();
     if !pos_vec.is_empty() {
       for pos in pos_vec.iter().rev() {
-        let (file_str, l_c, code, carets) = self.parsers[pos.file as usize].err_info(*pos);
+        let (file_str, l_c, code, carets) =
+          self.parsers[pos.file as usize].err_info(*pos, &self.parsers[0].val.file);
         err_str.push_str(&format!("{ERR_SEPARATE}{file_str}{l_c}{ERR_SEPARATE}{code}| {carets}"));
       }
     }
@@ -164,21 +165,25 @@ impl Jsonpiler {
     self.format_err(&IO(err.to_string()))
   }
 }
-impl Parser {
+impl Pos<Parser> {
   #[must_use]
-  pub(crate) fn err_info(&self, pos: Position) -> (String, String, String, String) {
+  pub(crate) fn err_info(
+    &self,
+    pos: Position,
+    root_file: &str,
+  ) -> (String, String, String, String) {
     let mut root =
-      Path::new(&self.root_file).parent().unwrap_or(Path::new("C:")).to_string_lossy().to_string();
+      Path::new(root_file).parent().unwrap_or(Path::new("C:")).to_string_lossy().to_string();
     root.push(path::MAIN_SEPARATOR);
-    let find_ln = |i: &usize| self.source[*i] == b'\n';
-    let len = self.source.len();
+    let find_ln = |i: &usize| self.val.source[*i] == b'\n';
+    let len = self.val.source.len();
     let index = (pos.offset as usize).min(len);
     let start = (0..index).rfind(&find_ln).map_or(0, |st| st + 1);
     let end = (index..len).find(&find_ln).unwrap_or(len);
-    let line = String::from_utf8_lossy(&self.source[start..end]);
+    let line = String::from_utf8_lossy(&self.val.source[start..end]);
     let carets_offset = index - start;
     let carets = (pos.size as usize).min(end - index).max(1);
-    let file_path = self.file.strip_prefix(&root).unwrap_or(&self.file).into();
+    let file_path = self.val.file.strip_prefix(&root).unwrap_or(&self.val.file).into();
     (
       file_path,
       format!(":{}:{}", pos.line, carets_offset + 1),
@@ -335,21 +340,29 @@ impl InternalErr {
 }
 impl Jsonpiler {
   pub(crate) fn warn(&mut self, pos: Position, err: Warning) {
-    self.parsers[pos.file as usize].warn(pos, err);
+    let root_file = self.parsers[0].val.file.clone();
+    self.parsers[pos.file as usize].warn(pos, err, &root_file);
   }
 }
-impl Parser {
+impl Pos<Parser> {
   #[expect(clippy::print_stderr)]
-  pub(crate) fn warn(&mut self, pos: Position, err: Warning) {
-    let (file, l_c, code, carets) = self.err_info(pos);
+  pub(crate) fn warn(&mut self, pos: Position, err: Warning, root_file: &str) {
+    let (file, l_c, code, carets) = self.err_info(pos, root_file);
     eprintln!("{WARNING}\n| {err}{ERR_SEPARATE}{file}{l_c}{ERR_SEPARATE}{code}| {carets}{ERR_END}");
-    self.warns.push(pos.with(err));
+    self.val.warns.push(pos.with(err));
   }
 }
-impl BuiltIn {
+impl Pos<BuiltIn> {
+  pub(crate) fn args_err(
+    &mut self,
+    expected: Vec<JsonType>,
+    json_type: Pos<JsonType>,
+  ) -> JsonpilerErr {
+    type_err(format_nth_args(self.val.nth, &self.val.name), expected, json_type)
+  }
   pub(crate) fn validate_args(&self, expected: Arity) -> ErrOR<()> {
-    let name = self.name.clone();
-    let actual = self.len;
+    let name = self.val.name.clone();
+    let actual = self.val.len;
     if match expected {
       Exact(n) => actual == n,
       AtLeast(min) => min <= actual,
@@ -362,12 +375,7 @@ impl BuiltIn {
     }
   }
 }
-pub(crate) fn args_type_err(
-  nth: u32,
-  name: &str,
-  expected: Vec<JsonType>,
-  json_type: WithPos<JsonType>,
-) -> JsonpilerErr {
+pub(crate) fn format_nth_args(nth: u32, name: &str) -> String {
   let suffix = match nth % 10 {
     _ if (11..=13).contains(&(nth % 100)) => "th",
     1 => "st",
@@ -375,12 +383,12 @@ pub(crate) fn args_type_err(
     3 => "rd",
     _ => "th",
   };
-  type_err(format!("{nth}{suffix} argument of `{name}`"), expected, json_type)
+  format!("{nth}{suffix} argument of `{name}`")
 }
 pub(crate) fn type_err(
   name: String,
   expected: Vec<JsonType>,
-  json_type: WithPos<JsonType>,
+  json_type: Pos<JsonType>,
 ) -> JsonpilerErr {
   Compilation(TypeError { name, expected, actual: json_type.val }, vec![json_type.pos])
 }

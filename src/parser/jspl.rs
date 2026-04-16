@@ -1,5 +1,5 @@
 use crate::prelude::*;
-impl Parser {
+impl Pos<Parser> {
   pub(crate) fn parse_block(&mut self, is_top_level: bool) -> ParseErrOR<Json> {
     self.check_eof()?;
     let mut entries = vec![];
@@ -19,7 +19,7 @@ impl Parser {
       }
       let value = self.try_operator(0)?;
       if let Some(pos) = entry_pos {
-        self.warn(pos, UselessLiteral);
+        self.warn(pos, UselessLiteral, &self.val.file.clone());
       }
       if let Object(Lit(object)) = value.val {
         entries.extend(object);
@@ -30,7 +30,7 @@ impl Parser {
     }
     Ok(Object(Lit(entries)))
   }
-  fn parse_call(&mut self) -> ParseErrOR<WithPos<Json>> {
+  fn parse_call(&mut self) -> ParseErrOR<Pos<Json>> {
     let mut pos = self.pos;
     self.expect(b'(')?;
     self.skip_ws_comment(false)?;
@@ -58,9 +58,9 @@ impl Parser {
     self.set_size(&mut pos);
     Ok(pos.with(Array(Lit(args))))
   }
-  fn parse_ident(&mut self) -> ParseErrOR<WithPos<String>> {
+  fn parse_ident(&mut self) -> ParseErrOR<Pos<String>> {
     let mut pos = self.pos;
-    while (self.pos.offset as usize) < self.source.len() {
+    while (self.pos.offset as usize) < self.val.source.len() {
       let byte = self.peek();
       if byte.is_ascii_whitespace() || byte.is_ascii_control() || b"#()[,]{:;}\"".contains(&byte) {
         break;
@@ -74,7 +74,7 @@ impl Parser {
     Ok(pos.with(self.get_slice(pos)?.into()))
   }
   fn skip_space_check_sep(&mut self) -> bool {
-    while (self.pos.offset as usize) < self.source.len() {
+    while (self.pos.offset as usize) < self.val.source.len() {
       match self.peek() {
         b' ' | b'\t' => {
           self.pos.offset += 1;
@@ -91,7 +91,7 @@ impl Parser {
   }
   pub(crate) fn skip_ws_comment(&mut self, is_block: bool) -> ParseErrOR<bool> {
     let mut is_separated = false;
-    while (self.pos.offset as usize) < self.source.len() {
+    while (self.pos.offset as usize) < self.val.source.len() {
       if self.consume_if(b'#')? {
         let mut pos = self.pos;
         pos.offset -= 1;
@@ -102,7 +102,7 @@ impl Parser {
             if result.is_some() {
               pos.size -= 1;
             }
-            self.comments.insert(
+            self.val.comments.insert(
               pos.offset,
               Comment { leading: is_separated, text: self.get_slice(pos)?.to_owned() },
             );
@@ -133,8 +133,8 @@ impl Parser {
   fn try_concat_op(
     &mut self,
     prec: usize,
-    operator: &mut WithPos<String>,
-    left: &mut WithPos<Json>,
+    operator: &mut Pos<String>,
+    left: &mut Pos<Json>,
   ) -> ParseErrOR<()> {
     let right = self.try_operator(prec)?;
     let mut pos = left.pos;
@@ -153,7 +153,7 @@ impl Parser {
     }
     Ok(())
   }
-  fn try_operator(&mut self, min_prec: usize) -> ParseErrOR<WithPos<Json>> {
+  fn try_operator(&mut self, min_prec: usize) -> ParseErrOR<Pos<Json>> {
     let mut left = self.try_parse_value()?;
     let mut unknown_op: Option<String> = None;
     loop {
@@ -189,7 +189,7 @@ impl Parser {
     }
     Ok(left)
   }
-  fn try_parse_ident(&mut self) -> Option<WithPos<String>> {
+  fn try_parse_ident(&mut self) -> Option<Pos<String>> {
     let saved = self.pos;
     self.skip_ws_comment(false).ok()?;
     let ident = self.parse_ident().ok()?;
@@ -201,12 +201,14 @@ impl Parser {
       _ => Some(ident),
     }
   }
-  fn try_parse_value(&mut self) -> ParseErrOR<WithPos<Json>> {
+  fn try_parse_value(&mut self) -> ParseErrOR<Pos<Json>> {
     let mut pos = self.pos;
     let val = match self.peek() {
       b'"' => Str(Lit(self.parse_string()?)),
       b'0'..=b'9' => self.parse_number()?,
-      b'-' if self.source.get((self.pos.offset + 1) as usize).is_some_and(u8::is_ascii_digit) => {
+      b'-'
+        if self.val.source.get((self.pos.offset + 1) as usize).is_some_and(u8::is_ascii_digit) =>
+      {
         self.parse_number()?
       }
       b'[' => {

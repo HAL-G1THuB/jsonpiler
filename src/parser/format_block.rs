@@ -1,5 +1,5 @@
 use crate::prelude::*;
-impl Parser {
+impl Pos<Parser> {
   pub(crate) fn format_block(
     &mut self,
     out: &mut String,
@@ -69,8 +69,8 @@ impl Parser {
   pub(crate) fn format_type_func(
     &mut self,
     out: &mut String,
-    key: &WithPos<String>,
-    val: &WithPos<Json>,
+    key: &Pos<String>,
+    val: &Pos<Json>,
     size: u32,
     indentation: u32,
   ) -> Option<()> {
@@ -104,7 +104,7 @@ impl Parser {
     );
     let mut signature = 0;
     match val {
-      WithPos { val: Array(Lit(args)), .. } => {
+      Pos { val: Array(Lit(args)), .. } => {
         for (idx, item) in args.iter().enumerate() {
           if idx == 0 {
             self.format_json(out, item, indentation + 1)?;
@@ -129,12 +129,12 @@ impl Parser {
   pub(crate) fn format_type_op(
     &mut self,
     out: &mut String,
-    key: &WithPos<String>,
-    val: &WithPos<Json>,
+    key: &Pos<String>,
+    val: &Pos<Json>,
     size: u32,
     indentation: u32,
   ) -> Option<()> {
-    let WithPos { val: Array(Lit(args)), .. } = val else { return None };
+    let Pos { val: Array(Lit(args)), .. } = val else { return None };
     for (idx, item) in args.iter().enumerate() {
       if idx != 0 {
         out.push(' ');
@@ -218,7 +218,7 @@ impl Json {
       }
     }
   }
-  pub(crate) fn operator(&self) -> Option<WithPos<String>> {
+  pub(crate) fn operator(&self) -> Option<Pos<String>> {
     if let Object(Lit(obj)) = &self
       && obj.len() == 1
       && obj[0].0.pos.info == INFO_OP
@@ -229,10 +229,7 @@ impl Json {
     }
   }
 }
-pub(crate) fn value<'a>(
-  key: &WithPos<String>,
-  val: &'a WithPos<Json>,
-) -> Option<&'a WithPos<Json>> {
+pub(crate) fn value<'a>(key: &Pos<String>, val: &'a Pos<Json>) -> Option<&'a Pos<Json>> {
   if &key.val == "value"
     && let Array(Lit(array)) = &val.val
     && array.len() == 1

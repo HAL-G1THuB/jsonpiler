@@ -2,17 +2,17 @@ use crate::prelude::*;
 built_in! {self, _func, scope, arithmetic;
   abs => {"abs", COMMON, Exact(1), {
     match _func.arg()? {
-      WithPos { val: Int(int), .. } => {
+      Pos { val: Int(int), .. } => {
         scope.extend(&mov_int(Rax, int));
         scope.extend(&[Custom(CQO), LogicRR(Xor, Rax, Rdx), SubRR(Rax, Rdx)]);
         Ok(Int(Var(scope.ret(Rax)?)))
       }
-      WithPos { val: Float(float), .. } => {
+      Pos { val: Float(float), .. } => {
         scope.extend(&mov_float_reg(Rax, float));
         scope.push(Custom(BTR_RAX_63));
         Ok(Float(Var(scope.ret(Rax)?)))
       }
-      other => Err(args_type_err(1, &_func.name, vec![IntT, BoolT], other.map_ref(Json::as_type)))
+      other => Err(_func.args_err(vec![IntT, BoolT], other.map_ref(Json::as_type)))
     }
   }},
   calc_add => {"+", COMMON, AtLeast(2), {
@@ -32,19 +32,19 @@ built_in! {self, _func, scope, arithmetic;
     )
   }},
   calc_minus => {"-", COMMON, AtLeast(1), {
-    if _func.len == 1 {
+    if _func.val.len == 1 {
       match _func.arg()? {
-        WithPos { val: Int(int), .. } => {
+        Pos { val: Int(int), .. } => {
           scope.extend(&mov_int(Rax, int));
           scope.push(UnaryR(Neg, Rax));
           Ok(Int(Var(scope.ret(Rax)?)))
         }
-        WithPos { val: Float(float), .. } => {
+        Pos { val: Float(float), .. } => {
           scope.extend(&mov_float_reg(Rax, float));
           scope.push(Custom(BTC_RAX_63));
           Ok(Float(Var(scope.ret(Rax)?)))
         }
-        other => Err(args_type_err(1, &_func.name, vec![IntT, BoolT], other.map_ref(Json::as_type)))
+        other => Err(_func.args_err(vec![IntT, BoolT], other.map_ref(Json::as_type)))
       }
     } else {
       self.arithmetic_op(
@@ -67,7 +67,7 @@ built_in! {self, _func, scope, arithmetic;
     scope.ret_xmm(Rax)
   }},
   int => {"Int", COMMON, Exact(1), {
-    scope.extend(&self.mov_float_xmm(Rax, Rax, arg!(self, _func, (Float(x)) => x).val));
+    scope.extend(&self.mov_float_xmm(Rax, Rax, arg!(self, _func, (Float(x)) => x).val)?);
     scope.push(CvtTSd2Si(Rax, Rax));
     Ok(Int(Var(scope.ret(Rax)?)))
   }},
@@ -77,7 +77,7 @@ built_in! {self, _func, scope, arithmetic;
   }},
   rem => {"%", COMMON, Exact(2), {
     let lhs = arg!(self, _func, (Int(x)) => x).val;
-    let WithPos { val: rhs, pos } = arg!(self, _func, (Int(x)) => x);
+    let Pos { val: rhs, pos } = arg!(self, _func, (Int(x)) => x);
     if matches!(rhs, Lit(0)) {
       return err!(pos, ZeroDivision);
     }
@@ -93,7 +93,7 @@ built_in! {self, _func, scope, arithmetic;
   shift_left => {"<<", COMMON, Exact(2), { self.shift(Shl, _func, scope) }},
   shift_right => {">>", COMMON, Exact(2), { self.shift(Shr, _func, scope) }},
   sqrt => {"sqrt", COMMON, Exact(1), {
-    scope.extend(&self.mov_float_xmm(Rax, Rax, arg!(self, _func, (Float(x)) => x).val));
+    scope.extend(&self.mov_float_xmm(Rax, Rax, arg!(self, _func, (Float(x)) => x).val)?);
     scope.push(SqrtSd(Rax, Rax));
     scope.ret_xmm(Rax)
   }},
@@ -106,16 +106,16 @@ impl Jsonpiler {
     &mut self,
     op_inst: &(Inst, ArithSdKind),
     ops: (&Op, &Op),
-    func: &mut BuiltIn,
+    func: &mut Pos<BuiltIn>,
     scope: &mut Scope,
     ident_elem: i64,
     when: (&impl Fn() -> ErrOR<Option<i64>>, &impl Fn() -> Option<Inst>),
     check_opt: Option<&CheckFn>,
   ) -> ErrOR<Json> {
     match func.arg()? {
-      WithPos { val: Int(int), pos } => {
+      Pos { val: Int(int), pos } => {
         let mut rest = vec![];
-        for _ in 1..func.len {
+        for _ in 1..func.val.len {
           rest.push(arg!(self, func, (Int(x)) => x));
         }
         let (first, vars, acc) = constant_fold(pos.with(int), rest, ops, ident_elem, &when.0)?;
@@ -149,15 +149,15 @@ impl Jsonpiler {
         }
         Ok(Int(Var(scope.ret(Rax)?)))
       }
-      WithPos { val: Float(float), .. } => {
-        scope.extend(&self.mov_float_xmm(Rax, Rax, float));
-        for _ in 1..func.len {
-          scope.extend(&self.mov_float_xmm(Rcx, Rax, arg!(self, func, (Float(x)) => x).val));
+      Pos { val: Float(float), .. } => {
+        scope.extend(&self.mov_float_xmm(Rax, Rax, float)?);
+        for _ in 1..func.val.len {
+          scope.extend(&self.mov_float_xmm(Rcx, Rax, arg!(self, func, (Float(x)) => x).val)?);
           scope.push(ArithSd(op_inst.1, Rax, Rcx));
         }
         scope.ret_xmm(Rax)
       }
-      other => Err(args_type_err(1, &func.name, vec![IntT, BoolT], other.map_ref(Json::as_type))),
+      other => Err(func.args_err(vec![IntT, BoolT], other.map_ref(Json::as_type))),
     }
   }
   pub(crate) fn check_zero_cqo(&mut self, pos: Position, caller: LabelId) -> ErrOR<Vec<Inst>> {
@@ -169,7 +169,7 @@ impl Jsonpiler {
     bind: Bind<i64>,
     check_opt: Option<&CheckFn>,
     int_inst: Inst,
-    func: &mut BuiltIn,
+    func: &mut Pos<BuiltIn>,
     scope: &mut Scope,
   ) -> ErrOR<()> {
     scope.extend(&mov_int(Rcx, bind));
@@ -185,11 +185,11 @@ impl Jsonpiler {
   fn shift(
     &mut self,
     direction: ShiftDirection,
-    func: &mut BuiltIn,
+    func: &mut Pos<BuiltIn>,
     scope: &mut Scope,
   ) -> ErrOR<Json> {
     let lhs = arg!(self, func, (Int(x)) => x).val;
-    let WithPos { val: rhs, pos } = arg!(self, func, (Int(x)) => x);
+    let Pos { val: rhs, pos } = arg!(self, func, (Int(x)) => x);
     if let (Lit(lit1), Lit(lit2)) = (&lhs, &rhs) {
       let Ok(rhs_u32) = u32::try_from(*lit2) else { return err!(pos, TooLargeShift) };
       return Ok(Int(Lit(
@@ -216,12 +216,12 @@ impl Jsonpiler {
   }
 }
 fn constant_fold(
-  first: WithPos<Bind<i64>>,
-  rest: Vec<WithPos<Bind<i64>>>,
+  first: Pos<Bind<i64>>,
+  rest: Vec<Pos<Bind<i64>>>,
   ops: (&Op, &Op),
   ident_elem: i64,
   when0: &impl Fn() -> ErrOR<Option<i64>>,
-) -> ErrOR<(Option<Memory>, Vec<WithPos<Memory>>, i64)> {
+) -> ErrOR<(Option<Memory>, Vec<Pos<Memory>>, i64)> {
   let mut vars = vec![];
   let mut acc = ident_elem;
   for bind in rest {

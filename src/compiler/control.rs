@@ -9,7 +9,7 @@ built_in! {self, func, scope, control;
     let mut if_expr = if let Array(Lit(x)) = arg.val { arg.pos.with(x) } else {
       let cond = self.eval_with_scope(take(&mut arg), scope)?;
       let Bool(condition) = cond.val else {
-        return Err(args_type_err(1, &func.name, if_expr_t, cond.map_ref(Json::as_type)))
+        return Err(func.args_err(if_expr_t, cond.map_ref(Json::as_type)))
       };
       func.validate_args(Exact(2))?;
       scope.extend(&mov_bool(Rax, condition));
@@ -25,7 +25,7 @@ built_in! {self, func, scope, control;
       return Ok(Null(Lit(())))
     };
     let mut then_vec = vec![];
-    for _ in 1..=func.len {
+    for _ in 1..=func.val.len {
       if if_expr.val.len() != 2 {
         return Err(type_err(
           "`if` expression".into(), if_expr_t,
@@ -42,7 +42,7 @@ built_in! {self, func, scope, control;
       let memory_opt = match condition.val {
         Lit(reachable) => {
           if reachable {
-            if func.nth != func.len {
+            if func.val.nth != func.val.len {
               self.warn(condition.pos, EarlyElse);
             }
           } else {
@@ -55,14 +55,14 @@ built_in! {self, func, scope, control;
       then_vec.push((then_label, if_expr.val.remove(0), memory_opt));
       scope.extend(&mov_bool(Rax, condition.val));
       scope.extend(&[LogicRbRb(Test, Rax, Rax), JCc(Ne, then_label)]);
-      if func.nth != func.len {
+      if func.val.nth != func.val.len {
         if_expr = arg!(self, func, (Array(Lit(x))) => x);
       }
     }
     scope.push(Jmp(end));
     for (idx, (then_label, expr, memory_opt)) in then_vec.into_iter().enumerate() {
       scope.push(Lbl(then_label));
-      self.if_expr(memory_opt, idx + 1 == func.len as usize, end, expr, func, scope)?;
+      self.if_expr(memory_opt, idx + 1 == func.val.len as usize, end, expr, func, scope)?;
     }
     Ok(Null(Lit(())))
   }},
@@ -96,11 +96,7 @@ built_in! {self, func, scope, control;
   }},
 }
 impl Jsonpiler {
-  pub(crate) fn eval_with_scope(
-    &mut self,
-    expr: WithPos<Json>,
-    scope: &mut Scope,
-  ) -> ErrOR<WithPos<Json>> {
+  pub(crate) fn eval_with_scope(&mut self, expr: Pos<Json>, scope: &mut Scope) -> ErrOR<Pos<Json>> {
     scope.locals.push(BTreeMap::new());
     let value = self.eval(expr, scope)?;
     self.drop_scope(scope);
@@ -111,8 +107,8 @@ impl Jsonpiler {
     memory_opt: Option<Memory>,
     is_end: bool,
     end: u32,
-    expr: WithPos<Json>,
-    func: &mut BuiltIn,
+    expr: Pos<Json>,
+    func: &mut Pos<BuiltIn>,
     scope: &mut Scope,
   ) -> ErrOR<()> {
     func.push_free_tmp(memory_opt);
@@ -124,17 +120,17 @@ impl Jsonpiler {
   }
   pub(crate) fn loop_control(
     &mut self,
-    func: &mut BuiltIn,
+    func: &mut Pos<BuiltIn>,
     scope: &mut Scope,
     is_continue: bool,
   ) -> ErrOR<Json> {
     let Some(&(start, end, idx)) = scope.loop_labels.last() else {
-      return err!(func.pos, OutSideError { kind: func.name.clone(), place: "loop" });
+      return err!(func.pos, OutSideError { kind: func.val.name.clone(), place: "loop" });
     };
     for locals in scope.locals.get(idx..).unwrap_or_default().to_owned() {
       for local in locals.into_values() {
         if let Some(memory) = local.val.val.memory() {
-          self.heap_free_memory(memory, scope);
+          self.heap_free(memory, scope);
         }
       }
     }

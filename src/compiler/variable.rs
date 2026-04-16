@@ -5,8 +5,8 @@ impl Jsonpiler {
   pub(crate) fn assign(
     &mut self,
     is_global_opt: Option<bool>,
-    var: &WithPos<String>,
-    val: WithPos<Json>,
+    var: &Pos<String>,
+    val: Pos<Json>,
     scope: &mut Scope,
   ) -> ErrOR<bool> {
     let reassign = if let Some(is_g) = is_global_opt {
@@ -42,7 +42,7 @@ impl Jsonpiler {
         let size = val_type.mem_type(val.pos)?.size();
         let memory = match reassign {
           Ok(memory) => {
-            self.heap_free_memory(memory, scope);
+            self.heap_free(memory, scope);
             memory
           }
           Err(is_g) => Memory(
@@ -51,12 +51,20 @@ impl Jsonpiler {
             } else {
               Local(Long, scope.alloc(size, size)?)
             },
-            Size(size),
+            MemoryType {
+              heap: Value,
+              size: Small(match size {
+                1 => RB,
+                4 => RD,
+                8 => RQ,
+                _ => return err!(val.pos, UnsupportedType(val_type.name())),
+              }),
+            },
           ),
         };
         let value = val_type.to_json(val.pos, memory.0)?;
         scope.extend(&self.mov_json(Rax, val.clone(), Some(scope.id))?);
-        scope.extend(&ret_memory(memory, Rcx, Rax));
+        scope.extend(&ret_memory(memory, Rcx, Rax)?);
         self.drop_json(val.val, scope, false);
         if is_global {
           self.critical_sect(scope, LEAVE);
@@ -77,13 +85,13 @@ impl Jsonpiler {
   }
   pub(crate) fn declare(
     &mut self,
-    func: &mut BuiltIn,
+    func: &mut Pos<BuiltIn>,
     scope: &mut Scope,
     is_global: bool,
   ) -> ErrOR<Json> {
     let mut assign_expr = arg!(self, func, (Object(Lit(x))) => x);
     if assign_expr.val.len() == 1
-      && let (name, WithPos { val: Array(Lit(mut expr)), .. }) = take(&mut assign_expr.val[0])
+      && let (name, Pos { val: Array(Lit(mut expr)), .. }) = take(&mut assign_expr.val[0])
       && name.val == "="
       && expr.len() == 2
     {
@@ -93,7 +101,7 @@ impl Jsonpiler {
       Ok(Null(Lit(())))
     } else {
       Err(type_err(
-        func.name.clone(),
+        func.val.name.clone(),
         vec![CustomT("Assign expression".into())],
         assign_expr.pos.with(ObjectT),
       ))

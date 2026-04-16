@@ -4,7 +4,7 @@ impl Jsonpiler {
     &mut self,
     idx: u32,
     scope: &mut Scope,
-    arg: WithPos<Json>,
+    arg: Pos<Json>,
     copy: bool,
   ) -> ErrOR<()> {
     let reg = *ARG_REGS.get(idx as usize).unwrap_or(&Rax);
@@ -37,7 +37,7 @@ impl Jsonpiler {
         scope.push(mov_q(*tmp_reg, Local(Tmp, tmp + i32::try_from(tmp_idx * 8)?)));
       }
     }
-    scope.free(tmp, Size(0x20));
+    scope.free(tmp, MemoryType { heap: Value, size: Known(0x20) });
     Ok(())
   }
   pub(crate) fn mov_float_xmm(
@@ -45,16 +45,16 @@ impl Jsonpiler {
     xmm: Register,
     tmp: Register,
     float: Bind<f64>,
-  ) -> Vec<Inst> {
+  ) -> ErrOR<Vec<Inst>> {
     match float {
-      Lit(lit) => vec![MovSdM(xmm, self.global_q(lit.to_bits()).0)],
+      Lit(lit) => Ok(vec![MovSdM(xmm, self.global_q(lit.to_bits()).0)]),
       Var(memory) => mov_memory_xmm(xmm, tmp, memory),
     }
   }
   pub(crate) fn mov_json(
     &mut self,
     dst: Register,
-    src: WithPos<Json>,
+    src: Pos<Json>,
     copy: Option<LabelId>,
   ) -> ErrOR<Vec<Inst>> {
     match src.val {
@@ -118,33 +118,88 @@ pub(crate) fn mov_d<T: Into<Operand<u32>>, U: Into<Operand<u32>>>(dst: T, src: U
 pub(crate) fn mov_b<T: Into<Operand<u8>>, U: Into<Operand<u8>>>(dst: T, src: U) -> Inst {
   MovBB((dst.into(), src.into()))
 }
-pub(crate) fn ret_memory(memory: Memory, tmp: Register, src: Register) -> Vec<Inst> {
-  match memory {
-    Memory(addr, Size(size)) => vec![if size == 1 { mov_b(addr, src) } else { mov_q(addr, src) }],
-    Memory(addr, Heap(None)) => vec![mov_q(addr, src)],
-    Memory(addr, Heap(Some(size))) => {
-      vec![mov_q(tmp, addr), if size == 1 { mov_b(Ref(tmp), src) } else { mov_q(Ref(tmp), src) }]
+pub(crate) fn ret_memory(
+  Memory(addr, mem_type): Memory,
+  tmp: Register,
+  src: Register,
+) -> ErrOR<Vec<Inst>> {
+  match mem_type.size {
+    Small(size) => Ok(if mem_type.heap == HeapPtr {
+      vec![
+        mov_q(tmp, addr),
+        match size {
+          RQ => mov_q(Ref(tmp), src),
+          RD => mov_d(Ref(tmp), src),
+          RB => mov_b(Ref(tmp), src),
+        },
+      ]
+    } else {
+      vec![match size {
+        RQ => mov_q(addr, src),
+        RD => mov_d(addr, src),
+        RB => mov_b(addr, src),
+      }]
+    }),
+    Known(_) if mem_type.heap == Value => {
+      Err(Internal(InvalidInst("ret_memory non-heap Known(_)".into())))
     }
+    Known(_) | Dynamic => Ok(vec![mov_q(addr, src)]),
   }
 }
-pub(crate) fn mov_memory(dst: Register, memory: Memory) -> Vec<Inst> {
-  match memory {
-    Memory(addr, Size(size)) => vec![if size == 1 { mov_b(dst, addr) } else { mov_q(dst, addr) }],
-    Memory(addr, Heap(None)) => vec![mov_q(dst, addr)],
-    Memory(addr, Heap(Some(size))) => {
-      vec![mov_q(dst, addr), if size == 1 { mov_b(dst, Ref(dst)) } else { mov_q(dst, Ref(dst)) }]
+pub(crate) fn mov_memory(dst: Register, Memory(addr, mem_type): Memory) -> Vec<Inst> {
+  match mem_type.size {
+    Small(size) => {
+      let mut insts = vec![match size {
+        RQ => mov_q(dst, addr),
+        RD => mov_d(dst, addr),
+        RB => mov_b(dst, addr),
+      }];
+      if mem_type.heap == HeapPtr {
+        insts.push(match size {
+          RQ => mov_q(dst, Ref(dst)),
+          RD => mov_d(dst, Ref(dst)),
+          RB => mov_b(dst, Ref(dst)),
+        });
+      }
+      insts
     }
+    Known(_) if mem_type.heap == Value => vec![LeaRM(dst, addr)],
+    Known(_) | Dynamic => vec![mov_q(dst, addr)],
   }
 }
-pub(crate) fn mov_memory_xmm(xmm: Register, tmp: Register, memory: Memory) -> Vec<Inst> {
-  match memory {
-    Memory(addr, Size(_) | Heap(None)) => vec![MovSdM(xmm, addr)],
-    Memory(addr, Heap(Some(_))) => vec![mov_q(tmp, addr), MovSdRef(xmm, tmp)],
+pub(crate) fn mov_memory_xmm(
+  xmm: Register,
+  tmp: Register,
+  Memory(addr, mem_type): Memory,
+) -> ErrOR<Vec<Inst>> {
+  match mem_type.size {
+    Small(size) => match size {
+      RQ => Ok({
+        if mem_type.heap == HeapPtr {
+          vec![mov_q(tmp, addr), MovSdRef(xmm, tmp)]
+        } else {
+          vec![MovSdM(xmm, addr)]
+        }
+      }),
+      RB | RD => Err(Internal(InvalidInst("illegal float".into()))),
+    },
+    Known(_) | Dynamic => Err(Internal(InvalidInst("illegal float".into()))),
   }
 }
-pub(crate) fn ret_memory_xmm(memory: Memory, tmp: Register, xmm: Register) -> Vec<Inst> {
-  match memory {
-    Memory(addr, Size(_) | Heap(None)) => vec![MovMSd(addr, xmm)],
-    Memory(addr, Heap(Some(_))) => vec![mov_q(tmp, addr), MovRefSd(tmp, xmm)],
+pub(crate) fn ret_memory_xmm(
+  Memory(addr, mem_type): Memory,
+  tmp: Register,
+  xmm: Register,
+) -> ErrOR<Vec<Inst>> {
+  match mem_type.size {
+    Small(size) => match size {
+      RQ => Ok(if mem_type.heap == HeapPtr {
+        vec![mov_q(tmp, addr), MovRefSd(tmp, xmm)]
+      } else {
+        vec![MovMSd(addr, xmm)]
+      }),
+      RB | RD => Err(Internal(InvalidInst("illegal float".into()))),
+    },
+    Known(_) | Dynamic => Err(Internal(InvalidInst("illegal float".into()))),
   }
 }

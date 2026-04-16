@@ -1,7 +1,7 @@
 # Jsonpiler — JSON Syntax Programming Language
 
 **Jsonpiler** is a compiler and runtime for a programming language that uses **JSON** or **JSPL (Jsonpiler Structured Programming Language)** as its syntax.  
-It converts a JSON-based program into **x86\_64 Windows PE** machine code, links it, and executes the result.
+It converts a JSON-based program into **x86_64 Windows PE** machine code, links it, and executes the result.
 Jsonpiler bundles an assembler and linker purpose-built for its IR and PE output on Windows.
 
 [日本語 README](https://github.com/HAL-G1THuB/jsonpiler/blob/main/README-ja.md)
@@ -27,10 +27,10 @@ Jsonpiler now has a function to support GUI.
 
 ## What’s New
 
-### 0.9.3
+### 0.9.4
 
-- Changed:
-  - Improved the mechanism for tracking whether a function has been used
+- Added
+  - The `MemoryType` structure, which represents memory types
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 
@@ -96,7 +96,7 @@ jsonpiler "<input.json | input.jspl>" "[arguments for generated exe]"
 
 [Language Spec (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/specification.md)
 
-[Function Reference (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions.md)
+[Function Reference (Markdown)](https://github.com/HAL-G1THuB/jsonpiler/blob/main/docs/functions/README.md)
 
 ## Examples
 
@@ -105,7 +105,11 @@ Browse ready-to-run samples in [examples/](https://github.com/HAL-G1THuB/jsonpil
 Minimal example:
 
 ```json
-{ "=": [{ "$": "a" }, "title"], "message": [{ "$": "a" }, "345"], "+": [1, 2, 3] }
+{
+  "=": [{ "$": "a" }, "title"],
+  "message": [{ "$": "a" }, "345"],
+  "+": [1, 2, 3]
+}
 ```
 
 JSPL:

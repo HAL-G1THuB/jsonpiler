@@ -39,7 +39,7 @@ built_in! {self, func, scope, define;
     self.drop_json(ret.val, scope, false);
     self.drop_all_scope(scope);
     scope.push(mov_q(Rax, Local(Tmp, tmp)));
-    scope.free(tmp, Size(8));
+    scope.free(tmp, MemoryType { heap: Value, size: Small(RQ) });
     scope.check_free()?;
     let stack_size = scope.resolve_stack_size()?;
     let mut insts = vec![];
@@ -48,7 +48,7 @@ built_in! {self, func, scope, define;
       if tmp_reg == Rax {
         insts.push(mov_q(Rax, Local(Tmp, i32::try_from(idx * 8 + 16)?)));
       }
-      insts.extend_from_slice(&ret_memory(Memory(addr, size), tmp_reg, tmp_reg));
+      insts.extend_from_slice(&ret_memory(Memory(addr, size), tmp_reg, tmp_reg)?);
     }
     insts.extend_from_slice(&scope.replace(old_scope));
     insts.push(Lbl(epilogue));
@@ -58,17 +58,17 @@ built_in! {self, func, scope, define;
   ret => {"ret", COMMON, Exact(1), {
     let ret = func.arg()?;
     let Some((epilogue, ret_type)) = scope.epilogue.as_ref() else {
-      return err!(ret.pos, OutSideError { kind: func.name.clone(), place: "function" });
+      return err!(ret.pos, OutSideError { kind: func.val.name.clone(), place: "function" });
     };
     let epi = *epilogue;
     if *ret_type != ret.val.as_type() {
-      let ret_val = format!("Function `{}`'s return value", func.name);
+      let ret_val = format!("Function `{}`'s return value", func.val.name);
       return Err(type_err(ret_val, vec![ret_type.clone()], ret.map_ref(Json::as_type)));
     }
     for locals in scope.locals.clone().into_iter().chain(iter::once(scope.local_top.clone())) {
       for local in locals.into_values() {
         if let Some(memory) = local.val.val.memory() {
-          self.heap_free_memory(memory, scope);
+          self.heap_free(memory, scope);
         }
       }
     }

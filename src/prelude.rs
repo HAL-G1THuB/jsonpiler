@@ -19,6 +19,7 @@ pub(crate) use crate::assembler::{
   rm::RM,
   sect_header::SectionHeader,
 };
+pub(crate) use crate::dependency::Dependency;
 pub(crate) use crate::internal::handler::Handlers;
 pub(crate) use crate::json::{
   Json::{self, *},
@@ -37,7 +38,7 @@ pub(crate) use crate::parser::error::{
   RuntimeErr::{self, *},
   TokenKind,
   Warning::{self, *},
-  args_type_err, make_header, type_err,
+  format_nth_args, make_header, type_err,
 };
 pub(crate) use crate::parser::{Comment, Parser, Position};
 pub(crate) use crate::server::Server;
@@ -49,11 +50,14 @@ pub(crate) use crate::utility::move_json::*;
 pub(crate) use crate::utility::other::{
   Address::{self, *},
   Bind::{self, *},
-  BuiltIn, BuiltInInfo, BuiltInPtr, CompiledFunc, Dependency, Dll, FileId, LabelId,
+  BuiltIn, BuiltInInfo, BuiltInPtr, CompiledFunc, Dll, FileId, LabelId,
   Lifetime::*,
   Memory,
-  MemoryType::{self, *},
-  UserDefinedInfo, WithPos,
+  MemorySize::*,
+  MemoryType, Pos,
+  RegSize::*,
+  Storage::{self, *},
+  UserDefinedInfo,
 };
 pub(crate) use crate::utility::scope::{Scope, Variable};
 pub(crate) use crate::utility::*;

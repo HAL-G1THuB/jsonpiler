@@ -7,18 +7,14 @@ built_in! {self, func, scope, string;
     let tmp_d = scope.tmp(8, 8, func)?;
     let acc_len = scope.tmp(8, 8, func)?;
     let buffer = Local(Tmp, scope.alloc(8, 8)?);
-    let first_string = arg!(self, func, (Str(x)) => x).val;
-    let first_len = scope.tmp(8, 8, func)?;
-    let mut string_vec = vec![(first_string.clone(), first_len)];
     scope.extend(&[
       mov_q(tmp_s, Rsi),
       mov_q(tmp_d, Rdi),
-      self.mov_str(Rcx, first_string),
-      Call(str_len),
-      mov_q(first_len, Rax),
+      Clear(Rax),
       mov_q(acc_len, Rax),
-    ]);
-    for _ in 2..=func.len {
+      ]);
+      let mut string_vec = vec![];
+    for _ in 1..=func.val.len {
       let string = arg!(self, func, (Str(x)) => x).val;
       let len = scope.tmp(8, 8, func)?;
       string_vec.push((string.clone(), len));
@@ -57,12 +53,12 @@ built_in! {self, func, scope, string;
       mov_q(Rsi, tmp_s),
       mov_q(Rdi, tmp_d),
     ]);
-    Ok(Str(Var(Memory(buffer, Heap(None)))))
+    Ok(Str(Var(Memory(buffer, MemoryType { heap: HeapPtr, size: Dynamic }))))
   }},
   int_to_string => {"Str", COMMON, Exact(1), {
     scope.extend(&mov_int(Rcx, arg!(self, func, (Int(x)) => x).val));
     scope.push(Call(self.get_int_to_str(scope.id)?));
-    scope.ret_str(Rax)
+    scope.ret_str(Rax, HeapPtr)
   }},
   len => {"len", COMMON, Exact(1), {
     let str_chars_len = self.str_chars_len(scope.id)?;
@@ -73,14 +69,14 @@ built_in! {self, func, scope, string;
     let str_chars_len = self.str_chars_len(scope.id)?;
     let utf8_slice = self.get_utf8_slice(scope.id)?;
     let string = arg!(self, func, (Str(x)) => x).val;
-    if func.len == 3 {
+    if func.val.len == 3 {
       scope.extend(&mov_int(Rdx, arg!(self, func, (Int(x)) => x).val));
       scope.extend(&mov_int(R8, arg!(self, func, (Int(x)) => x).val));
-    }else {
+    } else {
       scope.extend(&[self.mov_str(Rcx, string.clone()), Call(str_chars_len), mov_q(R8, Rax)]);
       scope.extend(&mov_int(Rdx, arg!(self, func, (Int(x)) => x).val));
     }
     scope.extend(&[self.mov_str(Rcx, string), Call(utf8_slice)]);
-    scope.ret_str(Rax)
+    scope.ret_str(Rax, HeapPtr)
   }}
 }

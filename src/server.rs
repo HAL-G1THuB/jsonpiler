@@ -33,7 +33,7 @@ impl Server {
   fn handle(&mut self, msg: String) -> Option<()> {
     let mut jsonpiler = Jsonpiler::new();
     let mut json_parser =
-      Parser::new(msg.into_bytes(), 0, String::new(), String::new(), jsonpiler.id());
+      Pos::<Parser>::new(msg.into_bytes(), 0, "server_stdin.json".into(), jsonpiler.id());
     let json = match json_parser.parse_json().map(|parsed| parsed.val) {
       Ok(json) => json,
       Err(err) => {
@@ -111,7 +111,7 @@ impl Server {
       None
     })?;
     let file = uri_to_path(uri);
-    let mut parser = Parser::new(source.0.into_bytes(), 0, file.clone(), file, 0);
+    let mut parser = <Pos<Parser>>::new(source.0.into_bytes(), 0, file, 0);
     let text = match parser.format() {
       Some(text) => {
         format!(
@@ -138,7 +138,7 @@ impl Server {
     Server { sources: HashMap::new() }
   }
 }
-impl Parser {
+impl Pos<Parser> {
   pub(crate) fn diagnostic(
     &self,
     pos: Position,
@@ -146,15 +146,15 @@ impl Parser {
     severity: u8,
     unused: bool,
   ) -> Option<String> {
-    let len = self.source.len();
+    let len = self.val.source.len();
     let index = (pos.offset as usize).min(len.saturating_sub(1));
     let end_index = (index + pos.size as usize).min(len);
-    let start = (0..index).rfind(|i| self.source[*i] == b'\n').map_or(0, |st| st + 1);
-    let line_slice = str::from_utf8(&self.source[start..index]).ok()?;
+    let start = (0..index).rfind(|i| self.val.source[*i] == b'\n').map_or(0, |st| st + 1);
+    let line_slice = str::from_utf8(&self.val.source[start..index]).ok()?;
     let start_col = line_slice.encode_utf16().count();
     let mut end_line = pos.line - 1;
     let mut end_col = start_col;
-    let slice = &self.source[index..end_index];
+    let slice = &self.val.source[index..end_index];
     let text = str::from_utf8(slice).ok()?;
     let mut parts = text.split('\n');
     if let Some(first) = parts.next() {
@@ -187,7 +187,7 @@ impl Jsonpiler {
       }
     }
     let file = uri_to_path(uri);
-    let mut first_parser = Parser::new(text.clone().into_bytes(), 0, file.clone(), file, self.id());
+    let mut first_parser = <Pos<Parser>>::new(text.clone().into_bytes(), 0, file, self.id());
     let parsed = first_parser.parse_jspl();
     self.parsers.push(first_parser);
     let mut diag_map = BTreeMap::new();
@@ -201,11 +201,11 @@ impl Jsonpiler {
       }
       Err(err) => self.publish_errs(uri, &err.into(), &mut diag_map, server)?,
     }
-    for warn in self.parsers.iter().flat_map(|parser| &parser.warns) {
+    for warn in self.parsers.iter().flat_map(|parser| &parser.val.warns) {
       let diag = self.parsers[warn.pos.file as usize]
         .diagnostic(warn.pos, &format!("{}", warn.val), 2, matches!(warn.val, UnusedName(..)))
         .unwrap_or_default();
-      let pos_uri = path_to_uri(&self.parsers[warn.pos.file as usize].file);
+      let pos_uri = path_to_uri(&self.parsers[warn.pos.file as usize].val.file);
       diag_map.entry(pos_uri).or_default().push(diag);
     }
     for (diag_uri, diags) in diag_map {
@@ -238,7 +238,7 @@ impl Jsonpiler {
     for pos in pos_vec.iter().rev() {
       let diag =
         self.parsers[pos.file as usize].diagnostic(*pos, &err_str, 1, false).unwrap_or_default();
-      let pos_uri = path_to_uri(&self.parsers[pos.file as usize].file);
+      let pos_uri = path_to_uri(&self.parsers[pos.file as usize].val.file);
       server.sources.entry(pos_uri.clone()).or_default().1.insert(uri.to_owned());
       diag_map.entry(pos_uri).or_default().push(diag);
     }

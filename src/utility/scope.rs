@@ -6,8 +6,8 @@ pub(crate) struct Scope {
   body: Vec<Inst>,
   pub epilogue: Option<(LabelId, JsonType)>,
   pub id: LabelId,
-  pub local_top: BTreeMap<String, WithPos<Variable>>,
-  pub locals: Vec<BTreeMap<String, WithPos<Variable>>>,
+  pub local_top: BTreeMap<String, Pos<Variable>>,
+  pub locals: Vec<BTreeMap<String, Pos<Variable>>>,
   pub loop_labels: Vec<(LabelId, LabelId, usize)>,
   stack_size: i32,
   unused_map: BTreeMap<i32, i32>,
@@ -96,12 +96,12 @@ impl Scope {
     }
     None
   }
-  pub(crate) fn innermost(&mut self) -> &mut BTreeMap<String, WithPos<Variable>> {
+  pub(crate) fn innermost(&mut self) -> &mut BTreeMap<String, Pos<Variable>> {
     self.locals.last_mut().unwrap_or(&mut self.local_top)
   }
   pub(crate) fn iter_locals(
     &mut self,
-  ) -> impl Iterator<Item = &mut BTreeMap<String, WithPos<Variable>>> {
+  ) -> impl Iterator<Item = &mut BTreeMap<String, Pos<Variable>>> {
     self.locals.iter_mut().rev().chain(iter::once(&mut self.local_top))
   }
   pub(crate) fn new(id: LabelId) -> Self {
@@ -123,43 +123,48 @@ impl Scope {
   pub(crate) fn ret(&mut self, src: Register) -> ErrOR<Memory> {
     let addr = Local(Tmp, self.alloc(8, 8)?);
     self.push(mov_q(addr, src));
-    Ok(Memory(addr, Size(8)))
+    Ok(Memory(addr, MemoryType { heap: Value, size: Small(RQ) }))
   }
   pub(crate) fn ret_bool(&mut self, src: Register) -> ErrOR<Json> {
     let addr = Local(Tmp, self.alloc(1, 1)?);
     self.push(mov_b(addr, src));
-    Ok(Bool(Var(Memory(addr, Size(1)))))
+    Ok(Bool(Var(Memory(addr, MemoryType { heap: Value, size: Small(RB) }))))
   }
-  pub(crate) fn ret_json(&mut self, dst: &WithPos<JsonType>, src: Register) -> ErrOR<Json> {
+  pub(crate) fn ret_json_take(&mut self, dst: &Pos<JsonType>, src: Register) -> ErrOR<Json> {
     Ok(match dst.val {
       NullT => Null(Var(self.ret(src)?)),
       IntT => Int(Var(self.ret(src)?)),
       BoolT => self.ret_bool(src)?,
       FloatT => Float(Var(self.ret(src)?)),
-      StrT => self.ret_str(src)?,
+      StrT => self.ret_str(src, HeapPtr)?,
       CustomT(_) | ArrayT | ObjectT => return err!(dst.pos, UnsupportedType(dst.val.to_string())),
     })
   }
-  pub(crate) fn ret_str(&mut self, src: Register) -> ErrOR<Json> {
+  pub(crate) fn ret_str(&mut self, src: Register, heap: Storage) -> ErrOR<Json> {
     let addr = Local(Tmp, self.alloc(8, 8)?);
     self.push(mov_q(addr, src));
-    Ok(Str(Var(Memory(addr, Heap(None)))))
+    Ok(Str(Var(Memory(addr, MemoryType { heap, size: Dynamic }))))
   }
   pub(crate) fn ret_xmm(&mut self, xmm: Register) -> ErrOR<Json> {
     let addr = Local(Tmp, self.alloc(8, 8)?);
     self.push(MovMSd(addr, xmm));
-    Ok(Float(Var(Memory(addr, Size(8)))))
+    Ok(Float(Var(Memory(addr, MemoryType { heap: Value, size: Small(RQ) }))))
   }
   pub(crate) fn take_body(self) -> Vec<Inst> {
     self.body
   }
-  pub(crate) fn tmp(&mut self, size: i32, align: i32, func: &mut BuiltIn) -> ErrOR<Address> {
+  pub(crate) fn tmp(&mut self, size: i32, align: i32, func: &mut Pos<BuiltIn>) -> ErrOR<Address> {
     Ok(Local(Tmp, self.tmp_offset(size, align, func)?))
   }
-  pub(crate) fn tmp_offset(&mut self, size: i32, align: i32, func: &mut BuiltIn) -> ErrOR<i32> {
+  pub(crate) fn tmp_offset(
+    &mut self,
+    size: i32,
+    align: i32,
+    func: &mut Pos<BuiltIn>,
+  ) -> ErrOR<i32> {
     let tmp = self.alloc(size, align)?;
-    let memory = Memory(Local(Tmp, tmp), Size(size));
-    func.free_list.insert(memory);
+    let memory = Memory(Local(Tmp, tmp), MemoryType { heap: Value, size: Known(size) });
+    func.val.free_list.insert(memory);
     Ok(tmp)
   }
   pub(crate) fn update_args_count(&mut self, size: u32) {

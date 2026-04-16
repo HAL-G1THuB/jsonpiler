@@ -1,14 +1,12 @@
 pub(crate) mod consts;
+pub(crate) mod drop;
 pub(crate) mod json;
 pub(crate) mod macros;
 pub(crate) mod move_json;
 pub(crate) mod other;
 pub(crate) mod scope;
 use crate::prelude::*;
-use std::{
-  env,
-  time::{SystemTime, UNIX_EPOCH},
-};
+use std::time::{SystemTime, UNIX_EPOCH};
 impl Jsonpiler {
   pub(crate) fn bss(&mut self, size: u32, align: u32) -> u32 {
     let id = self.id();
@@ -44,7 +42,7 @@ impl Jsonpiler {
     global.val.used = true;
     Some(global.val.val.clone())
   }
-  pub(crate) fn get_var(&mut self, var: &WithPos<String>, scope: &mut Scope) -> ErrOR<Json> {
+  pub(crate) fn get_var(&mut self, var: &Pos<String>, scope: &mut Scope) -> ErrOR<Json> {
     if let Some(val) = scope.get_var_local(&var.val).or_else(|| self.get_global(&var.val)) {
       Ok(val)
     } else {
@@ -54,30 +52,18 @@ impl Jsonpiler {
   pub(crate) fn global_b(&mut self, boolean: bool) -> Memory {
     let id = self.id();
     self.data.push(if boolean { Byte(id, bool2byte(boolean)) } else { BssLbl(id, 1, 1) });
-    Memory(Global(id), Size(1))
+    Memory(Global(id), MemoryType { heap: Value, size: Small(RB) })
   }
   pub(crate) fn global_q(&mut self, value: u64) -> Memory {
     let id = self.id();
     self.data.push(if value != 0 { Quad(id, value) } else { BssLbl(id, 8, 8) });
-    Memory(Global(id), Size(8))
+    Memory(Global(id), MemoryType { heap: Value, size: Small(RQ) })
   }
   pub(crate) fn global_str<T: Into<String>>(&mut self, value: T) -> u32 {
     self.cache_string(value.into(), false)
   }
   pub(crate) fn global_w_chars<T: Into<String>>(&mut self, value: T) -> u32 {
     self.cache_string(value.into(), true)
-  }
-  pub(crate) fn heap_free_memory(&mut self, Memory(addr, mem_type): Memory, scope: &mut Scope) {
-    if matches!(mem_type, Heap(_)) {
-      let heap_free = self.import(KERNEL32, "HeapFree");
-      scope.extend(&[
-        mov_q(Rcx, Global(self.symbols[HEAP])),
-        Clear(Rdx),
-        mov_q(R8, addr),
-        CallApiCheck(heap_free),
-        DecMd(Global(self.symbols[LEAK_CNT])),
-      ]);
-    }
   }
   // Overflow is unlikely
   pub(crate) fn id(&mut self) -> u32 {
@@ -123,9 +109,6 @@ pub(crate) fn r_size(data: u32) -> ErrOR<u32> {
 }
 pub(crate) fn bool2byte(boolean: bool) -> u8 {
   if boolean { 0xFF } else { 0 }
-}
-pub(crate) fn full_path(file: &str) -> Result<String, io::Error> {
-  Ok(env::current_dir()?.join(Path::new(file)).canonicalize()?.to_string_lossy().to_string())
 }
 pub(crate) fn op_precedence(op: &str) -> Option<usize> {
   OP_PRECEDENCE.iter().position(|ops| ops.contains(&op))

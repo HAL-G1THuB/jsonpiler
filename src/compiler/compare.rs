@@ -12,14 +12,14 @@ impl Jsonpiler {
     &mut self,
     cc: ConditionCode,
     f_cc: ConditionCode,
-    func: &mut BuiltIn,
+    func: &mut Pos<BuiltIn>,
     scope: &mut Scope,
   ) -> ErrOR<Json> {
     scope.push(mov_b(Rdx, 1));
     match func.arg()? {
-      WithPos { val: Int(int), .. } => {
+      Pos { val: Int(int), .. } => {
         scope.extend(&mov_int(Rax, int));
-        for nth in 1..func.len {
+        for nth in 1..func.val.len {
           let (old, new) = if nth & 1 == 1 { (Rax, Rcx) } else { (Rcx, Rax) };
           scope.extend(&mov_int(new, arg!(self, func, (Int(x)) => x).val));
           scope.extend(&[LogicRR(Cmp, old, new), SetCc(old, cc), LogicRbRb(And, Rdx, old)]);
@@ -27,17 +27,17 @@ impl Jsonpiler {
         scope.push(UnaryRb(Neg, Rdx));
         scope.ret_bool(Rdx)
       }
-      WithPos { val: Float(float), .. } => {
-        scope.extend(&self.mov_float_xmm(Rax, Rax, float));
-        for nth in 1..func.len {
+      Pos { val: Float(float), .. } => {
+        scope.extend(&self.mov_float_xmm(Rax, Rax, float)?);
+        for nth in 1..func.val.len {
           let (old, new) = if nth & 1 == 1 { (Rax, Rcx) } else { (Rcx, Rax) };
-          scope.extend(&self.mov_float_xmm(new, Rax, arg!(self, func, (Float(x)) => x).val));
+          scope.extend(&self.mov_float_xmm(new, Rax, arg!(self, func, (Float(x)) => x).val)?);
           scope.extend(&[UComISd(old, new), SetCc(Rax, f_cc), LogicRbRb(And, Rdx, Rax)]);
         }
         scope.push(UnaryRb(Neg, Rdx));
         scope.ret_bool(Rdx)
       }
-      WithPos { val: Str(string), .. } if matches!(func.name.as_ref(), "==" | "!=") => {
+      Pos { val: Str(string), .. } if matches!(func.val.name.as_ref(), "==" | "!=") => {
         func.validate_args(Exact(2))?;
         let str_eq = self.str_eq(scope.id)?;
         scope.extend(&[
@@ -45,12 +45,12 @@ impl Jsonpiler {
           self.mov_str(Rdx, arg!(self, func, (Str(x)) => x).val),
           Call(str_eq),
         ]);
-        if func.name == "!=" {
+        if func.val.name == "!=" {
           scope.push(UnaryRb(Not, Rax));
         }
         scope.ret_bool(Rax)
       }
-      other => Err(args_type_err(1, &func.name, vec![IntT, BoolT], other.map_ref(Json::as_type))),
+      other => Err(func.args_err(vec![IntT, BoolT], other.map_ref(Json::as_type))),
     }
   }
 }

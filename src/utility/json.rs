@@ -1,8 +1,8 @@
 use crate::prelude::*;
-pub(crate) type KeyVal = (WithPos<String>, WithPos<Json>);
+pub(crate) type KeyVal = (Pos<String>, Pos<Json>);
 #[derive(Debug, Clone)]
 pub(crate) enum Json {
-  Array(Bind<Vec<WithPos<Json>>>),
+  Array(Bind<Vec<Pos<Json>>>),
   Bool(Bind<bool>),
   Float(Bind<f64>),
   Int(Bind<i64>),
@@ -102,9 +102,9 @@ impl JsonType {
   }
   pub(crate) fn mem_type(&self, pos: Position) -> ErrOR<MemoryType> {
     match self {
-      BoolT => Ok(Size(1)),
-      FloatT | IntT | NullT => Ok(Size(8)),
-      StrT => Ok(Heap(None)),
+      BoolT => Ok(MemoryType { heap: Value, size: Small(RB) }),
+      FloatT | IntT | NullT => Ok(MemoryType { heap: Value, size: Small(RQ) }),
+      StrT => Ok(MemoryType { heap: HeapPtr, size: Dynamic }),
       ArrayT | ObjectT => err!(pos, UnsupportedType(self.name())),
       CustomT(_) => err!(pos, UnknownType(self.name())),
     }
@@ -135,8 +135,8 @@ impl JsonType {
     }
   }
 }
-impl WithPos<Json> {
-  pub(crate) fn into_ident(mut self, name: &str) -> ErrOR<WithPos<String>> {
+impl Pos<Json> {
+  pub(crate) fn into_ident(mut self, name: &str) -> ErrOR<Pos<String>> {
     if let Object(Lit(obj)) = &self.val
       && obj.len() == 1
       && let Some(Str(Lit(string))) = self.val.take("$")

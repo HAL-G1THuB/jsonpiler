@@ -20,7 +20,7 @@ init_gui => {"GUI", SPECIAL, Exact(1), {
       nth += 1;
       if param != &IntT
       {
-        return Err(args_type_err(nth, "render", vec![IntT], name.pos.with(param.clone())));
+        return Err(type_err(format_nth_args(nth, "render"), vec![IntT], name.pos.with(param.clone())));
       }
     }
     if render.ret_type != IntT {

@@ -56,7 +56,8 @@ impl Jsonpiler {
     }
     let id = self.id();
     self.use_function(caller, id);
-    let (file, l_c, code, carets) = self.parsers[pos.file as usize].err_info(pos);
+    let (file, l_c, code, carets) =
+      self.parsers[pos.file as usize].err_info(pos, &self.parsers[0].val.file);
     let insts = &[
       LeaRM(Rcx, Global(self.global_str(format!("{err}")))),
       self.mov_str(Rdx, args.unwrap_or(Lit(String::new()))),

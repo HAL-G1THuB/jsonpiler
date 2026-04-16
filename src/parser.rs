@@ -12,12 +12,10 @@ pub(crate) struct Comment {
 pub(crate) struct Parser {
   comments: BTreeMap<u32, Comment>,
   pub dep: Dependency,
-  pub exports: BTreeMap<String, WithPos<UserDefinedInfo>>,
+  pub exports: BTreeMap<String, Pos<UserDefinedInfo>>,
   pub file: String,
-  pub pos: Position,
-  pub root_file: String,
   pub source: Vec<u8>,
-  pub warns: Vec<WithPos<Warning>>,
+  pub warns: Vec<Pos<Warning>>,
 }
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct Position {
@@ -31,13 +29,13 @@ impl Position {
   pub(crate) fn end(self) -> u32 {
     self.offset + self.size
   }
-  pub(crate) fn with<V>(self, val: V) -> WithPos<V> {
-    WithPos { val, pos: self }
+  pub(crate) fn with<V>(self, val: V) -> Pos<V> {
+    Pos { val, pos: self }
   }
 }
-impl Parser {
+impl Pos<Parser> {
   fn check_eof(&self) -> ParseErrOR<()> {
-    if self.source.len() <= self.pos.offset as usize { Err(self.eof_err()) } else { Ok(()) }
+    if self.val.source.len() <= self.pos.offset as usize { Err(self.eof_err()) } else { Ok(()) }
   }
   fn consume_if(&mut self, expected: u8) -> ParseErrOR<bool> {
     self.check_eof()?;
@@ -55,8 +53,9 @@ impl Parser {
     last_err.map_or(Ok(false), Err)
   }
   #[expect(clippy::cast_possible_truncation)]
-  fn eof_err(&self) -> WithPos<ParseErr> {
-    Position { offset: self.source.len() as u32, ..self.pos }.with(UnexpectedToken(TokenKind::Eof))
+  fn eof_err(&self) -> Pos<ParseErr> {
+    Position { offset: self.val.source.len() as u32, ..self.pos }
+      .with(UnexpectedToken(TokenKind::Eof))
   }
   fn expect(&mut self, expected: u8) -> ParseErrOR<()> {
     if self.consume_if(expected)? {
@@ -69,26 +68,18 @@ impl Parser {
     self.check_eof().is_ok() && self.peek().is_ascii_digit()
   }
   pub(crate) fn get_slice(&self, pos: Position) -> ParseErrOR<&str> {
-    str::from_utf8(&self.source[pos.offset as usize..pos.end() as usize])
+    str::from_utf8(&self.val.source[pos.offset as usize..pos.end() as usize])
       .or(parse_err!(pos, InvalidChar))
   }
-  pub(crate) fn new(
-    source: Vec<u8>,
-    file_idx: u32,
-    file: String,
-    root_file: String,
-    id: LabelId,
-  ) -> Self {
-    Self {
-      pos: Position { line: 1, offset: 0, size: 0, file: file_idx, info: INFO_NONE },
+  pub(crate) fn new(source: Vec<u8>, file_idx: u32, file: String, id: LabelId) -> Self {
+    Position { line: 1, offset: 0, size: 0, file: file_idx, info: INFO_NONE }.with(Parser {
       source,
       file,
-      root_file,
       comments: BTreeMap::new(),
       exports: BTreeMap::new(),
       warns: vec![],
       dep: Dependency { id, uses: vec![] },
-    }
+    })
   }
   fn next(&mut self) -> ParseErrOR<u8> {
     self.pos.offset += 1;
@@ -96,7 +87,7 @@ impl Parser {
     Ok(self.peek())
   }
   fn peek(&self) -> u8 {
-    self.source[self.pos.offset as usize]
+    self.val.source[self.pos.offset as usize]
   }
   fn set_size(&self, pos: &mut Position) {
     pos.size = self.pos.offset - pos.offset;
@@ -112,7 +103,7 @@ impl Parser {
     Ok(())
   }
   fn skip_ws(&mut self) -> ParseErrOR<()> {
-    while (self.pos.offset as usize) < self.source.len() {
+    while (self.pos.offset as usize) < self.val.source.len() {
       if self.peek().is_ascii_whitespace() {
         if self.peek() == b'\n' {
           self.pos.line += 1;
@@ -125,7 +116,7 @@ impl Parser {
     Err(self.eof_err())
   }
 }
-impl Parser {
+impl Pos<Parser> {
   fn parse_array(&mut self) -> ParseErrOR<Json> {
     self.expect(b'[')?;
     self.skip_ws()?;
@@ -142,7 +133,7 @@ impl Parser {
       self.expect(b',')?;
     }
   }
-  pub(crate) fn parse_json(&mut self) -> ParseErrOR<WithPos<Json>> {
+  pub(crate) fn parse_json(&mut self) -> ParseErrOR<Pos<Json>> {
     let result = self.parse_value()?;
     if self.skip_ws().is_err() {
       Ok(result)
@@ -150,7 +141,7 @@ impl Parser {
       parse_err!(self.pos, ExpectedToken(TokenKind::Eof))
     }
   }
-  pub(crate) fn parse_jspl(&mut self) -> ParseErrOR<WithPos<Json>> {
+  pub(crate) fn parse_jspl(&mut self) -> ParseErrOR<Pos<Json>> {
     if self.skip_ws_comment(true).is_err() {
       return Ok(self.pos.with(Null(Lit(()))));
     }
@@ -236,7 +227,7 @@ impl Parser {
     let mut pos = self.pos;
     self.expect(b'"')?;
     let mut bytes = vec![];
-    while (self.pos.offset as usize) < self.source.len() {
+    while (self.pos.offset as usize) < self.val.source.len() {
       if self.consume_if(b'"')? {
         self.set_size(&mut pos);
         return String::from_utf8(bytes).or(parse_err!(pos, InvalidChar));
@@ -277,7 +268,7 @@ impl Parser {
     }
     Err(self.eof_err())
   }
-  fn parse_value(&mut self) -> ParseErrOR<WithPos<Json>> {
+  fn parse_value(&mut self) -> ParseErrOR<Pos<Json>> {
     self.skip_ws()?;
     let mut pos = self.pos;
     let val = match self.peek() {

@@ -18,9 +18,9 @@ built_in! {self, func, _scope, intrinsic;
   }},
   __win_api => {"__win_api", SPECIAL, AtLeast(3), { self.windows_api(false, func, _scope) }},
   __win_api_check => {"__win_api_check", SPECIAL, AtLeast(3), { self.windows_api(true, func, _scope) }},
-  list => {"list", COMMON, AtLeast(0), { Ok(Array(Lit(take(&mut func.args).collect()))) }},
+  list => {"list", COMMON, AtLeast(0), { Ok(Array(Lit(take(&mut func.val.args).collect()))) }},
   name_is_main => {"main", SPECIAL, Exact(1), {
-    if self.parsers[0].file == self.parsers[func.pos.file as usize].file {
+    if self.parsers[0].val.file == self.parsers[func.pos.file as usize].val.file {
       Ok(self.eval(func.arg()?, _scope)?.val)
     } else {
       Ok(Null(Lit(())))
@@ -32,7 +32,7 @@ impl Jsonpiler {
   pub(crate) fn windows_api(
     &mut self,
     check: bool,
-    func: &mut BuiltIn,
+    func: &mut Pos<BuiltIn>,
     scope: &mut Scope,
   ) -> ErrOR<Json> {
     let mut dll = func.arg()?.into_ident("DLL NAME")?.val;
@@ -41,13 +41,13 @@ impl Jsonpiler {
     let ret_type =
       func.arg()?.into_ident("RET VAL")?.map(|val: String| JsonType::from_string(val.as_ref()));
     let api = self.import(&dll, &api_name);
-    scope.update_args_count(func.len - 3);
-    for idx in 0..func.len - 3 {
+    scope.update_args_count(func.val.len - 3);
+    for idx in 0..func.val.len - 3 {
       let arg = self.eval(func.arg()?, scope)?;
       func.push_free_tmp(arg.val.memory());
       self.mov_args_json(idx, scope, arg, false)?;
     }
     scope.push(if check { CallApiCheck(api) } else { CallApi(api) });
-    scope.ret_json(&ret_type, Rax)
+    scope.ret_json_take(&ret_type, Rax)
   }
 }

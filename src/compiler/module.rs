@@ -1,12 +1,12 @@
 use crate::prelude::*;
 built_in! {self, func, _scope, module;
   f_export => {"export", SPECIAL, AtLeast(0), {
-    for _ in 1..=func.len {
+    for _ in 1..=func.val.len {
       let name = func.arg()?.into_ident("Function name")?;
       let Some(u_d) = self.user_defined.get(&name.val) else {
         return err!(name.pos, UndefinedFunc(name.val))
       };
-      self.parsers[func.pos.file as usize].exports.insert(name.val, u_d.clone());
+      self.parsers[func.pos.file as usize].val.exports.insert(name.val, u_d.clone());
     }
     Ok(Null(Lit(())))
   }},
@@ -15,25 +15,25 @@ built_in! {self, func, _scope, module;
   }},
 }
 impl Jsonpiler {
-  fn import_file(&mut self, func: &mut BuiltIn, scope: &mut Scope) -> ErrOR<Json> {
+  fn import_file(&mut self, func: &mut Pos<BuiltIn>, scope: &mut Scope) -> ErrOR<Json> {
     let (file, pos) = {
-      let WithPos { val: path, pos } = unwrap_arg!(
+      let Pos { val: path, pos } = unwrap_arg!(
         self, func.arg()?, "File path", vec![StrT], (Str(Lit(x))) => x
       );
       let folder =
-        Path::new(&self.parsers[pos.file as usize].file).parent().unwrap_or(Path::new("."));
+        Path::new(&self.parsers[pos.file as usize].val.file).parent().unwrap_or(Path::new("."));
       let full_path = folder.join(Path::new(&path)).canonicalize();
       (full_path.map_err(|val| pos.with(val))?.to_string_lossy().to_string(), pos)
     };
     let mut imports = BTreeSet::new();
-    for _ in 1..func.len {
+    for _ in 1..func.val.len {
       imports.insert(func.arg()?.into_ident("Function name")?.val);
     }
-    if self.parsers[pos.file as usize].file == file {
+    if self.parsers[pos.file as usize].val.file == file {
       return err!(pos, RecursiveInclude(file));
     }
-    if let Some(file_idx) = self.parsers.iter().position(|parser| parser.file == file) {
-      for (name, val) in &self.parsers[file_idx].exports {
+    if let Some(file_idx) = self.parsers.iter().position(|parser| parser.val.file == file) {
+      for (name, val) in &self.parsers[file_idx].val.exports {
         if let Some(import_func) = imports.take(name) {
           if self.user_defined.get(name).is_none_or(|u_d| u_d.pos.file as usize != file_idx) {
             self.check_defined(name, pos, scope)?;
@@ -55,15 +55,8 @@ impl Jsonpiler {
     }
     let source = fs::read(&file).map_err(|val| pos.with(val))?;
     let file_idx = self.parsers.len();
-    let root_file = self.parsers[0].file.clone();
-    self.parsers.push(Parser::new(
-      source,
-      u32::try_from(file_idx)?,
-      file.clone(),
-      root_file,
-      root_id,
-    ));
-    let total_size = self.parsers.iter().map(|parser| parser.source.len()).sum::<usize>();
+    self.parsers.push(<Pos<Parser>>::new(source, u32::try_from(file_idx)?, file.clone(), root_id));
+    let total_size = self.parsers.iter().map(|parser| parser.val.source.len()).sum::<usize>();
     if total_size > GB as usize {
       return err!(pos, TooLargeFile);
     }
@@ -88,9 +81,9 @@ impl Jsonpiler {
     result?;
     let stack_size = scope.resolve_stack_size()?;
     self.link_function(root_id, &scope.replace(old_scope), stack_size);
-    self.use_function(self.parsers[0].dep.id, root_id);
+    self.use_function(self.parsers[0].val.dep.id, root_id);
     self.startup.push(Call(root_id));
-    self.check_unused_functions(self.parsers[file_idx].dep.clone());
+    self.check_unused_functions(&self.parsers[file_idx].val.dep.clone());
     self.globals = old_globals;
     self.user_defined = old_user_defined;
     self.import_functions(imports, file_idx, pos, scope)?;
@@ -103,7 +96,7 @@ impl Jsonpiler {
     pos: Position,
     scope: &mut Scope,
   ) -> ErrOR<()> {
-    for (name, val) in &self.parsers[file_idx].exports {
+    for (name, val) in &self.parsers[file_idx].val.exports {
       if let Some(import_func) = imports.take(name) {
         self.check_defined(name, pos, scope)?;
         self.user_defined.insert(import_func, val.clone());

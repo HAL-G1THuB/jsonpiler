@@ -17,7 +17,7 @@ type CheckFn = dyn Fn(&mut Jsonpiler, Position, LabelId) -> ErrOR<Vec<Inst>>;
 impl Jsonpiler {
   fn assign_normal(
     &mut self,
-    func: &mut BuiltIn,
+    func: &mut Pos<BuiltIn>,
     scope: &mut Scope,
     check_opt: Option<&CheckFn>,
     int_inst: Inst,
@@ -30,7 +30,7 @@ impl Jsonpiler {
     };
     let num = self.eval(func.arg()?, scope)?;
     match num {
-      WithPos { val: Int(int), .. } => {
+      Pos { val: Int(int), .. } => {
         if val.as_type() != IntT {
           return Err(type_err(
             format!("Variable `{}`", var.val),
@@ -50,9 +50,9 @@ impl Jsonpiler {
             JCc(O, self.custom_err(RuntimeOverflow, None, var.pos, scope.id)?),
           ]);
         }
-        scope.extend(&ret_memory(memory, Rcx, Rax));
+        scope.extend(&ret_memory(memory, Rcx, Rax)?);
       }
-      WithPos { val: Float(float), .. } => {
+      Pos { val: Float(float), .. } => {
         if val.as_type() != FloatT {
           return Err(type_err(
             format!("Variable `{}`", var.val),
@@ -60,13 +60,13 @@ impl Jsonpiler {
             var.pos.with(val.as_type()),
           ));
         }
-        scope.extend(&mov_memory_xmm(Rax, Rax, memory));
-        scope.extend(&self.mov_float_xmm(Rcx, Rax, float));
+        scope.extend(&mov_memory_xmm(Rax, Rax, memory)?);
+        scope.extend(&self.mov_float_xmm(Rcx, Rax, float)?);
         scope.push(ArithSd(float_inst, Rax, Rcx));
-        scope.extend(&ret_memory_xmm(memory, Rax, Rax));
+        scope.extend(&ret_memory_xmm(memory, Rax, Rax)?);
       }
       other => {
-        return Err(args_type_err(2, &func.name, vec![IntT, BoolT], other.map_ref(Json::as_type)));
+        return Err(func.args_err(vec![IntT, BoolT], other.map_ref(Json::as_type)));
       }
     }
     self.drop_json(num.val, scope, false);

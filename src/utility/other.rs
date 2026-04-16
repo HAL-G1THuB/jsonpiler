@@ -1,7 +1,7 @@
 use crate::prelude::*;
 use core::ops::Add;
 use std::vec::IntoIter;
-pub(crate) type BuiltInPtr = fn(&mut Jsonpiler, &mut BuiltIn, &mut Scope) -> ErrOR<Json>;
+pub(crate) type BuiltInPtr = fn(&mut Jsonpiler, &mut Pos<BuiltIn>, &mut Scope) -> ErrOR<Json>;
 pub(crate) type Dll = (String, Vec<String>);
 pub(crate) type FileId = u32;
 pub(crate) type LabelId = u32;
@@ -13,20 +13,36 @@ pub(crate) enum Bind<T> {
 impl<T: Copy> Copy for Bind<T> {}
 #[derive(Debug, Clone)]
 pub(crate) struct BuiltIn {
-  pub args: IntoIter<WithPos<Json>>,
+  pub args: IntoIter<Pos<Json>>,
   pub free_list: BTreeSet<Memory>,
   pub len: u32,
   pub name: String,
   pub nth: u32,
-  pub pos: Position,
 }
 #[derive(Debug, Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq)]
 pub(crate) struct Memory(pub Address, pub MemoryType);
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
+pub(crate) struct MemoryType {
+  pub heap: Storage,
+  pub size: MemorySize,
+}
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
+pub(crate) enum Storage {
+  HeapPtr,
+  #[default]
+  Value,
+}
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
-pub(crate) enum MemoryType {
-  // Some(size) -> size < 8byte | None -> ptr
-  Heap(Option<i32>),
-  Size(i32),
+pub(crate) enum MemorySize {
+  Dynamic,
+  Known(i32),
+  Small(RegSize),
+}
+#[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
+pub(crate) enum RegSize {
+  RB = 1,
+  RD = 4,
+  RQ = 8,
 }
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq)]
 pub(crate) enum Address {
@@ -38,17 +54,12 @@ pub(crate) enum Lifetime {
   Long,
   Tmp,
 }
-#[derive(Debug, Clone)]
-pub(crate) struct Dependency {
-  pub id: LabelId,
-  pub uses: Vec<LabelId>,
-}
 #[derive(Debug, Clone, Default)]
-pub(crate) struct WithPos<T> {
+pub(crate) struct Pos<T> {
   pub pos: Position,
   pub val: T,
 }
-impl<T: Copy> Copy for WithPos<T> {}
+impl<T: Copy> Copy for Pos<T> {}
 #[derive(Debug, Clone)]
 pub(crate) struct UserDefinedInfo {
   pub dep: Dependency,
@@ -68,29 +79,14 @@ pub(crate) struct CompiledFunc {
   pub insts: Vec<Inst>,
   pub seh: Option<(LabelId, i32)>,
 }
-impl Dependency {
-  pub(crate) fn reachable(&mut self, dep_vec: &[&Dependency]) -> BTreeSet<LabelId> {
-    let mut stack = vec![self.id];
-    let mut reachable = BTreeSet::new();
-    while let Some(id) = stack.pop() {
-      if !reachable.insert(id) {
-        continue;
-      }
-      if let Some(item) = dep_vec.iter().find(|item| item.id == id) {
-        stack.extend_from_slice(&item.uses);
-      }
-    }
-    reachable
-  }
-}
 impl Default for Address {
   fn default() -> Self {
     Local(Tmp, 0)
   }
 }
-impl Default for MemoryType {
+impl Default for MemorySize {
   fn default() -> Self {
-    Size(8)
+    Small(RQ)
   }
 }
 impl<T> Default for Bind<T> {
@@ -98,30 +94,35 @@ impl<T> Default for Bind<T> {
     Var(Memory::default())
   }
 }
-impl BuiltIn {
-  pub(crate) fn arg(&mut self) -> ErrOR<WithPos<Json>> {
-    self.nth += 1;
-    self.args.next().ok_or_else(|| Internal(ArgNotFound(self.name.clone(), self.nth)))
+impl Pos<BuiltIn> {
+  pub(crate) fn arg(&mut self) -> ErrOR<Pos<Json>> {
+    self.val.nth += 1;
+    self.val.args.next().ok_or_else(|| Internal(ArgNotFound(self.val.name.clone(), self.val.nth)))
   }
   pub(crate) fn push_free_tmp(&mut self, memory_opt: Option<Memory>) {
     if let Some(memory @ Memory(Local(Tmp, _), _)) = memory_opt {
-      self.free_list.insert(memory);
+      self.val.free_list.insert(memory);
     }
   }
 }
-impl<T> WithPos<T> {
-  pub(crate) fn map<F: Fn(T) -> V, V>(self, map_f: F) -> WithPos<V> {
+impl<T> Pos<T> {
+  pub(crate) fn map<F: Fn(T) -> V, V>(self, map_f: F) -> Pos<V> {
     self.pos.with(map_f(self.val))
   }
-  pub(crate) fn map_ref<F: Fn(&T) -> V, V>(&self, map_f: F) -> WithPos<V> {
+  pub(crate) fn map_ref<F: Fn(&T) -> V, V>(&self, map_f: F) -> Pos<V> {
     self.pos.with(map_f(&self.val))
   }
 }
 impl MemoryType {
   pub(crate) fn size(self) -> i32 {
-    match self {
-      Heap(_) => 8,
-      Size(size) => size,
+    if self.heap == HeapPtr {
+      8
+    } else {
+      match self.size {
+        Known(size) => size,
+        Small(size) => size as i32,
+        Dynamic => 8,
+      }
     }
   }
 }
