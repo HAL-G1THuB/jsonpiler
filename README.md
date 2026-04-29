@@ -27,10 +27,22 @@ Jsonpiler now has a function to support GUI.
 
 ## What’s New
 
-### 0.9.5
+### 0.10.0
+
+- Added
+  - Released JsonpilerExtension v0.2.0, compatible with this version
+  - The LSP server now processes minor code changes in batches
+  - Added hover functionality to the LSP server
+  - Added definition and reference navigation to the LSP server
+  - The LSP server now releases resources for closed files
+  - Formatted LSP server logs
+  - The LSP server now returns function documentation when hovering over built-in functions
 
 - Fixed
-  - An issue where internal error messages were not displayed correctly
+  - Formatter error with the unary `-` operator
+
+- Removed
+  Removed `concat` and merged it into `+` and `+=`
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 

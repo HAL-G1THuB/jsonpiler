@@ -1,8 +1,8 @@
 # This program computes fib(10) * 2 = 110.
-define(fib_recursive, n: Int, Int,
+define(fib_recursive, { n: Int }, Int,
   { if(n <= 1, ret(n)); fib_recursive(n - 1) + fib_recursive(n - 2) }
 )
-define(fib_loop, n: Int, Int,
+define(fib_loop, { n: Int }, Int,
 {
   if(n <= 1, ret(n))
   let(a = 0)

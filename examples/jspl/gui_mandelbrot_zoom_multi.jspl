@@ -1,4 +1,4 @@
-define(square, x: Float, Float, x * x)
+define(square, { x: Float }, Float, x * x)
 define(rgb, { r: Int; g: Int; b: Int }, Int, { { r << 8 } + g << 8 } + b)
 define(mandelbrot, { cr: Float; ci: Float }, Int,
 {
@@ -18,7 +18,7 @@ define(mandelbrot, { cr: Float; ci: Float }, Int,
 }
 )
 global(zoom = 16.0)
-define(update, frame: Int, Null,
+define(update, { frame: Int }, Null,
 {
   let(tmp_frame = frame % 180)
   if(tmp_frame == 0, zoom = 16.0)

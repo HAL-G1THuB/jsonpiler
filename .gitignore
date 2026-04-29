@@ -3,4 +3,5 @@
 /.ignore/
 /.vscode/
 /extension/dist
+/extension/docs
 *.vsix

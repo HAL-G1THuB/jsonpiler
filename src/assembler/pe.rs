@@ -98,7 +98,7 @@ impl Assembler {
       *b"PE\0\0",
       MACHINE_X64.to_le_bytes(),
       NUMBER_OF_SECTIONS.to_le_bytes(),
-      time_stamp().to_le_bytes(),
+      (now().as_secs() as u32).to_le_bytes(),
       [0; 8],
       OPTIONAL_HEADER_SIZE.to_le_bytes(),
       COFF_CHARACTERISTICS.to_le_bytes(),
@@ -140,7 +140,7 @@ impl Assembler {
       sect[Bss as usize].1.encode(),
       sect[IData as usize].1.encode(),
     );
-    let mut file = writer.into_inner().map_err(|err| IO(err.error().to_string()))?;
+    let mut file = writer.into_inner().map_err(|err| err.into_error())?;
     file.set_len(u64::from(file_size))?;
     write_section(&mut file, &sect[Text as usize])?;
     write_section(&mut file, &sect[Data as usize])?;

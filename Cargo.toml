@@ -1,6 +1,6 @@
 [package]
 name = "jsonpiler"
-version = "0.9.5"
+version = "0.10.0"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
 license = "Apache-2.0"
@@ -45,3 +45,5 @@ wildcard_imports = "allow"
 default_numeric_fallback = "allow"
 partial_pub_fields = "allow"
 format_push_string = "allow"
+std_instead_of_core = "allow"
+integer_division = "allow"

@@ -1,10 +1,10 @@
-const path = require("path");
-const fs = require("fs");
-const vscode = require("vscode");
-const { LanguageClient, TransportKind } = require("vscode-languageclient/node");
-let client;
-let terminal;
-export function activate(context) {
+import * as fs from "fs";
+import * as path from "path";
+import * as vscode from "vscode";
+import { LanguageClient, TransportKind } from "vscode-languageclient/node";
+let client: LanguageClient | undefined;
+let terminal: vscode.Terminal | undefined;
+export function activate(context: vscode.ExtensionContext): void {
   const jsonpilerPath = path.join(
     context.extensionPath,
     "bin",
@@ -36,10 +36,16 @@ export function activate(context) {
       terminal = vscode.window.createTerminal("JSPL");
     }
     const isWin = process.platform === "win32";
-    terminal.sendText(isWin ? "cls" : "clear", true);
-    terminal.show(true);
     const shell = vscode.env.shell;
     const isPowerShell = shell.toLowerCase().includes("powershell");
+    if (isPowerShell) {
+      terminal.sendText(
+        "Set-PSReadLineOption -HistorySaveStyle SaveNothing",
+        true,
+      );
+    }
+    terminal.sendText(isWin ? "cls" : "clear", true);
+    terminal.show(true);
     const cmd = isPowerShell
       ? `& "${jsonpilerPath}" "${file}"`
       : `"${jsonpilerPath}" "${file}"`;
@@ -54,15 +60,11 @@ export function activate(context) {
   const clientOptions = {
     documentSelector: [{ scheme: "file", language: "jspl" }],
   };
-  client = new LanguageClient(
-    "jsonpiler",
-    "Jsonpiler LSP",
-    serverOptions,
-    clientOptions,
-  );
-  context.subscriptions.push(client.start());
+  client = new LanguageClient("JSPL-LSP", serverOptions, clientOptions);
+  context.subscriptions.push(client);
+  client.start();
 }
-export function deactivate() {
+export function deactivate(): Thenable<void> | undefined {
   terminal?.dispose();
   return client?.stop();
 }

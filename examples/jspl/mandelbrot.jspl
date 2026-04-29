@@ -1,4 +1,4 @@
-define(square, x: Float, Float, x * x)
+define(square, { x: Float }, Float, x * x)
 define(mandelbrot, { cr: Float; ci: Float }, Int,
 {
   let(zr = 0.0)
@@ -16,7 +16,7 @@ define(mandelbrot, { cr: Float; ci: Float }, Int,
   i
 }
 )
-define(render_row, y: Int, Null,
+define(render_row, { y: Int }, Null,
 {
   let(x = -70)
   while(x < 20,

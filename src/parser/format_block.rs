@@ -56,7 +56,7 @@ impl Pos<Parser> {
       out.push_str("{}");
       return Some(());
     }
-    if object.len() == 1 {
+    if object.len() == 1 && object[0].0.pos.info != INFO_KEY_VAL {
       return self.format_block(out, object, size, indentation);
     }
     out.push('{');

@@ -27,7 +27,8 @@ assert(false, "Assertion failed")
 ## not
 
 ```jspl
-not(Bool or Int) -> Bool or Int
+not(Bool) -> Bool
+not(Int) -> Int
 ```
 
 Returns the NOT of the given boolean or integer.
@@ -39,7 +40,8 @@ not(true) => false
 ## and
 
 ```jspl
-and(Bool or Int, Bool or Int, ...) -> Bool or Int
+and(Bool, Bool, ...) -> Bool
+and(Int, Int, ...) -> Int
 ```
 
 Returns the AND of the given booleans or integers.
@@ -51,7 +53,8 @@ true and false => false
 ## or
 
 ```jspl
-or(Bool or Int, Bool or Int, ...) -> Bool or Int
+or(Bool, Bool, ...) -> Bool
+or(Int, Int, ...) -> Int
 ```
 
 Returns the OR of the given booleans or integers.
@@ -63,10 +66,11 @@ true or false => true
 ## xor
 
 ```jspl
-xor(Bool or Int, Bool or Int, ...) -> Bool or Int
+xor(Bool, Bool, ...) -> Bool
+xor(Int, Int, ...) -> Int
 ```
 
-Returns the logical OR of the given booleans or integers.
+Returns the XOR of the given booleans or integers.
 
 ```jspl
 true xor false => true

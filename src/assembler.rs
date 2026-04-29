@@ -203,7 +203,7 @@ impl Assembler {
     insts: &[Inst],
     data_insts: Vec<DataLbl>,
     file: &str,
-    mut seh: Vec<(LabelId, LabelId, i32)>,
+    mut seh: Seh,
   ) -> ErrOR<()> {
     self.labels.clear();
     let mut text_size: u32 = 0;

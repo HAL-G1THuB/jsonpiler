@@ -1,10 +1,11 @@
 use crate::prelude::*;
-use core::ops::Add;
+use std::ops::Add;
 use std::vec::IntoIter;
 pub(crate) type BuiltInPtr = fn(&mut Jsonpiler, &mut Pos<BuiltIn>, &mut Scope) -> ErrOR<Json>;
 pub(crate) type Dll = (String, Vec<String>);
 pub(crate) type FileId = u32;
 pub(crate) type LabelId = u32;
+pub(crate) type Seh = Vec<(LabelId, LabelId, i32)>;
 #[derive(Debug, Clone)]
 pub(crate) enum Bind<T> {
   Lit(T),
@@ -63,7 +64,8 @@ impl<T: Copy> Copy for Pos<T> {}
 #[derive(Debug, Clone)]
 pub(crate) struct UserDefinedInfo {
   pub dep: Dependency,
-  pub params: Vec<JsonType>,
+  pub params: Vec<(String, JsonType)>,
+  pub refs: Vec<Position>,
   pub ret_type: JsonType,
 }
 #[derive(Debug, Clone, Copy)]

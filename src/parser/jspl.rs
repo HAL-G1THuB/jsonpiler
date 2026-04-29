@@ -142,6 +142,7 @@ impl Pos<Parser> {
     operator.pos.info = INFO_OP;
     if let Object(Lit(obj)) = &mut left.val
       && obj.len() == 1
+      && obj[0].0.pos.info == INFO_OP
       && operator.val == obj[0].0.val
       && !matches!(obj[0].0.val.as_ref(), "<<" | ">>" | "%")
       && let Array(Lit(args)) = &mut obj[0].1.val
@@ -207,7 +208,12 @@ impl Pos<Parser> {
       b'"' => Str(Lit(self.parse_string()?)),
       b'0'..=b'9' => self.parse_number()?,
       b'-'
-        if self.val.source.get((self.pos.offset + 1) as usize).is_some_and(u8::is_ascii_digit) =>
+        if self
+          .val
+          .source
+          .as_bytes()
+          .get((self.pos.offset + 1) as usize)
+          .is_some_and(u8::is_ascii_digit) =>
       {
         self.parse_number()?
       }

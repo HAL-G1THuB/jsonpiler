@@ -1,4 +1,4 @@
-define(is_prime, n: Int, Bool,
+define(is_prime, { n: Int }, Bool,
 {
   if(
     [ n <= 1, ret(false) ],

@@ -19,10 +19,11 @@ pub(crate) use crate::assembler::{
   rm::RM,
   sect_header::SectionHeader,
 };
-pub(crate) use crate::dependency::Dependency;
+pub(crate) use crate::dependency::{Analysis, Dependency, SymbolInfo};
 pub(crate) use crate::internal::handler::Handlers;
 pub(crate) use crate::json::{
   Json::{self, *},
+  JsonNoPos::{self, *},
   JsonType::{self, *},
   KeyVal,
 };
@@ -32,16 +33,20 @@ pub(crate) use crate::parser::error::{
   ErrOR,
   InternalErr::*,
   JsonpilerErr::{self, *},
-  NameKind::*,
+  NameKind::{self, *},
   ParseErr::{self, *},
   ParseErrOR,
   RuntimeErr::{self, *},
   TokenKind,
   Warning::{self, *},
-  format_nth_args, make_header, type_err,
+  make_header, type_err,
 };
 pub(crate) use crate::parser::{Comment, Parser, Position};
-pub(crate) use crate::server::Server;
+pub(crate) use crate::server::sync::{Channel, Scheduler};
+pub(crate) use crate::server::{
+  IdKind::{self, *},
+  Server,
+};
 pub(crate) use crate::utility::consts::{
   assembly_consts::*, builtin_flags::*, custom_insts::*, dll::*, format_config::*, gui_config::*,
   runtime_err::*, symbols::*, version::*,
@@ -56,11 +61,12 @@ pub(crate) use crate::utility::other::{
   MemorySize::*,
   MemoryType, Pos,
   RegSize::*,
+  Seh,
   Storage::{self, *},
   UserDefinedInfo,
 };
 pub(crate) use crate::utility::scope::{Scope, Variable};
-pub(crate) use crate::utility::*;
+pub(crate) use crate::utility::{VarTable, *};
 pub(crate) use crate::{
   arg, arg_custom, built_in, err, extend, parse_err, symbol, unwrap_arg, write_all,
 };

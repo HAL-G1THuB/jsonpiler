@@ -14,10 +14,10 @@ pub(crate) struct Parser {
   pub dep: Dependency,
   pub exports: BTreeMap<String, Pos<UserDefinedInfo>>,
   pub file: String,
-  pub source: Vec<u8>,
+  pub source: String,
   pub warns: Vec<Pos<Warning>>,
 }
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub(crate) struct Position {
   pub file: FileId,
   pub info: (bool, bool),
@@ -26,8 +26,18 @@ pub(crate) struct Position {
   pub size: u32,
 }
 impl Position {
+  pub(crate) fn contains_inclusive(&self, file: FileId, offset: u32) -> bool {
+    self.file == file && self.offset <= offset && offset <= self.end()
+  }
   pub(crate) fn end(self) -> u32 {
     self.offset + self.size
+  }
+  #[expect(dead_code)]
+  pub(crate) fn in_range(self, offset: u32) -> bool {
+    self.offset <= offset && offset < self.end()
+  }
+  pub(crate) fn new(file: FileId) -> Self {
+    Self { file, info: INFO_NONE, line: 0, offset: 0, size: 0 }
   }
   pub(crate) fn with<V>(self, val: V) -> Pos<V> {
     Pos { val, pos: self }
@@ -36,6 +46,12 @@ impl Position {
 impl Pos<Parser> {
   fn check_eof(&self) -> ParseErrOR<()> {
     if self.val.source.len() <= self.pos.offset as usize { Err(self.eof_err()) } else { Ok(()) }
+  }
+  fn consume(&mut self) -> ParseErrOR<u8> {
+    self.check_eof()?;
+    let char = self.peek();
+    self.pos.offset += 1;
+    Ok(char)
   }
   fn consume_if(&mut self, expected: u8) -> ParseErrOR<bool> {
     self.check_eof()?;
@@ -68,11 +84,13 @@ impl Pos<Parser> {
     self.check_eof().is_ok() && self.peek().is_ascii_digit()
   }
   pub(crate) fn get_slice(&self, pos: Position) -> ParseErrOR<&str> {
-    str::from_utf8(&self.val.source[pos.offset as usize..pos.end() as usize])
-      .or(parse_err!(pos, InvalidChar))
+    let Some(slice) = self.val.source.get(pos.offset as usize..pos.end() as usize) else {
+      return parse_err!(pos, InvalidChar);
+    };
+    Ok(slice)
   }
-  pub(crate) fn new(source: Vec<u8>, file_idx: u32, file: String, id: LabelId) -> Self {
-    Position { line: 1, offset: 0, size: 0, file: file_idx, info: INFO_NONE }.with(Parser {
+  pub(crate) fn new(source: String, file_idx: u32, file: String, id: LabelId) -> Self {
+    Position::new(file_idx).with(Parser {
       source,
       file,
       comments: BTreeMap::new(),
@@ -81,13 +99,8 @@ impl Pos<Parser> {
       dep: Dependency { id, uses: vec![] },
     })
   }
-  fn next(&mut self) -> ParseErrOR<u8> {
-    self.pos.offset += 1;
-    self.check_eof()?;
-    Ok(self.peek())
-  }
   fn peek(&self) -> u8 {
-    self.val.source[self.pos.offset as usize]
+    self.val.source.as_bytes()[self.pos.offset as usize]
   }
   fn set_size(&self, pos: &mut Position) {
     pos.size = self.pos.offset - pos.offset;
@@ -103,17 +116,14 @@ impl Pos<Parser> {
     Ok(())
   }
   fn skip_ws(&mut self) -> ParseErrOR<()> {
-    while (self.pos.offset as usize) < self.val.source.len() {
-      if self.peek().is_ascii_whitespace() {
-        if self.peek() == b'\n' {
-          self.pos.line += 1;
-        }
-        self.pos.offset += 1;
-        continue;
+    loop {
+      if self.consume_if_multi(b" \t\r\x0C")? {
+      } else if self.consume_if(b'\n')? {
+        self.pos.line += 1;
+      } else {
+        break Ok(());
       }
-      return Ok(());
     }
-    Err(self.eof_err())
   }
 }
 impl Pos<Parser> {
@@ -230,25 +240,31 @@ impl Pos<Parser> {
     while (self.pos.offset as usize) < self.val.source.len() {
       if self.consume_if(b'"')? {
         self.set_size(&mut pos);
-        return String::from_utf8(bytes).or(parse_err!(pos, InvalidChar));
+        return String::from_utf8(bytes).or(parse_err!(self.pos, InvalidChar));
       }
-      match self.peek() {
+      match self.consume()? {
         b'\n' => return parse_err!(self.pos, UnterminatedLiteral),
-        b'\\' => match self.next()? {
+        b'\\' => match self.consume()? {
           b'u' => {
-            let mut code_point = 0;
-            for _ in 0..4 {
-              let ch = self.next()?;
-              code_point = (code_point << 4)
-                | u32::from(match ch {
-                  b'0'..=b'9' => ch - b'0',
-                  b'a'..=b'f' => ch - b'a' + 10,
-                  b'A'..=b'F' => ch - b'A' + 10,
-                  _ => return parse_err!(pos, UnexpectedToken(TokenKind::Esc('u'))),
-                });
+            let mut code_point = self.parse_unicode_hex4()?;
+            match code_point {
+              0xD800..=0xDBFF => {
+                if self.consume()? != b'\\' || self.consume()? != b'u' {
+                  return parse_err!(self.pos, UnexpectedToken(TokenKind::Esc('u')));
+                }
+                let low = self.parse_unicode_hex4()?;
+                if !(0xDC00..=0xDFFF).contains(&low) {
+                  return parse_err!(self.pos, UnexpectedToken(TokenKind::Esc('u')));
+                }
+                code_point = 0x1_0000 + ((code_point - 0xD800) << 10) + (low - 0xDC00);
+              }
+              0xDC00..=0xDFFF => {
+                return parse_err!(self.pos, UnexpectedToken(TokenKind::Esc('u')));
+              }
+              _ => (),
             }
             let Some(ch) = char::from_u32(code_point) else {
-              return parse_err!(pos, UnexpectedToken(TokenKind::Esc('u')));
+              return parse_err!(self.pos, UnexpectedToken(TokenKind::Esc('u')));
             };
             bytes.extend_from_slice(ch.encode_utf8(&mut [0; 4]).as_bytes());
           }
@@ -264,9 +280,20 @@ impl Pos<Parser> {
         ctrl if ctrl.is_ascii_control() => return parse_err!(self.pos, InvalidChar),
         byte => bytes.push(byte),
       }
-      self.pos.offset += 1;
     }
     Err(self.eof_err())
+  }
+  fn parse_unicode_hex4(&mut self) -> ParseErrOR<u32> {
+    let mut code_point = 0;
+    for _ in 0..4 {
+      let ch = self.consume()?;
+      code_point <<= 4;
+      let Some(hex) = ascii2hex(ch) else {
+        return parse_err!(self.pos, UnexpectedToken(TokenKind::Esc('u')));
+      };
+      code_point |= hex as u32;
+    }
+    Ok(code_point)
   }
   fn parse_value(&mut self) -> ParseErrOR<Pos<Json>> {
     self.skip_ws()?;

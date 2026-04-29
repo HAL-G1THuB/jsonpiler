@@ -31,7 +31,7 @@ define(bulls_cows, { guess: Int; target: Int }, Bool,
   false
 }
 )
-define(str_to_int, s: Str, Int,
+define(str_to_int, { s: Str }, Int,
 {
   let(i = 0)
   let(n = 0)
@@ -74,7 +74,7 @@ define(random_unique, {}, Int,
   0
 }
 )
-define(check_unique, g: Int, Bool,
+define(check_unique, { g: Int }, Bool,
 {
   let(is_unique = true)
   let(i = 0)

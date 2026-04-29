@@ -2,8 +2,8 @@ use crate::prelude::*;
 built_in! {self, _func, scope, io;
   confirm => {"confirm", COMMON, Exact(2), {
     scope.extend(&[
-      self.mov_str(Rcx, arg!(self, _func, (Str(x)) => x).val),
-      self.mov_str(Rdx, arg!(self, _func, (Str(x)) => x).val),
+      self.mov_str(Rcx, arg!(_func, (Str(x)) => x).val),
+      self.mov_str(Rdx, arg!(_func, (Str(x)) => x).val),
       mov_d(R8, 4),
       Call(self.get_msg_box(scope.id)?),
       mov_d(Rcx, 6),
@@ -20,8 +20,8 @@ built_in! {self, _func, scope, io;
   }},
   message => {"message", COMMON, Exact(2), {
     scope.extend(&[
-      self.mov_str(Rcx, arg!(self, _func, (Str(x)) => x).val),
-      self.mov_str(Rdx, arg!(self, _func, (Str(x)) => x).val),
+      self.mov_str(Rcx, arg!(_func, (Str(x)) => x).val),
+      self.mov_str(Rdx, arg!(_func, (Str(x)) => x).val),
       Clear(R8),
       Call(self.get_msg_box(scope.id)?)
     ]);
@@ -35,7 +35,7 @@ built_in! {self, _func, scope, io;
         return Err(_func.args_err(vec![StrT], printable.map_ref(Json::as_type)));
       };
       scope.extend(&[self.mov_str(Rcx, arg.clone()), Call(self.get_print(scope.id)?)]);
-      self.drop_json(Str(arg), scope, false);
+      self.drop_json(Str(arg), false, scope);
     }
     Ok(Null(Lit(())))
   }},

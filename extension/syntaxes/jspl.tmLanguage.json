@@ -75,7 +75,7 @@
       "patterns": [{ "include": "#all_expressions" }]
     },
     "param": {
-      "match": "([a-zA-Z_][a-zA-Z0-9_]*)\\s*:\\s*(Int|Float|Bool|Str|Null)",
+      "match": "([a-zA-Z_][a-zA-Z0-9_]*)\\s*:\\s*(Int|Float|Bool|Str|Null|Func|Any)",
       "captures": {
         "1": { "name": "variable.parameter.jspl" },
         "2": { "name": "support.type.primitive.jspl" }
@@ -88,7 +88,7 @@
       }
     },
     "type_primitive": {
-      "match": "\\b(Int|Float|Bool|Str|Null)\\b",
+      "match": "\\b(Int|Float|Bool|Str|Null|Func|Any)\\b",
       "name": "support.type.primitive.jspl"
     }
   }

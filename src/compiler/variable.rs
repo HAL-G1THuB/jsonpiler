@@ -5,15 +5,14 @@ impl Jsonpiler {
   pub(crate) fn assign(
     &mut self,
     is_global_opt: Option<bool>,
-    var: &Pos<String>,
-    val: Pos<Json>,
+    (var, val): KeyVal,
     scope: &mut Scope,
   ) -> ErrOR<bool> {
     let reassign = if let Some(is_g) = is_global_opt {
-      self.check_defined(&var.val, var.pos, scope)?;
+      self.check_defined(&var, var.pos, scope)?;
       Err(is_g)
     } else {
-      let ref_val = self.get_var(var, scope)?;
+      let ref_val = self.get_var(&var, scope)?;
       if ref_val.as_type() != val.val.as_type() {
         return Err(type_err(
           format!("Variable `{}`", var.val),
@@ -65,7 +64,7 @@ impl Jsonpiler {
         let value = val_type.to_json(val.pos, memory.0)?;
         scope.extend(&self.mov_json(Rax, val.clone(), Some(scope.id))?);
         scope.extend(&ret_memory(memory, Rcx, Rax)?);
-        self.drop_json(val.val, scope, false);
+        self.drop_json(val.val, false, scope);
         if is_global {
           self.critical_sect(scope, LEAVE);
         }
@@ -85,11 +84,11 @@ impl Jsonpiler {
   }
   pub(crate) fn declare(
     &mut self,
+    is_global: bool,
     func: &mut Pos<BuiltIn>,
     scope: &mut Scope,
-    is_global: bool,
   ) -> ErrOR<Json> {
-    let mut assign_expr = arg!(self, func, (Object(Lit(x))) => x);
+    let mut assign_expr = arg!(func, (Object(Lit(x))) => x);
     if assign_expr.val.len() == 1
       && let (name, Pos { val: Array(Lit(mut expr)), .. }) = take(&mut assign_expr.val[0])
       && name.val == "="
@@ -97,7 +96,7 @@ impl Jsonpiler {
     {
       let var = take(&mut expr[0]).into_ident("Variable name")?;
       let val = self.eval(take(&mut expr[1]), scope)?;
-      self.assign(Some(is_global), &var, val, scope)?;
+      self.assign(Some(is_global), (var, val), scope)?;
       Ok(Null(Lit(())))
     } else {
       Err(type_err(
@@ -109,19 +108,19 @@ impl Jsonpiler {
   }
 }
 built_in! {self, func, scope, variable;
-  assign_global => {"global", SPECIAL, Exact(1), { self.declare(func, scope, true) }},
-  assign_local => {"let", SPECIAL, Exact(1), { self.declare(func, scope, false) }},
+  assign_global => {"global", SPECIAL, Exact(1), { self.declare(true, func, scope) }},
+  assign_local => {"let", SPECIAL, Exact(1), { self.declare(false, func, scope) }},
   reassign => {"=", SPECIAL, Exact(2), {
     let var = func.arg()?.into_ident("Variable name")?;
     let val = self.eval(func.arg()?, scope)?;
-    if self.assign(None, &var, val, scope)? {
+    if self.assign(None, (var.clone(), val), scope)? {
       Ok(Null(Lit(())))
     } else {
       err!(var.pos, UndefinedVar(var.val))
     }
   }},
   reference => {"$", COMMON, Exact(1), {
-    self.get_var(&arg!(self, func, (Str(Lit(x))) => x), scope)
+    self.get_var(&arg!(func, (Str(Lit(x))) => x), scope)
   }},
   scope => {"scope", SP_SCOPE, Exact(1), {
     Ok(self.eval(func.arg()?, scope)?.val)

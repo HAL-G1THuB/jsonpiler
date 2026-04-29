@@ -5,6 +5,18 @@ pub(crate) struct Dependency {
   pub id: LabelId,
   pub uses: Vec<LabelId>,
 }
+#[derive(Debug, Clone)]
+pub(crate) struct Analysis {
+  pub symbols: Vec<SymbolInfo>,
+}
+#[derive(Debug, Clone)]
+pub(crate) struct SymbolInfo {
+  pub definition: Option<Position>,
+  pub json_type: JsonType,
+  pub kind: NameKind,
+  pub name: String,
+  pub refs: Vec<Position>,
+}
 impl Dependency {
   pub(crate) fn reachable(&self, dep_vec: &[&Dependency]) -> BTreeSet<LabelId> {
     let mut stack = vec![self.id];
@@ -13,15 +25,15 @@ impl Dependency {
       if !reachable.insert(id) {
         continue;
       }
-      if let Some(item) = dep_vec.iter().find(|item| item.id == id) {
-        stack.extend_from_slice(&item.uses);
+      if let Some(dep) = dep_vec.iter().find(|dep| dep.id == id) {
+        stack.extend_from_slice(&dep.uses);
       }
     }
     reachable
   }
 }
 impl Jsonpiler {
-  pub(crate) fn check_unused_functions(&mut self, root_dep: &Dependency) {
+  pub(crate) fn check_unused_functions(&mut self, root_dep: &Dependency) -> ErrOR<()> {
     let reachable = root_dep.reachable(
       &self
         .user_defined
@@ -31,43 +43,47 @@ impl Jsonpiler {
         .collect::<Vec<&Dependency>>(),
     );
     for (name, u_d) in self.user_defined.clone() {
+      self.push_symbol(SymbolInfo {
+        definition: Some(u_d.pos),
+        json_type: FuncT(u_d.val.params.clone(), Box::new(u_d.val.ret_type.clone())),
+        kind: UserDefinedFunc,
+        name: name.clone(),
+        refs: u_d.val.refs.clone(),
+      });
       if !reachable.contains(&u_d.val.dep.id)
         && !name.starts_with('_')
         && !self.parsers[u_d.pos.file as usize].val.exports.contains_key(&name)
       {
-        self.warn(u_d.pos, UnusedName(UserDefinedFunc, name.clone()));
+        self.warn(u_d.pos, UnusedName(UserDefinedFunc, name.clone()))?;
       }
     }
+    Ok(())
   }
   pub(crate) fn link_function(&mut self, id: LabelId, insts: &[Inst], stack_size: i32) {
-    let end = self.id();
-    self.link_label(id, insts, stack_size, Some(end), true, true);
-  }
-  pub(crate) fn link_function_no_seh(&mut self, id: LabelId, insts: &[Inst], stack_size: i32) {
-    self.link_label(id, insts, stack_size, None, true, true);
+    self.link_label(id, insts, stack_size, true, FN_RETURN);
   }
   pub(crate) fn link_label(
     &mut self,
     id: LabelId,
     body: &[Inst],
     stack_size: i32,
-    end_opt: Option<LabelId>,
-    is_function: bool,
-    is_return: bool,
+    seh: bool,
+    (is_function, do_return): (bool, bool),
   ) {
+    let end_opt = seh.then_some(self.id());
     let mut insts = vec![Lbl(id)];
     if is_function {
       insts.extend_from_slice(&[Push(Rbp), mov_q(Rbp, Rsp), SubRId(Rsp, stack_size)]);
     }
     insts.extend_from_slice(body);
-    if let Some(end) = end_opt {
-      if is_return {
-        if is_function {
-          insts.extend_from_slice(&[AddRId(Rsp, stack_size), Pop(Rbp), Custom(RET)]);
-        }
-      } else {
-        insts.push(CallApi(self.import(KERNEL32, "ExitProcess")));
+    if do_return {
+      if is_function {
+        insts.extend_from_slice(&[AddRId(Rsp, stack_size), Pop(Rbp), Custom(RET)]);
       }
+    } else {
+      insts.push(CallApi(self.import(KERNEL32, "ExitProcess")));
+    }
+    if let Some(end) = end_opt {
       insts.push(Lbl(end));
     }
     match self.functions.entry(id) {
@@ -84,16 +100,8 @@ impl Jsonpiler {
       }
     }
   }
-  pub(crate) fn link_not_return(&mut self, id: LabelId, insts: &[Inst], stack_size: i32) {
-    let end = self.id();
-    self.link_label(id, insts, stack_size, Some(end), false, false);
-  }
-  pub(crate) fn link_not_return_function(&mut self, id: LabelId, insts: &[Inst], stack_size: i32) {
-    let end = self.id();
-    self.link_label(id, insts, stack_size, Some(end), true, false);
-  }
-  pub(crate) fn resolve_calls(&mut self) -> (Vec<Inst>, Vec<(LabelId, LabelId, i32)>) {
-    let reachable = self.parsers[0].val.dep.clone().reachable(
+  pub(crate) fn resolve_calls(&mut self) -> ErrOR<(Vec<Inst>, Seh)> {
+    let reachable = self.first_parser_mut()?.val.dep.clone().reachable(
       &self.functions.values().map(|compiled| &compiled.dep).collect::<Vec<&Dependency>>(),
     );
     let mut seh = vec![];
@@ -108,7 +116,7 @@ impl Jsonpiler {
       .filter_map(|id| self.functions.remove(&id))
       .flat_map(|compiled| compiled.insts)
       .collect::<Vec<Inst>>();
-    (insts, seh)
+    Ok((insts, seh))
   }
   pub(crate) fn use_function(&mut self, caller: LabelId, id: LabelId) {
     match self.functions.entry(caller) {

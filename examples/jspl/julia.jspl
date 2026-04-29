@@ -1,4 +1,4 @@
-define(square, x: Float, Float, x * x)
+define(square, { x: Float }, Float, x * x)
 define(julia, { zx: Float; zy: Float }, Int,
 {
   let(cr = -0.7)
@@ -17,7 +17,7 @@ define(julia, { zx: Float; zy: Float }, Int,
   i
 }
 )
-define(render_row, y: Int, Null,
+define(render_row, { y: Int }, Null,
 {
   let(x = -50)
   while(x < 50,

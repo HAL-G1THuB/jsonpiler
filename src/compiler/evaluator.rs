@@ -15,9 +15,17 @@ impl Jsonpiler {
     }
     Ok(args)
   }
-  fn eval_func(&mut self, scope: &mut Scope, (name, args): KeyVal) -> ErrOR<Json> {
+  fn eval_func(&mut self, (name, args): KeyVal, scope: &mut Scope) -> ErrOR<Json> {
     if let Some(builtin) = self.builtin.get(&name.val.as_ref()) {
       let BuiltInInfo { scoped, skip_eval, builtin_ptr, arity } = *builtin;
+      if let Some(symbol) = self.analysis.as_mut().and_then(|analysis| {
+        analysis
+          .symbols
+          .iter_mut()
+          .find(|symbol| symbol.name == name.val && symbol.kind == BuiltInFunc)
+      }) {
+        symbol.refs.push(name.pos);
+      }
       if scoped {
         scope.locals.push(BTreeMap::new());
       }
@@ -25,16 +33,16 @@ impl Jsonpiler {
       func.validate_args(arity)?;
       let result = builtin_ptr(self, &mut func, scope)?;
       if scoped {
-        self.drop_scope(scope);
+        self.drop_scope(scope)?;
       }
       self.free_all(&mut func, scope);
       return Ok(result);
     }
-    let Some(UserDefinedInfo { dep, params, ret_type }) =
-      self.user_defined.get_mut(&name.val).map(|u_d| u_d.val.clone())
-    else {
+    let Some(u_d) = self.user_defined.get_mut(&name.val) else {
       return err!(name.pos, UndefinedFunc(name.val.clone()));
     };
+    u_d.val.refs.push(name.pos);
+    let UserDefinedInfo { dep, params, ret_type, .. } = u_d.val.clone();
     self.use_function(scope.id, dep.id);
     self.use_u_d(scope.id, dep.id)?;
     let ret = name.pos.with(ret_type);
@@ -42,12 +50,12 @@ impl Jsonpiler {
     let params_len = len_u32(&params)?;
     scope.update_args_count(params_len);
     func.validate_args(Exact(params_len))?;
-    for param in params {
+    for (_, param_type) in params {
       let arg = func.arg()?;
-      if arg.val.as_type() != param {
-        return Err(func.args_err(vec![param], arg.map_ref(Json::as_type)));
+      if arg.val.as_type() != param_type {
+        return Err(func.args_err(vec![param_type], arg.map_ref(Json::as_type)));
       }
-      self.mov_args_json(func.val.nth - 1, scope, arg, true)?;
+      self.mov_args_json(func.val.nth - 1, arg, true, scope)?;
     }
     scope.push(Call(dep.id));
     let ret_json = scope.ret_json_take(&ret, Rax)?;
@@ -57,8 +65,8 @@ impl Jsonpiler {
   fn eval_object(&mut self, object: Pos<Vec<KeyVal>>, scope: &mut Scope) -> ErrOR<Pos<Json>> {
     let mut tmp_json = object.pos.with(Null(Lit(())));
     for key_val in object.val {
-      self.drop_json(tmp_json.val, scope, false);
-      tmp_json.val = self.eval_func(scope, key_val)?;
+      self.drop_json(tmp_json.val, false, scope);
+      tmp_json.val = self.eval_func(key_val, scope)?;
     }
     Ok(tmp_json)
   }

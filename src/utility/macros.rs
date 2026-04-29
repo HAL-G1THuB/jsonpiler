@@ -32,7 +32,7 @@ macro_rules! parse_err {
   };
 }
 #[macro_export]
-macro_rules! arg { ($self:ident, $func:expr, ($($kind:tt)+) => $body:ident) => {{
+macro_rules! arg { ($func:ident, ($($kind:tt)+) => $body:ident) => {{
     let arg = $func.arg()?;
     if let $($kind)+ = arg.val {
       arg.pos.with($body)
@@ -45,7 +45,7 @@ macro_rules! arg { ($self:ident, $func:expr, ($($kind:tt)+) => $body:ident) => {
 }
 #[macro_export]
 macro_rules! arg_custom {
-  ($self:ident, $func:expr, $expected:expr, ($($kind:tt)+) => $body:ident) => {{
+  ($func:ident, $expected:expr, ($($kind:tt)+) => $body:ident) => {{
     let arg = $func.arg()?;
     if let $($kind)+ = arg.val {
       arg.pos.with($body)
@@ -56,12 +56,12 @@ macro_rules! arg_custom {
 }
 #[macro_export]
 macro_rules! unwrap_arg {
-  ($self:ident, $arg:expr, $name:expr, $expected:expr, ($($kind:tt)+) => $body:ident) => {{
+  ($arg:expr, $name:expr, $expected:expr, ($($kind:tt)+) => $body:ident) => {{
     let arg = $arg;
     if let $($kind)+ = arg.val {
       arg.pos.with($body)
     } else {
-      return Err(type_err($name.into(), $expected,arg.map_ref(Json::as_type)));
+      return Err(type_err($name.into(), $expected, arg.map_ref(Json::as_type)));
     }
   }};
 }
@@ -72,7 +72,7 @@ macro_rules! built_in {
     $( $name:ident => { $key:literal, $flags:tt, $arity:expr, $block:block } ),+ $(,)?
   ) => {
     impl Jsonpiler {
-      pub(crate)  fn $register_fn(&mut self) {
+      pub(crate) fn $register_fn(&mut self) {
         $(self.register_func($key, $flags, Jsonpiler::$name, $arity);)+
       }
     }

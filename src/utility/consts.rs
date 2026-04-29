@@ -41,7 +41,11 @@ pub mod builtin_flags {
       )+
     };
   }
-  def_flag!((COMMON, SPECIAL, _SCOPE, SP_SCOPE), (INFO_NONE, INFO_KEY_VAL, INFO_FUNC, INFO_OP));
+  def_flag!(
+    (COMMON, SPECIAL, _SCOPE, SP_SCOPE),
+    (INFO_NONE, INFO_KEY_VAL, INFO_FUNC, INFO_OP),
+    (LABEL_NOT_RETURN, _UNREACHABLE, FN_NOT_RETURN, FN_RETURN)
+  );
 }
 pub mod custom_insts {
   pub const CQO: &[u8] = &[0x48, 0x99];

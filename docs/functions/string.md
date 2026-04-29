@@ -1,21 +1,9 @@
 # String
 
-## concat
-
-```jspl
-concat(Str, ...) -> Str
-```
-
-Returns the result of concatenating all strings.
-
-```jspl
-concat("Hello", "World") => "HelloWorld"
-```
-
 ## len
 
 ```jspl
-len(Str) -> Str
+len(Str) -> Int
 ```
 
 Returns the number of characters.
@@ -40,7 +28,8 @@ Str(123) => "123"
 ## slice
 
 ```jspl
-slice(Str, start: Int, (end: Int)) -> Str
+slice(Str, Int) -> Str
+slice(Str, Int, Int) -> Str
 ```
 
 Returns a sub-string of the given UTF-8 string from the `start` character index to the `end` character index (exclusive).

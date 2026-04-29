@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use core::iter;
+use std::iter;
 #[derive(Default, Debug, Clone)]
 pub(crate) struct Scope {
   args_count: u32,
@@ -14,12 +14,12 @@ pub(crate) struct Scope {
 }
 #[derive(Default, Debug, Clone)]
 pub(crate) struct Variable {
-  pub used: bool,
+  pub refs: Vec<Position>,
   pub val: Json,
 }
 impl Variable {
   pub(crate) fn new(val: Json) -> Self {
-    Variable { val, used: false }
+    Variable { val, refs: vec![] }
   }
 }
 impl Scope {
@@ -87,11 +87,10 @@ impl Scope {
     }
     self.unused_map.insert(start, size);
   }
-  pub(crate) fn get_var_local(&mut self, var: &str) -> Option<Json> {
+  pub(crate) fn get_var_local(&mut self, var: &Pos<String>) -> Option<Json> {
     for locals in self.iter_locals() {
-      if let Some(variable) = locals.get_mut(var) {
-        variable.val.used = true;
-        return Some(variable.val.val.clone());
+      if let Some(variable) = locals.get_var(var) {
+        return Some(variable);
       }
     }
     None
@@ -110,8 +109,8 @@ impl Scope {
   pub(crate) fn push(&mut self, inst: Inst) {
     self.body.push(inst);
   }
-  pub(crate) fn replace(&mut self, old_scope: Self) -> Vec<Inst> {
-    replace(self, old_scope).body
+  pub(crate) fn replace(&mut self, scope: Self) -> Vec<Inst> {
+    replace(self, scope).body
   }
   pub(crate) fn resolve_stack_size(&self) -> ErrOR<i32> {
     // let ret_addr = 8; let rbp = 8; (ret_addr + rbp) % 16 == 0
@@ -137,7 +136,9 @@ impl Scope {
       BoolT => self.ret_bool(src)?,
       FloatT => Float(Var(self.ret(src)?)),
       StrT => self.ret_str(src, HeapPtr)?,
-      CustomT(_) | ArrayT | ObjectT => return err!(dst.pos, UnsupportedType(dst.val.to_string())),
+      CustomT(_) | FuncT(_, _) | ArrayT | ObjectT => {
+        return err!(dst.pos, UnsupportedType(dst.val.to_string()));
+      }
     })
   }
   pub(crate) fn ret_str(&mut self, src: Register, heap: Storage) -> ErrOR<Json> {

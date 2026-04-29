@@ -21,7 +21,7 @@ impl Jsonpiler {
         scope.extend(&mov_int(Rax, int));
         for nth in 1..func.val.len {
           let (old, new) = if nth & 1 == 1 { (Rax, Rcx) } else { (Rcx, Rax) };
-          scope.extend(&mov_int(new, arg!(self, func, (Int(x)) => x).val));
+          scope.extend(&mov_int(new, arg!(func, (Int(x)) => x).val));
           scope.extend(&[LogicRR(Cmp, old, new), SetCc(old, cc), LogicRbRb(And, Rdx, old)]);
         }
         scope.push(UnaryRb(Neg, Rdx));
@@ -31,7 +31,7 @@ impl Jsonpiler {
         scope.extend(&self.mov_float_xmm(Rax, Rax, float)?);
         for nth in 1..func.val.len {
           let (old, new) = if nth & 1 == 1 { (Rax, Rcx) } else { (Rcx, Rax) };
-          scope.extend(&self.mov_float_xmm(new, Rax, arg!(self, func, (Float(x)) => x).val)?);
+          scope.extend(&self.mov_float_xmm(new, Rax, arg!(func, (Float(x)) => x).val)?);
           scope.extend(&[UComISd(old, new), SetCc(Rax, f_cc), LogicRbRb(And, Rdx, Rax)]);
         }
         scope.push(UnaryRb(Neg, Rdx));
@@ -42,7 +42,7 @@ impl Jsonpiler {
         let str_eq = self.str_eq(scope.id)?;
         scope.extend(&[
           self.mov_str(Rcx, string),
-          self.mov_str(Rdx, arg!(self, func, (Str(x)) => x).val),
+          self.mov_str(Rdx, arg!(func, (Str(x)) => x).val),
           Call(str_eq),
         ]);
         if func.val.name == "!=" {

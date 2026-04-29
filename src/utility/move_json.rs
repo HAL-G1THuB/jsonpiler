@@ -3,41 +3,44 @@ impl Jsonpiler {
   pub(crate) fn mov_args_json(
     &mut self,
     idx: u32,
-    scope: &mut Scope,
     arg: Pos<Json>,
     copy: bool,
+    scope: &mut Scope,
   ) -> ErrOR<()> {
-    let reg = *ARG_REGS.get(idx as usize).unwrap_or(&Rax);
     if !copy {
-      scope.extend(&self.mov_json(reg, arg, None)?);
-      if reg == Rax {
-        scope.push(mov_q(Args(i32::try_from(idx + 1)?), Rax));
-      }
-      return Ok(());
+      return self.mov_args_json_mini(idx, arg, None, scope);
     }
     if arg.val.as_type() != StrT {
-      scope.extend(&self.mov_json(reg, arg, Some(scope.id))?);
-      if reg == Rax {
-        scope.push(mov_q(Args(i32::try_from(idx + 1)?), Rax));
-      }
-      return Ok(());
+      return self.mov_args_json_mini(idx, arg, Some(scope.id), scope);
     }
-    let tmp = scope.alloc(0x20, 8)?;
+    let reg = *ARG_REGS.get(idx as usize).unwrap_or(&Rax);
+    let tmp = scope.alloc((ARG_REGS.len() * 8) as i32, 8)?;
     for (tmp_idx, tmp_reg) in ARG_REGS.iter().enumerate() {
       if *tmp_reg != reg {
-        scope.push(mov_q(Local(Tmp, tmp + i32::try_from(tmp_idx * 8)?), *tmp_reg));
+        scope.push(mov_q(Local(Tmp, tmp + (tmp_idx * 8) as i32), *tmp_reg));
       }
     }
-    scope.extend(&self.mov_json(reg, arg, Some(scope.id))?);
+    self.mov_args_json_mini(idx, arg, Some(scope.id), scope)?;
+    for (tmp_idx, tmp_reg) in ARG_REGS.iter().enumerate() {
+      if *tmp_reg != reg {
+        scope.push(mov_q(*tmp_reg, Local(Tmp, tmp + (tmp_idx * 8) as i32)));
+      }
+    }
+    scope.free(tmp, MemoryType { heap: Value, size: Known((ARG_REGS.len() * 8) as i32) });
+    Ok(())
+  }
+  pub(crate) fn mov_args_json_mini(
+    &mut self,
+    idx: u32,
+    arg: Pos<Json>,
+    copy: Option<LabelId>,
+    scope: &mut Scope,
+  ) -> ErrOR<()> {
+    let reg = *ARG_REGS.get(idx as usize).unwrap_or(&Rax);
+    scope.extend(&self.mov_json(reg, arg, copy)?);
     if reg == Rax {
       scope.push(mov_q(Args(i32::try_from(idx + 1)?), Rax));
     }
-    for (tmp_idx, tmp_reg) in ARG_REGS.iter().enumerate() {
-      if *tmp_reg != reg {
-        scope.push(mov_q(*tmp_reg, Local(Tmp, tmp + i32::try_from(tmp_idx * 8)?)));
-      }
-    }
-    scope.free(tmp, MemoryType { heap: Value, size: Known(0x20) });
     Ok(())
   }
   pub(crate) fn mov_float_xmm(
@@ -174,12 +177,10 @@ pub(crate) fn mov_memory_xmm(
 ) -> ErrOR<Vec<Inst>> {
   match mem_type.size {
     Small(size) => match size {
-      RQ => Ok({
-        if mem_type.heap == HeapPtr {
-          vec![mov_q(tmp, addr), MovSdRef(xmm, tmp)]
-        } else {
-          vec![MovSdM(xmm, addr)]
-        }
+      RQ => Ok(if mem_type.heap == HeapPtr {
+        vec![mov_q(tmp, addr), MovSdRef(xmm, tmp)]
+      } else {
+        vec![MovSdM(xmm, addr)]
       }),
       RB | RD => Err(Internal(InvalidInst("illegal float".into()))),
     },

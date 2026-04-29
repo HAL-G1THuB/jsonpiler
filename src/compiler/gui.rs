@@ -3,9 +3,11 @@ built_in! {self, func, scope, gui;
 init_gui => {"GUI", SPECIAL, Exact(1), {
   let name = func.arg()?.into_ident("render")?;
   let render_id = {
-    let Some(render) = self.user_defined.get(&name.val).map(|u_d|u_d.val.clone()) else {
+    let Some(u_d) = self.user_defined.get_mut(&name.val) else {
       return err!(name.pos, UndefinedFunc(name.val));
     };
+    u_d.val.refs.push(name.pos);
+    let render = u_d.val.clone();
     self.use_function(scope.id, render.dep.id);
     self.use_u_d(scope.id, render.dep.id)?;
     if render.params.len() != 5
@@ -15,12 +17,10 @@ init_gui => {"GUI", SPECIAL, Exact(1), {
         ArityError { name: "render".into(), expected: Exact(5), actual: len_u32(&render.params)? }
       )
     }
-    let mut nth = 0;
-    for param in &render.params {
-      nth += 1;
-      if param != &IntT
+    for (param_name, param_type) in &render.params {
+      if param_type != &IntT
       {
-        return Err(type_err(format_nth_args(nth, "render"), vec![IntT], name.pos.with(param.clone())));
+        return Err(type_err(format!("`{param_name}`"), vec![IntT], name.pos.with(param_type.clone())));
       }
     }
     if render.ret_type != IntT {

@@ -1,4 +1,4 @@
-define(square, n: Float, Float, n * n)
+define(square, { n: Float }, Float, n * n)
 global(ball_x = 0.0)
 global(ball_y = 0.0)
 global(ball_vx = -15.0)
@@ -68,7 +68,7 @@ define(in_score_cell, { x: Int; y: Int; score: Int; invert_x: Bool }, Bool,
   let(row = { base_y - y } / score_span)
   let(column = 0)
   let(paddle_surface = x - base_x)
-  if(invert_x, paddle_surface = -: paddle_surface)
+  if(invert_x, paddle_surface *= -1)
   column = { paddle_surface / score_span } % score_per_line
   let(index = row * score_per_line + column)
   let(cell_y = base_y - row * score_span - score_size)
@@ -81,7 +81,7 @@ define(in_score_cell, { x: Int; y: Int; score: Int; invert_x: Bool }, Bool,
   false
 }
 )
-define(update, my: Int, Null,
+define(update, { my: Int }, Null,
 {
   ball_x += ball_vx
   ball_y += ball_vy
@@ -95,7 +95,7 @@ define(update, my: Int, Null,
   pos_p1 = p1_cy
   paddle_hit(p1_surface, p1_cy, 1)
   paddle_hit(p2_surface, p2_cy, -1)
-  if(ball_y < -: collision_x, { ball_y = -: collision_x; ball_vy *= -1.0 })
+  if(ball_y < -(collision_x), { ball_y = -(collision_x); ball_vy *= -1.0 })
   if(ball_y > collision_x, { ball_y = collision_x; ball_vy *= -1.0 })
   let(left_pass = ball_x < left_x - ball_r)
   let(right_pass = ball_x > right_x + ball_r)
@@ -137,7 +137,7 @@ define(ping_pong, { x: Int; y: Int; _frame: Int; _mx: Int; my: Int }, Int,
   if(in_rect(x, y, p2_cx, my, paddle_w_half, Int(paddle_h_half)), ret(rgb(255, 0, 255)))
   if(in_score_cell(x, y, score_p2, true), ret(rgb(255, 0, 255)))
   if(in_score_cell(x, y, score_p1, false), ret(rgb(0, 255, 255)))
-  let(center = x == { { abs(y) + 8 } / 16 } % 2 == 0)
+  let(center = x == 0 and { { abs(y) + 8 } / 16 } % 2 == 0)
   if(center, ret(rgb(255, 255, 255)))
   rgb(0, 0, 0)
 }

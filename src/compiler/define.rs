@@ -1,13 +1,13 @@
 use crate::prelude::*;
-use core::iter;
+use std::iter;
 built_in! {self, func, scope, define;
   f_define => {"define", SPECIAL, Exact(4), {
     let id = self.id();
     let old_scope = scope.change(id);
     let name = func.arg()?.into_ident("Function name")?;
-    self.check_defined(&name.val, name.pos, scope)?;
+    self.check_defined(&name, name.pos, scope)?;
     let type_annotations = arg_custom!(
-      self, func, vec![CustomT("TypeAnnotations".into())], (Object(Lit(x))) => x
+      func, vec![CustomT("TypeAnnotations".into())], (Object(Lit(x))) => x
     );
     let mut params = vec![];
     let mut args = vec![];
@@ -18,16 +18,21 @@ built_in! {self, func, scope, define;
       let arg = Local(Long, scope.alloc(mem_type.size(), mem_type.size())?);
       let json = json_type.to_json(param_type_str.pos, arg)?;
       scope.innermost().insert(
-        var_name.val, var_name.pos.with(Variable::new(json.clone()))
+        var_name.val.clone(), var_name.pos.with(Variable::new(json.clone()))
       );
       args.push(Memory(arg, mem_type));
-      params.push(json_type);
+      params.push((var_name.val, json_type));
     }
     scope.update_args_count(len_u32(&params)?);
     let ret_type = JsonType::from_string(&func.arg()?.into_ident("Type annotation")?.val);
     let epilogue = self.id();
     scope.epilogue = Some((epilogue, ret_type.clone()));
-    self.user_defined.insert(name.val.clone(), name.pos.with(UserDefinedInfo { params, ret_type: ret_type.clone(), dep: Dependency{id, uses: vec![]} }));
+    self.user_defined.insert(name.val.clone(), name.pos.with(UserDefinedInfo {
+      params,
+      ret_type: ret_type.clone(),
+      dep: Dependency { id, uses: vec![] },
+      refs: vec![],
+    }));
     let ret = self.eval(func.arg()?, scope)?;
     if ret_type != ret.val.as_type() {
       let ret_val = format!("Function `{}`'s return value", name.val);
@@ -36,8 +41,8 @@ built_in! {self, func, scope, define;
     let tmp = scope.alloc(8, 8)?;
     scope.extend(&self.mov_json(Rax, ret.clone(), Some(scope.id))?);
     scope.push(mov_q(Local(Tmp, tmp), Rax));
-    self.drop_json(ret.val, scope, false);
-    self.drop_all_scope(scope);
+    self.drop_json(ret.val, false, scope);
+    self.drop_all_local(scope)?;
     scope.push(mov_q(Rax, Local(Tmp, tmp)));
     scope.free(tmp, MemoryType { heap: Value, size: Small(RQ) });
     scope.check_free()?;
@@ -58,21 +63,25 @@ built_in! {self, func, scope, define;
   ret => {"ret", COMMON, Exact(1), {
     let ret = func.arg()?;
     let Some((epilogue, ret_type)) = scope.epilogue.as_ref() else {
-      return err!(ret.pos, OutSideError { kind: func.val.name.clone(), place: "function" });
+      return err!(ret.pos, OutSideError { name: func.val.name.clone(), place: "function" });
     };
     let epi = *epilogue;
     if *ret_type != ret.val.as_type() {
       let ret_val = format!("Function `{}`'s return value", func.val.name);
       return Err(type_err(ret_val, vec![ret_type.clone()], ret.map_ref(Json::as_type)));
     }
-    for locals in scope.locals.clone().into_iter().chain(iter::once(scope.local_top.clone())) {
-      for local in locals.into_values() {
-        if let Some(memory) = local.val.val.memory() {
-          self.heap_free(memory, scope);
-        }
+    for (_, local) in scope.locals.clone().into_iter().chain(iter::once(scope.local_top.clone())).flatten() {
+      if let Some(memory) = local.val.val.memory() && Some(memory) != ret.val.memory() {
+        self.heap_free(memory, scope);
       }
     }
-    scope.extend(&self.mov_json(Rax, ret, Some(scope.id))?);
+    scope.extend(&self.mov_json(Rax, ret.clone(), Some(scope.id))?);
+    if let Some(memory @ Memory(Local(_, _), MemoryType { heap: HeapPtr, .. })) = ret.val.memory() {
+      let tmp = scope.tmp(8, 8, func)?;
+      scope.push(mov_q(tmp, Rax));
+      self.heap_free(memory, scope);
+      scope.push(mov_q(Rax, tmp));
+      }
     scope.push(Jmp(epi));
     Ok(Null(Lit(())))
   }},

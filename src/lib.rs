@@ -9,6 +9,7 @@ mod server;
 mod utility;
 use prelude::*;
 pub struct Jsonpiler {
+  analysis: Option<Analysis>,
   builtin: HashMap<&'static str, BuiltInInfo>,
   data: Vec<DataLbl>,
   dlls: Vec<Dll>,

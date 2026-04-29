@@ -1,11 +1,13 @@
-# GUI
+# GUI function
+
+## GUI
 
 ```jspl
 GUI(render: Ident) -> Null
 ```
 
 render draws each pixel.
-It takes (x, y, frame, mouseY, mouseX) and returns a color (0xRRGGBB).
+It takes (x, y, frame, mouseX, mouseY) and returns a color (0xRRGGBB).
 
 x: -256~255
 y: -256~255
@@ -22,9 +24,9 @@ define(
     r = 0
     g = 0
     b = 0
-    if([x > 0, r = 255])
-    if([y < 0, g = 255])
-    if([x + y > 0, b = 255])
+    if(x > 0, r = 255)
+    if(y < 0, g = 255)
+    if(x + y > 0, b = 255)
     r << 16 + g << 8 + b
   }
 )

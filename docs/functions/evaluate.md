@@ -1,22 +1,5 @@
 # Evaluation and list
 
-## '
-
-```jspl
-'(Any) -> unevaluated: Any
-```
-
-Returns the expression without evaluating it.
-Can also be used as a comment.
-
-## eval
-
-```jspl
-eval(Any) -> evaluated: Any
-```
-
-Evaluates the given expression and returns the result.
-
 ## list
 
 ```jspl
@@ -44,7 +27,7 @@ value(8) => 8
 ## main
 
 ```jspl
-main(Any) -> Any or Null
+main(Any) -> Any
 ```
 
 Evaluate the `Block` when the file is executed as the main program.

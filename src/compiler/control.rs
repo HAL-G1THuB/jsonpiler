@@ -1,7 +1,7 @@
 use crate::prelude::*;
 built_in! {self, func, scope, control;
-  f_break => {"break", COMMON, Exact(0), {self.loop_control(func, scope, false)  }},
-  f_continue => {"continue", COMMON, Exact(0), { self.loop_control(func, scope, true) }},
+  f_break => {"break", COMMON, Exact(0), {self.loop_control(false, func, scope) }},
+  f_continue => {"continue", COMMON, Exact(0), { self.loop_control(true, func, scope) }},
   f_if => {"if", SPECIAL, AtLeast(1), {
     let if_expr_t = vec![CustomT("Array[Bool, Any] (Literal)".into())];
     let end = self.id();
@@ -16,7 +16,7 @@ built_in! {self, func, scope, control;
       scope.extend(&[LogicRbRb(Test, Rax, Rax), JCc(E, end)]);
       let memory_opt = match condition {
         Lit(reachable) => {
-          self.warn(cond.pos, if reachable { UselessIfTrue } else { UnreachableIf });
+          self.warn(cond.pos, if reachable { UselessIfTrue } else { UnreachableIf })?;
           None
         },
         Var(memory)=> Some(memory)
@@ -35,18 +35,18 @@ built_in! {self, func, scope, control;
       let mut cond = if_expr.val.remove(0);
       let then_label = self.id();
       cond = self.eval_with_scope(take(&mut cond), scope)?;
-      let condition = unwrap_arg!(
-        self, cond, "`if` condition",
-        vec![BoolT], (Bool(x)) => x
-      );
+      let condition = unwrap_arg!(cond, "`if` condition", vec![BoolT], (Bool(x)) => x);
       let memory_opt = match condition.val {
         Lit(reachable) => {
           if reachable {
+            if func.val.len == 1 {
+              self.warn(condition.pos, UselessIfTrue)?;
+            }
             if func.val.nth != func.val.len {
-              self.warn(condition.pos, EarlyElse);
+              self.warn(condition.pos, EarlyElse)?;
             }
           } else {
-            self.warn(condition.pos, UnreachableIf);
+            self.warn(condition.pos, UnreachableIf)?;
           }
           None
         }
@@ -56,7 +56,7 @@ built_in! {self, func, scope, control;
       scope.extend(&mov_bool(Rax, condition.val));
       scope.extend(&[LogicRbRb(Test, Rax, Rax), JCc(Ne, then_label)]);
       if func.val.nth != func.val.len {
-        if_expr = arg!(self, func, (Array(Lit(x))) => x);
+        if_expr = arg!(func, (Array(Lit(x))) => x);
       }
     }
     scope.push(Jmp(end));
@@ -75,11 +75,11 @@ built_in! {self, func, scope, control;
     scope.push(Lbl(start));
     cond = self.eval(take(&mut cond), scope)?;
     func.push_free_tmp(cond.val.memory());
-    let condition = unwrap_arg!(self, cond, "`while` condition", vec![BoolT], (Bool(x)) => x);
+    let condition = unwrap_arg!(cond, "`while` condition", vec![BoolT], (Bool(x)) => x);
     match condition.val {
       Lit(reachable) => {
         if !reachable {
-          self.warn(condition.pos, UnreachableWhile);
+          self.warn(condition.pos, UnreachableWhile)?;
         }
       }
       Var(memory) => {
@@ -88,7 +88,7 @@ built_in! {self, func, scope, control;
       }
     }
     let json = self.eval_with_scope(body, scope)?.val;
-    self.drop_json(json, scope, false);
+    self.drop_json(json, false, scope);
     self.free_all(func, scope);
     scope.extend(&[Jmp(start), Lbl(end)]);
     scope.loop_labels.pop();
@@ -99,7 +99,7 @@ impl Jsonpiler {
   pub(crate) fn eval_with_scope(&mut self, expr: Pos<Json>, scope: &mut Scope) -> ErrOR<Pos<Json>> {
     scope.locals.push(BTreeMap::new());
     let value = self.eval(expr, scope)?;
-    self.drop_scope(scope);
+    self.drop_scope(scope)?;
     Ok(value)
   }
   pub(crate) fn if_expr(
@@ -113,19 +113,19 @@ impl Jsonpiler {
   ) -> ErrOR<()> {
     func.push_free_tmp(memory_opt);
     let json = self.eval_with_scope(expr, scope)?.val;
-    self.drop_json(json, scope, false);
+    self.drop_json(json, false, scope);
     self.free_all(func, scope);
     scope.push(if is_end { Lbl(end) } else { Jmp(end) });
     Ok(())
   }
   pub(crate) fn loop_control(
     &mut self,
+    is_continue: bool,
     func: &mut Pos<BuiltIn>,
     scope: &mut Scope,
-    is_continue: bool,
   ) -> ErrOR<Json> {
     let Some(&(start, end, idx)) = scope.loop_labels.last() else {
-      return err!(func.pos, OutSideError { kind: func.val.name.clone(), place: "loop" });
+      return err!(func.pos, OutSideError { name: func.val.name.clone(), place: "loop" });
     };
     for locals in scope.locals.get(idx..).unwrap_or_default().to_owned() {
       for local in locals.into_values() {

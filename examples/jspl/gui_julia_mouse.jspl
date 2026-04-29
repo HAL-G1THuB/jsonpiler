@@ -1,4 +1,4 @@
-define(square, x: Float, Float, x * x)
+define(square, { x: Float }, Float, x * x)
 define(mouse_julia, { x: Int; y: Int; _frame: Int; mouse_x: Int; mouse_y: Int }, Int,
 {
   let(zx = Float(x) / 128.0)

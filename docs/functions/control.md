@@ -1,4 +1,4 @@
-# Control frow
+# Control flow
 
 ## define
 
@@ -44,8 +44,8 @@ by_two(2) => 4
 ## if
 
 ```jspl
-if([Bool, Any], ...) -> "Null"
-if(Bool, Any) -> "Null"
+if([Bool, Any], ...) -> Null
+if(Bool, Any) -> Null
 ```
 
 Evaluates each condition in order. If a condition evaluates to `true`,
@@ -55,7 +55,7 @@ Regardless of which branch is taken, the overall result is always `null`.
 ```jspl
 if(
   [1 == 1, message("1 == 1✨", "`then` branch.")]
-  [1 == 2, message(1 == 2🤔", "`else if` branch.")]
+  [1 == 2, message("1 == 2🤔", "`else if` branch.")]
   [true, message("1 == ?🤣", "`else` branch.")]
 )
   => null
@@ -64,7 +64,7 @@ if(
 ## while
 
 ```jspl
-while(condition: Bool, body: Block) -> "Null"
+while(Bool, Block) -> Null
 ```
 
 Executes the `body` repeatedly as long as the `condition` evaluates to `true`.
@@ -81,25 +81,34 @@ while(
 )
 ```
 
-## include
+## import
 
 ```jspl
-include(path: Str (Literal), functions: Ident, ...) -> "Null"
+import(path: Str (Literal), functions: Ident, ...) -> Null
 ```
 
 Executes the specified file at startup
 and includes the specified function in the namespace.
 The path is relative to the current file.
 This function does not affect existing variables.
-If the same file is included more than once, no new code is generated,
-and functions can be included from existing code.
-including a function from a different file with the same name causes a redefinition error.
+If the same file is imported more than once, no new code is generated,
+and functions can be imported from existing code.
+importing a function from a different file with the same name causes a redefinition error.
 An error occurs if the file does not contain the specified function.
 
 ```jspl
-include("my_library.jspl", my_func)
+import("my_library.jspl", my_func)
 my_func()
 ```
+
+## export
+
+```jspl
+export(Ident, ...) -> Null
+```
+
+Exports the specified functions to be imported by other files.
+An error occurs if the specified function is not defined in the current file.
 
 ## ret
 

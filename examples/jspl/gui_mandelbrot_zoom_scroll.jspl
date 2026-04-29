@@ -1,4 +1,4 @@
-define(square, x: Float, Float, x * x)
+define(square, { x: Float }, Float, x * x)
 define(rgb, { r: Int; g: Int; b: Int }, Int, { { r << 8 } + g << 8 } + b)
 define(mandelbrot, { cr: Float; ci: Float }, Int,
 {

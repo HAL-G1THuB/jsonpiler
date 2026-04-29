@@ -1,8 +1,12 @@
 # Change Log
 
+## JsonpilerExtension 0.2
+
+### 0.2.0 (jsonpiler v0.10.0)
+
 ## JsonpilerExtension 0.1
 
-### 0.1.0
+### 0.1.0 (jsonpiler v0.9.0)
 
 - Added
   - LSP (Language Server Protocol):

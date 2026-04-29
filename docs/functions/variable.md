@@ -10,7 +10,7 @@ It introduces a new scope and evaluates the expression in order and returns the 
 
 ```jspl
 scope(let(x = 1))
-x 
+x
 
 =>
 
@@ -25,41 +25,46 @@ x
 ╰-----------------------------
 ```
 
-## let / global / =
+## let
 
 ```jspl
-let(Ident = Any)
-  -> Null
+let(Ident = Any) -> Null
 ```
 
 Creates a **local variable** with the specified name and assigns the given value.
 Returns `null` after creation.
 
----
+Currently, the following types are **not assignable**:
+
+- Array
+- Object
+
+## global
 
 ```jspl
-global(Ident = Any)
-  -> Null
+global(Ident = Any) -> Null
 ```
 
 Creates a **global variable** with the specified name and assigns the given value.
 Returns `null` after creation.
 
----
+Currently, the following types are **not assignable**:
+
+- Array
+- Object
+
+## =
 
 ```jspl
-Ident = Any
-  -> Null
+Ident = Any -> Null
 ```
 
 Reassigns a value to an **existing variable**.
 Returns `null` after assignment.
 
-`=` is used **only for reassignment** and does not create variables
+`=` is used **only for reassignment** and does not create variables.
 
----
-
-Currently, the following types are **not assignable** and **not reassignable**:
+Currently, the following types are **not reassignable**:
 
 - Array
 - Object

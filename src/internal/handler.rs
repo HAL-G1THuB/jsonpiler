@@ -57,7 +57,7 @@ impl Jsonpiler {
     let id = self.id();
     self.use_function(caller, id);
     let (file, l_c, code, carets) =
-      self.parsers[pos.file as usize].err_info(pos, &self.parsers[0].val.file);
+      self.parsers[pos.file as usize].err_info(pos, &self.first_parser()?.val.file);
     let insts = &[
       LeaRM(Rcx, Global(self.global_str(format!("{err}")))),
       self.mov_str(Rdx, args.unwrap_or(Lit(String::new()))),
@@ -70,7 +70,7 @@ impl Jsonpiler {
       Call(self.err_handler(id)?),
       mov_d(Rcx, 1),
     ];
-    self.link_not_return(id, insts, SIZE);
+    self.link_label(id, insts, SIZE, true, LABEL_NOT_RETURN);
     Ok(id)
   }
   pub(crate) fn err_handler(&mut self, caller: LabelId) -> ErrOR<LabelId> {
@@ -134,16 +134,21 @@ impl Jsonpiler {
     self.use_function(caller, id);
     let print_e = self.get_print_e(id)?;
     let hidden_err = Global(self.global_str(HIDDEN_ERROR));
-    self.link_not_return(id, &[LeaRM(Rcx, hidden_err), Call(print_e), mov_d(Rcx, 1)], SIZE);
+    self.link_label(
+      id,
+      &[LeaRM(Rcx, hidden_err), Call(print_e), mov_d(Rcx, 1)],
+      SIZE,
+      true,
+      LABEL_NOT_RETURN,
+    );
     Ok(id)
   }
   pub(crate) fn seh_handler(&mut self, caller: LabelId) -> ErrOR<()> {
-    const SIZE: i32 = 0x20;
+    const SIZE: i32 = 0x30;
     self.use_function(caller, self.handlers.seh);
     let matched = self.id();
     let epilogue = self.id();
     let std_e = Global(self.symbols[STD_E]);
-    let exit_process = self.import(KERNEL32, "ExitProcess");
     let write_file = self.import(KERNEL32, "WriteFile");
     let tmp = Local(Tmp, -0x8);
     let mut insts = vec![];
@@ -156,13 +161,11 @@ impl Jsonpiler {
       self.seh_match(5, ACCESS_VIOLATION, matched)?,
       self.seh_match(0x94, ZERO_DIVISION, matched)?,
       [
-        LeaRM(Rdi, Global(self.global_str(EXCEPTION_OCCURRED))),
-        mov_d(Rsi, len_u32(EXCEPTION_OCCURRED.as_bytes())?),
-        LeaRM(R13, Global(self.global_str("R0000"))),
+        LeaRM(Rdx, Global(self.global_str(EXCEPTION_OCCURRED))),
+        mov_d(R8, len_u32(EXCEPTION_OCCURRED.as_bytes())?),
+        LeaRM(Rdi, Global(self.global_str("R0000"))),
         Lbl(matched),
         mov_q(Rcx, std_e),
-        mov_q(Rdx, Rdi),
-        mov_d(R8, Rsi),
         LeaRM(R9, tmp),
         Clear(Rax),
         mov_q(Args(5), Rax),
@@ -172,7 +175,7 @@ impl Jsonpiler {
       self.write_err_msg(ISSUE, tmp)?,
       [
         mov_q(Rcx, std_e),
-        mov_q(Rdx, R13),
+        mov_q(Rdx, Rdi),
         mov_d(R8, 5),
         LeaRM(R9, tmp),
         Clear(Rax),
@@ -180,9 +183,9 @@ impl Jsonpiler {
         CallApi(write_file),
       ],
       self.write_err_msg("`\n", tmp)?,
-      [Lbl(epilogue), mov_q(Rcx, Rbx), CallApi(exit_process)]
+      [Lbl(epilogue), mov_q(Rcx, Rbx)]
     );
-    self.link_function_no_seh(self.handlers.seh, &insts, SIZE);
+    self.link_label(self.handlers.seh, &insts, SIZE, false, FN_NOT_RETURN);
     Ok(())
   }
   pub(crate) fn seh_match(
@@ -193,9 +196,9 @@ impl Jsonpiler {
   ) -> ErrOR<Vec<Inst>> {
     Ok(vec![
       mov_d(Rax, 0xC000_0000 | err_code),
-      LeaRM(Rdi, Global(self.global_str(err))),
-      mov_d(Rsi, len_u32(err.as_bytes())?),
-      LeaRM(R13, Global(self.global_str(format!("R{err_code:04X}")))),
+      LeaRM(Rdx, Global(self.global_str(err))),
+      mov_d(R8, len_u32(err.as_bytes())?),
+      LeaRM(Rdi, Global(self.global_str(format!("R{err_code:04X}")))),
       LogicRR(Cmp, Rbx, Rax),
       JCc(E, matched),
     ])
@@ -207,6 +210,7 @@ impl Jsonpiler {
     let format_msg = self.import(KERNEL32, "FormatMessageW");
     let get_last_err = self.import(KERNEL32, "GetLastError");
     let local_free = self.import(KERNEL32, "LocalFree");
+    let write_file = self.import(KERNEL32, "WriteFile");
     let print_e = self.get_print_e(self.handlers.win)?;
     let u16_to_8 = self.get_u16_to_8(self.handlers.win)?;
     let digit = self.id();
@@ -247,38 +251,41 @@ impl Jsonpiler {
       self.write_err_msg(ISSUE, tmp)?,
       self.write_err_msg("W", tmp)?,
       [
-        mov_q(Rax, Rdi),
-        LeaRM(Rbx, buf17),
-        mov_d(R8, 4),
-        AddRR(Rbx, R8),
+        mov_q(R9, Rdi),
+        LeaRM(Rax, buf17),
+        AddRId(Rax, 4),
         Clear(Rcx),
-        mov_b(Ref(Rbx), Rcx),
+        mov_b(Ref(Rax), Rcx),
+        mov_d(R8, 4),
         Lbl(hex_loop),
-        DecR(Rbx),
-        mov_q(Rdx, Rax),
+        DecR(Rax),
+        mov_q(Rdx, R9),
         mov_d(Rcx, 0xF),
         LogicRR(And, Rdx, Rcx),
         mov_d(Rcx, 10),
         LogicRR(Cmp, Rdx, Rcx),
         JCc(B, digit),
-        mov_d(Rcx, 0x37),
-        AddRR(Rdx, Rcx),
+        AddRId(Rdx, 0x37),
         Jmp(store),
         Lbl(digit),
-        mov_d(Rcx, 0x30),
-        AddRR(Rdx, Rcx),
+        AddRId(Rdx, 0x30),
         Lbl(store),
-        mov_b(Ref(Rbx), Rdx),
-        ShiftR(Shr, Rax, Shift::Ib(4)),
+        mov_b(Ref(Rax), Rdx),
+        ShiftR(Shr, R9, Shift::Ib(4)),
         DecR(R8),
         JCc(Ne, hex_loop),
-        LeaRM(Rcx, buf17),
-        Call(print_e),
+        mov_q(Rcx, Global(self.symbols[STD_E])),
+        LeaRM(Rdx, buf17),
+        mov_d(R8, 4),
+        LeaRM(R9, tmp),
+        Clear(Rax),
+        mov_q(Args(5), Rax),
+        CallApi(write_file),
       ],
       self.write_err_msg("`\n", tmp)?,
       [Lbl(exit), mov_q(Rcx, msg), CallApi(local_free), mov_q(Rcx, Rdi)]
     );
-    self.link_not_return(self.handlers.win, &insts, SIZE);
+    self.link_label(self.handlers.win, &insts, SIZE, true, LABEL_NOT_RETURN);
     Ok(())
   }
   pub(crate) fn write_err_msg(&mut self, text: &str, tmp: Address) -> ErrOR<Vec<Inst>> {
