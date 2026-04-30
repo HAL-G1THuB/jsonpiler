@@ -3,39 +3,30 @@ use crate::prelude::*;
 use std::env;
 impl Server {
   pub(crate) fn m_definition(&mut self, mut params: JsonNoPos, id: IdKind) {
-    let Some(uri) = (|| params.take("textDocument")?.take("uri")?.into_str())() else {
+    let Some((position, uri)) =
+      (|| Some((params.take("position")?, params.take("textDocument")?.take("uri")?.into_str()?)))(
+      )
+    else {
       self.error(id, -32602, "Invalid params");
       return;
     };
-    let Some(position) = params.get("position") else {
-      self.error(id, -32602, "Invalid params");
-      return;
-    };
-    let Some((_source, jsonpiler, offset)) = self.prepare_symbol_lookup(uri, position) else {
-      self.response(id, NullN);
-      return;
-    };
-    let def_opt = jsonpiler
-      .analysis
-      .as_ref()
-      .and_then(|analysis| analysis.find_symbol(offset))
-      .and_then(|info| info.definition)
-      .map(|definition| jsonpiler.pos2location(definition));
-    self.response(id, def_opt.unwrap_or(NullN));
+    let definition = (|| {
+      let (jsonpiler, offset) = self.prepare_symbol_lookup(uri, &position)?;
+      Some(jsonpiler.pos2location(jsonpiler.analysis.as_ref()?.find_symbol(offset)?.definition?))
+    })();
+    self.response(id, definition.unwrap_or(NullN));
   }
   pub(crate) fn m_hover(&mut self, mut params: JsonNoPos, id: IdKind) {
-    let Some(uri) = (|| params.take("textDocument")?.take("uri")?.into_str())() else {
-      self.error(id, -32602, "Invalid params");
-      return;
-    };
-    let Some(position) = params.get("position") else {
+    let Some((position, uri)) =
+      (|| Some((params.take("position")?, params.take("textDocument")?.take("uri")?.into_str()?)))(
+      )
+    else {
       self.error(id, -32602, "Invalid params");
       return;
     };
     let hover = (|| {
-      let (source, jsonpiler, offset) = self.prepare_symbol_lookup(uri, position)?;
-      let analysis = jsonpiler.analysis.as_ref()?;
-      let info = analysis.find_symbol(offset)?;
+      let (jsonpiler, offset) = self.prepare_symbol_lookup(uri, &position)?;
+      let info = jsonpiler.analysis.as_ref()?.find_symbol(offset)?;
       let cursor_pos = if let Some(definition) = info.definition
         && definition.contains_inclusive(0, offset as u32)
       {
@@ -47,22 +38,15 @@ impl Server {
         load_function_doc(&info.name)
       } else {
         format!(
-          "## {}
-```jspl
-{}({}{})
-```
-{}
-",
+          "## {}\n```jspl\n{}\n```\n{}\n",
           escape_hash(&info.name),
           match info.kind {
-            GlobalVar => "global",
-            LocalVar => "let",
-            BuiltInFunc | UserDefinedFunc => "define",
-          },
-          info.name,
-          match info.kind {
-            GlobalVar | LocalVar => format!(": {} = _", info.json_type),
-            BuiltInFunc | UserDefinedFunc =>
+            Argument => format!("{{ {}: {} }}", info.name, info.json_type),
+            GlobalVar => format!("global({}: {} = _)", info.name, info.json_type),
+            LocalVar => format!("let({}: {} = _)", info.name, info.json_type),
+            BuiltInFunc | UserDefinedFunc => format!(
+              "define({}{})",
+              info.name,
               if let FuncT(func_params, ret_type) = &info.json_type {
                 format!(
                   ", {{ {} }}, {}, {{ _ }}",
@@ -75,7 +59,8 @@ impl Server {
                 )
               } else {
                 String::new()
-              },
+              }
+            ),
           },
           info.kind
         )
@@ -85,7 +70,10 @@ impl Server {
           "contents".into(),
           ObjectN(vec![("kind".into(), StrN("markdown".into())), ("value".into(), StrN(content))]),
         ),
-        ("range".into(), pos2range(&source.text, cursor_pos)),
+        (
+          "range".into(),
+          pos2range(&jsonpiler.parsers[cursor_pos.file as usize].val.text, cursor_pos),
+        ),
       ]))
     })();
     self.response(id, hover.unwrap_or(NullN));
@@ -102,7 +90,7 @@ impl Server {
     let includes_decl =
       params.get("context").and_then(|ctx| ctx.get_bool("includeDeclaration")).unwrap_or(true);
     let refs = (|| {
-      let (_source, jsonpiler, offset) = self.prepare_symbol_lookup(uri, position)?;
+      let (jsonpiler, offset) = self.prepare_symbol_lookup(uri, position)?;
       let analysis = jsonpiler.analysis.as_ref()?;
       let info = analysis.find_symbol(offset)?;
       let mut refs = vec![];
@@ -121,16 +109,15 @@ impl Server {
     &mut self,
     uri: String,
     position: &JsonNoPos,
-  ) -> Option<(Source, Jsonpiler, usize)> {
-    self.cancel_timer(&uri);
+  ) -> Option<(Jsonpiler, usize)> {
     self.flush(uri.clone());
     let source = self.get_source(&uri)?;
     let offset = range2offset(&source.text, position)?;
     let mut jsonpiler = Jsonpiler::new(true);
-    jsonpiler.push_parser(source.text.clone(), uri2path(&uri));
+    jsonpiler.push_parser(source.text, uri2path(&uri));
     let parsed = jsonpiler.first_parser_mut().ok()?.parse_jspl().ok()?;
     jsonpiler.compile(parsed).ok()?;
-    Some((source, jsonpiler, offset))
+    Some((jsonpiler, offset))
   }
 }
 impl Jsonpiler {
@@ -138,7 +125,7 @@ impl Jsonpiler {
     let file = &self.parsers[pos.file as usize];
     ObjectN(vec![
       ("uri".into(), StrN(path2uri(&file.val.file))),
-      ("range".into(), pos2range(&file.val.source, pos)),
+      ("range".into(), pos2range(&file.val.text, pos)),
     ])
   }
 }

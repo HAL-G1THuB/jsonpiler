@@ -79,8 +79,3 @@ impl Scheduler {
     }
   }
 }
-impl Server {
-  pub(crate) fn cancel_timer(&mut self, uri: &str) {
-    self.scheduler.cancel(uri);
-  }
-}

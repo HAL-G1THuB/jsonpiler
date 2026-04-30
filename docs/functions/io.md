@@ -6,8 +6,8 @@
 message(title: Str, text: Str) -> Null
 ```
 
-Displays a message box.  
-The first argument is the title; the second is the body text.  
+Displays a message box.
+The first argument is the title; the second is the message.
 
 ## confirm
 
@@ -15,8 +15,8 @@ The first argument is the title; the second is the body text.
 confirm(title: Str, text: Str) -> Bool
 ```
 
-Displays a confirmation dialog box with "Yes" and "No" buttons.
-Returns `true` if the user clicks "Yes", and `false` if the user clicks "No".
+Displays a confirmation dialog with `"Yes"` and `"No"` buttons.
+Returns `true` if `"Yes"` is selected, `false` if `"No"` is selected.
 
 ```jspl
 if(confirm("Confirmation", "Do you want to continue?"), print("Running..."))
@@ -25,13 +25,14 @@ if(confirm("Confirmation", "Do you want to continue?"), print("Running..."))
 ## print
 
 ```jspl
-print(Str, ...) -> Null
+print(Str...) -> Null
 ```
 
-Prints the specified string to the console immediately when the arguments are evaluated.
-Unlike normal functions, print outputs values as soon as they are ready,
+Prints the specified string to the console as soon as arguments are evaluated.
+Unlike normal functions,
+outputs values as they become available
 rather than after the entire expression is evaluated.
-Redirects and pipes are supported.
+Supports redirection and piping.
 
 ```jspl
 print("Hello, ", "World!", "\n") => null
@@ -43,10 +44,10 @@ print("Hello, ", "World!", "\n") => null
 input() -> Str
 ```
 
-Redirection and pipes are supported.
-
-When the input is redirected or piped, data is read in 4 KB chunks by default,
-and any remaining data is retained internally for subsequent reads.
+Reads a line from the console and returns it as a string.
+Returns input when Enter is pressed.
+When input is redirected or piped,
+reads data in 4 KB chunks by default and retains remaining data for subsequent reads.
 
 ```jspl
 name = input()

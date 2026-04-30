@@ -218,12 +218,12 @@ impl Json {
       }
     }
   }
-  pub(crate) fn operator(&self) -> Option<Pos<String>> {
+  pub(crate) fn operator(&self) -> Option<&Pos<String>> {
     if let Object(Lit(obj)) = &self
       && obj.len() == 1
       && obj[0].0.pos.info == INFO_OP
     {
-      Some(obj[0].0.clone())
+      Some(&obj[0].0)
     } else {
       None
     }

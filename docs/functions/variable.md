@@ -6,7 +6,8 @@
 scope(Any) -> Any
 ```
 
-It introduces a new scope and evaluates the expression in order and returns the result.
+Introduces a new scope,
+evaluates the expression in order, and returns the result.
 
 ```jspl
 scope(let(x = 1))

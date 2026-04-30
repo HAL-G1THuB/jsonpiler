@@ -8,8 +8,8 @@ Ident += Int -> Null
 Ident += Str -> Null
 ```
 
-Adds the value to the variable and assigns the result to the variable.
-If value is a string, it concatenates the string to the variable.
+Adds a value to a variable and assigns the result.
+If value is a string, it is concatenated to the variable.
 
 ```jspl
 let(i = 5)
@@ -24,7 +24,7 @@ Ident -= Float -> Null
 Ident -= Int -> Null
 ```
 
-Subtracts the value from the variable and assigns the result to the variable.
+Subtracts a value from a variable and assigns the result.
 
 ```jspl
 let(i = 5)
@@ -39,7 +39,7 @@ Ident *= Float -> Null
 Ident *= Int -> Null
 ```
 
-Multiplies the variable by the value and assigns the result to the variable.
+Multiplies a variable by a value and assigns the result.
 
 ```jspl
 let(i = 5)
@@ -54,7 +54,7 @@ Ident /= Float -> Null
 Ident /= Int -> Null
 ```
 
-Divides the variable by the value and assigns the result to the variable.
+Divides a variable by a value and assigns the result.
 If the value is zero, an error is generated at runtime or compile time.
 
 ```jspl

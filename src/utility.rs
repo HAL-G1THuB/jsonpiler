@@ -8,13 +8,13 @@ pub(crate) mod scope;
 use crate::prelude::*;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub(crate) trait VarTable<T: Ord> {
-  fn get_var(&mut self, name: &Pos<T>) -> Option<Json>;
+  fn get_var(&mut self, name: &Pos<T>) -> Option<&Pos<Variable>>;
 }
 impl<T: Ord> VarTable<T> for BTreeMap<T, Pos<Variable>> {
-  fn get_var(&mut self, name: &Pos<T>) -> Option<Json> {
+  fn get_var(&mut self, name: &Pos<T>) -> Option<&Pos<Variable>> {
     let var = self.get_mut(&name.val)?;
     var.val.refs.push(name.pos);
-    Some(var.val.val.clone())
+    self.get(&name.val)
   }
 }
 impl Jsonpiler {
@@ -43,11 +43,11 @@ impl Jsonpiler {
     pos: Position,
     scope: &mut Scope,
   ) -> ErrOR<()> {
-    if scope.get_var_local(name).is_some() {
-      return err!(pos, DuplicateName(LocalVar, name.val.clone()));
+    if let Some(local) = scope.get_var_local(name) {
+      return err!(pos, DuplicateName(local.val.kind, name.val.clone()));
     }
-    if self.globals.contains_key(&name.val) {
-      return err!(pos, DuplicateName(GlobalVar, name.val.clone()));
+    if let Some(global) = self.globals.get(&name.val) {
+      return err!(pos, DuplicateName(global.val.kind, name.val.clone()));
     }
     if self.builtin.contains_key(&name.val.as_ref()) {
       return err!(pos, DuplicateName(BuiltInFunc, name.val.clone()));
@@ -57,9 +57,9 @@ impl Jsonpiler {
     }
     Ok(())
   }
-  pub(crate) fn get_var(&mut self, var: &Pos<String>, scope: &mut Scope) -> ErrOR<Json> {
-    if let Some(val) = scope.get_var_local(var).or_else(|| self.globals.get_var(var)) {
-      Ok(val)
+  pub(crate) fn get_var(&mut self, var: &Pos<String>, scope: &mut Scope) -> ErrOR<Pos<Variable>> {
+    if let Some(variable) = scope.get_var_local(var).or_else(|| self.globals.get_var(var)) {
+      Ok(variable.clone())
     } else {
       err!(var.pos, UndefinedVar(var.val.clone()))
     }

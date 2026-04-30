@@ -39,7 +39,7 @@ pub(crate) use crate::parser::error::{
   RuntimeErr::{self, *},
   TokenKind,
   Warning::{self, *},
-  make_header, type_err,
+  format_ret_val, format_variable, make_header, type_err,
 };
 pub(crate) use crate::parser::{Comment, Parser, Position};
 pub(crate) use crate::server::sync::{Channel, Scheduler};

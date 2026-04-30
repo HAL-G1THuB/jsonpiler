@@ -70,7 +70,7 @@ impl Jsonpiler {
       Call(self.err_handler(id)?),
       mov_d(Rcx, 1),
     ];
-    self.link_label(id, insts, SIZE, true, LABEL_NOT_RETURN);
+    self.link_label(id, &[insts], SIZE, true, LABEL_NOT_RETURN);
     Ok(id)
   }
   pub(crate) fn err_handler(&mut self, caller: LabelId) -> ErrOR<LabelId> {
@@ -136,7 +136,7 @@ impl Jsonpiler {
     let hidden_err = Global(self.global_str(HIDDEN_ERROR));
     self.link_label(
       id,
-      &[LeaRM(Rcx, hidden_err), Call(print_e), mov_d(Rcx, 1)],
+      &[&[LeaRM(Rcx, hidden_err), Call(print_e), mov_d(Rcx, 1)]],
       SIZE,
       true,
       LABEL_NOT_RETURN,
@@ -185,7 +185,7 @@ impl Jsonpiler {
       self.write_err_msg("`\n", tmp)?,
       [Lbl(epilogue), mov_q(Rcx, Rbx)]
     );
-    self.link_label(self.handlers.seh, &insts, SIZE, false, FN_NOT_RETURN);
+    self.link_label(self.handlers.seh, &[&insts], SIZE, false, FN_NOT_RETURN);
     Ok(())
   }
   pub(crate) fn seh_match(
@@ -285,7 +285,7 @@ impl Jsonpiler {
       self.write_err_msg("`\n", tmp)?,
       [Lbl(exit), mov_q(Rcx, msg), CallApi(local_free), mov_q(Rcx, Rdi)]
     );
-    self.link_label(self.handlers.win, &insts, SIZE, true, LABEL_NOT_RETURN);
+    self.link_label(self.handlers.win, &[&insts], SIZE, true, LABEL_NOT_RETURN);
     Ok(())
   }
   pub(crate) fn write_err_msg(&mut self, text: &str, tmp: Address) -> ErrOR<Vec<Inst>> {

@@ -20,11 +20,11 @@ init_gui => {"GUI", SPECIAL, Exact(1), {
     for (param_name, param_type) in &render.params {
       if param_type != &IntT
       {
-        return Err(type_err(format!("`{param_name}`"), vec![IntT], name.pos.with(param_type.clone())));
+        return Err(type_err(format!("argument `{param_name}`"), vec![IntT], name.pos.with(param_type.clone())));
       }
     }
     if render.ret_type != IntT {
-      return Err(type_err("`render`'s return value".into(), vec![IntT], name.pos.with(render.ret_type.clone())));
+      return Err(type_err(format_ret_val("render"), vec![IntT], name.pos.with(render.ret_type.clone())));
     }
     render.dep.id
   };

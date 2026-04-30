@@ -12,16 +12,17 @@ impl Jsonpiler {
       self.check_defined(&var, var.pos, scope)?;
       Err(is_g)
     } else {
-      let ref_val = self.get_var(&var, scope)?;
-      if ref_val.as_type() != val.val.as_type() {
+      let variable = self.get_var(&var, scope)?.val;
+      if variable.val.as_type() != val.val.as_type() {
         return Err(type_err(
-          format!("Variable `{}`", var.val),
-          vec![ref_val.as_type()],
+          format_variable(&var.val, variable.kind),
+          vec![variable.val.as_type()],
           val.map_ref(Json::as_type),
         ));
       }
       Ok(
-        ref_val
+        variable
+          .val
           .memory()
           .ok_or_else(|| Compilation(UndefinedVar(var.val.clone()), vec![var.pos]))?,
       )
@@ -73,7 +74,8 @@ impl Jsonpiler {
     };
     if let Err(is_g) = reassign {
       let target = if is_g { &mut self.globals } else { scope.innermost() };
-      target.insert(var.val.clone(), var.pos.with(Variable::new(value)));
+      let kind = if is_g { GlobalVar } else { LocalVar };
+      target.insert(var.val, var.pos.with(Variable::new(value, kind)));
     }
     Ok(reassign.is_ok())
   }
@@ -100,7 +102,7 @@ impl Jsonpiler {
       Ok(Null(Lit(())))
     } else {
       Err(type_err(
-        func.val.name.clone(),
+        format!("`{}`'s argument", func.val.name),
         vec![CustomT("Assign expression".into())],
         assign_expr.pos.with(ObjectT),
       ))
@@ -120,7 +122,7 @@ built_in! {self, func, scope, variable;
     }
   }},
   reference => {"$", COMMON, Exact(1), {
-    self.get_var(&arg!(func, (Str(Lit(x))) => x), scope)
+    Ok(self.get_var(&arg!(func, (Str(Lit(x))) => x), scope)?.val.val.clone())
   }},
   scope => {"scope", SP_SCOPE, Exact(1), {
     Ok(self.eval(func.arg()?, scope)?.val)

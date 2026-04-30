@@ -6,7 +6,7 @@
 assert(Bool, Str) -> Null
 ```
 
-If the given boolean is `false`, an error is generated at runtime.
+If `Bool` is `false`, an error is generated at runtime.
 
 ```jspl
 assert(false, "Assertion failed")
@@ -31,7 +31,7 @@ not(Bool) -> Bool
 not(Int) -> Int
 ```
 
-Returns the NOT of the given boolean or integer.
+Returns the NOT of `Bool` or `Int`.
 
 ```jspl
 not(true) => false
@@ -40,11 +40,11 @@ not(true) => false
 ## and
 
 ```jspl
-and(Bool, Bool, ...) -> Bool
-and(Int, Int, ...) -> Int
+and(Bool, Bool...) -> Bool
+and(Int, Int...) -> Int
 ```
 
-Returns the AND of the given booleans or integers.
+Returns the AND of `Bool` or `Int`.
 
 ```jspl
 true and false => false
@@ -53,11 +53,11 @@ true and false => false
 ## or
 
 ```jspl
-or(Bool, Bool, ...) -> Bool
-or(Int, Int, ...) -> Int
+or(Bool, Bool...) -> Bool
+or(Int, Int...) -> Int
 ```
 
-Returns the OR of the given booleans or integers.
+Returns the OR of `Bool` or `Int`.
 
 ```jspl
 true or false => true
@@ -66,11 +66,11 @@ true or false => true
 ## xor
 
 ```jspl
-xor(Bool, Bool, ...) -> Bool
-xor(Int, Int, ...) -> Int
+xor(Bool, Bool...) -> Bool
+xor(Int, Int...) -> Int
 ```
 
-Returns the XOR of the given booleans or integers.
+Returns the XOR of `Bool` or `Int`.
 
 ```jspl
 true xor false => true

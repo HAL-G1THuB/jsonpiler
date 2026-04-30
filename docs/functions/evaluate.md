@@ -6,7 +6,7 @@
 list(Any, ...) -> Array (Literal)
 ```
 
-The list function returns its evaluated arguments as an Array (Literal).
+Returns its arguments as an `Array` (literal).
 
 ```jspl
 list(3 + 5, 0) => [8, 0]
@@ -30,4 +30,4 @@ value(8) => 8
 main(Any) -> Any
 ```
 
-Evaluate the `Block` when the file is executed as the main program.
+Evaluates the `Block` when the file is executed as the main program.

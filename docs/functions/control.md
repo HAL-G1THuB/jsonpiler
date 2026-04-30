@@ -13,44 +13,34 @@ define(
 
 Registers a user-defined function with the following parameters:
 
-- The first argument specifies the function’s name.
-- The second argument provides the type annotation for the function’s parameter.
-- The third argument specifies the return type annotation.
-- The fourth argument is the function body, which is evaluated when the function is called.
+- name: the function name.
+- params: the parameter type.
+- return_type: the return type.
+- body: the function body.
 
-The `define` keyword also introduces a new scope.
+The `define` keyword introduces a new scope.
 
 ```jspl
-define(by_two, n: Int, Int, n + n)
+define(by_two, { n: Int }, Int, n + n)
 by_two(2) => 4
 ```
 
-**Types that can be assigned to arguments**:
+**Types not allowed as arguments or return values**:
 
-- `Int`
-- `Str`
-- `Bool`
-- `Null`
-- `Float`
-
-**Types that can be returned by the function**:
-
-- `Int`
-- `Str`
-- `Bool`
-- `Null`
-- `Float`
+- `Array`
+- `Object`
 
 ## if
 
 ```jspl
-if([Bool, Any], ...) -> Null
+if([Bool, Any]...) -> Null
 if(Bool, Any) -> Null
 ```
 
-Evaluates each condition in order. If a condition evaluates to `true`,
-the corresponding `then` expression is executed.
-Regardless of which branch is taken, the overall result is always `null`.
+Evaluates each condition in order.
+If a condition is `true`,
+the corresponding `then` expression is evaluated.
+Returns `null`.
 
 ```jspl
 if(
@@ -67,13 +57,12 @@ if(
 while(Bool, Block) -> Null
 ```
 
-Executes the `body` repeatedly as long as the `condition` evaluates to `true`.
+Evaluates the `body` repeatedly while the `condition` is `true`.
 Returns `null`.
 
 ```jspl
 i = 0
-while(
-  i < 5,
+while(i < 5,
 {
   message("Loop", "");
   i += 1
@@ -87,14 +76,12 @@ while(
 import(path: Str (Literal), functions: Ident, ...) -> Null
 ```
 
-Executes the specified file at startup
-and includes the specified function in the namespace.
+Evaluates the specified file at startup and adds the specified function to the namespace.
 The path is relative to the current file.
-This function does not affect existing variables.
-If the same file is imported more than once, no new code is generated,
-and functions can be imported from existing code.
-importing a function from a different file with the same name causes a redefinition error.
-An error occurs if the file does not contain the specified function.
+Does not affect existing variables.
+If the same file is imported more than once, no new code is generated, and functions are reused.
+Importing a function with the same name from a different file causes a redefinition error.
+An error occurs if the specified function is not found in the file or not exported.
 
 ```jspl
 import("my_library.jspl", my_func)
@@ -107,8 +94,8 @@ my_func()
 export(Ident, ...) -> Null
 ```
 
-Exports the specified functions to be imported by other files.
-An error occurs if the specified function is not defined in the current file.
+Exports the specified functions for import by other files.
+An error occurs if a specified function is not defined in the current file.
 
 ## ret
 
@@ -116,9 +103,8 @@ An error occurs if the specified function is not defined in the current file.
 ret(Any) -> Null
 ```
 
-Terminates execution of the function and returns the given value.
-`return` may only be used within a function defined by `define`.
-A `return` may only be written at the end of any block.
+Terminates the function and returns the given value.
+`ret` may only be used within a function defined by `define`.
 
 ## break
 

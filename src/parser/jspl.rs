@@ -60,7 +60,7 @@ impl Pos<Parser> {
   }
   fn parse_ident(&mut self) -> ParseErrOR<Pos<String>> {
     let mut pos = self.pos;
-    while (self.pos.offset as usize) < self.val.source.len() {
+    while (self.pos.offset as usize) < self.val.text.len() {
       let byte = self.peek();
       if byte.is_ascii_whitespace() || byte.is_ascii_control() || b"#()[,]{:;}\"".contains(&byte) {
         break;
@@ -74,7 +74,7 @@ impl Pos<Parser> {
     Ok(pos.with(self.get_slice(pos)?.into()))
   }
   fn skip_space_check_sep(&mut self) -> bool {
-    while (self.pos.offset as usize) < self.val.source.len() {
+    while (self.pos.offset as usize) < self.val.text.len() {
       match self.peek() {
         b' ' | b'\t' => {
           self.pos.offset += 1;
@@ -91,7 +91,7 @@ impl Pos<Parser> {
   }
   pub(crate) fn skip_ws_comment(&mut self, is_block: bool) -> ParseErrOR<bool> {
     let mut is_separated = false;
-    while (self.pos.offset as usize) < self.val.source.len() {
+    while (self.pos.offset as usize) < self.val.text.len() {
       if self.consume_if(b'#')? {
         let mut pos = self.pos;
         pos.offset -= 1;
@@ -210,7 +210,7 @@ impl Pos<Parser> {
       b'-'
         if self
           .val
-          .source
+          .text
           .as_bytes()
           .get((self.pos.offset + 1) as usize)
           .is_some_and(u8::is_ascii_digit) =>

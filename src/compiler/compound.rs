@@ -24,18 +24,18 @@ impl Jsonpiler {
     scope: &mut Scope,
   ) -> ErrOR<Json> {
     let var = func.arg()?.into_ident("Variable name")?;
-    let val = self.get_var(&var, scope)?;
-    let Some(memory) = val.memory() else {
+    let variable = &self.get_var(&var, scope)?.val;
+    let Some(memory) = variable.val.memory() else {
       return err!(var.pos, UndefinedVar(var.val));
     };
     let value = self.eval(func.arg()?, scope)?;
     match &value {
       Pos { val: Int(int), .. } => {
-        if val.as_type() != IntT {
+        if variable.val.as_type() != IntT {
           return Err(type_err(
-            format!("Variable `{}`", var.val),
+            format_variable(&var.val, variable.kind),
             vec![IntT],
-            var.pos.with(val.as_type()),
+            var.pos.with(variable.val.as_type()),
           ));
         }
         scope.extend(&mov_memory(Rax, memory));
@@ -53,11 +53,11 @@ impl Jsonpiler {
         scope.extend(&ret_memory(memory, Rcx, Rax)?);
       }
       Pos { val: Float(float), .. } => {
-        if val.as_type() != FloatT {
+        if variable.val.as_type() != FloatT {
           return Err(type_err(
-            format!("Variable `{}`", var.val),
+            format_variable(&var.val, variable.kind),
             vec![FloatT],
-            var.pos.with(val.as_type()),
+            var.pos.with(variable.val.as_type()),
           ));
         }
         scope.extend(&self.mov_float_xmm(Rax, Rax, Var(memory))?);
@@ -66,11 +66,11 @@ impl Jsonpiler {
         scope.extend(&ret_memory_xmm(memory, Rax, Rax)?);
       }
       Pos { val: Str(string), .. } if func.val.name == "+=" => {
-        let Str(Var(dst_str @ Memory(_, MemoryType { heap: HeapPtr, .. }))) = val else {
+        let Str(Var(dst_str @ Memory(_, MemoryType { heap: HeapPtr, .. }))) = variable.val else {
           return Err(type_err(
-            format!("Variable `{}`", var.val),
+            format_variable(&var.val, variable.kind),
             vec![StrT],
-            var.pos.with(val.as_type()),
+            var.pos.with(variable.val.as_type()),
           ));
         };
         let heap_alloc = self.import(KERNEL32, "HeapAlloc");

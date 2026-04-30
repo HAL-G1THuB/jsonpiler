@@ -84,10 +84,12 @@ pub(crate) enum InternalErr {
   StackLeak,
   UnknownLabel,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum NameKind {
+  Argument,
   BuiltInFunc,
   GlobalVar,
+  #[default]
   LocalVar,
   UserDefinedFunc,
 }
@@ -128,10 +130,10 @@ impl JsonpilerErr {
       Internal(kind) => Some(format!("{ISSUE}{}`", kind.err_code())),
     }
   }
-  pub(crate) fn pos_vec(&self) -> Vec<Position> {
+  pub(crate) fn pos_vec(&self) -> &[Position] {
     match self {
-      Parse(_, pos_vec) | Compilation(_, pos_vec) => pos_vec.clone(),
-      Platform(_) | Internal(_) => vec![],
+      Parse(_, pos_vec) | Compilation(_, pos_vec) => pos_vec,
+      Platform(_) | Internal(_) => &[],
     }
   }
   pub(crate) fn title(&self) -> String {
@@ -145,21 +147,18 @@ impl JsonpilerErr {
 }
 impl Jsonpiler {
   pub(crate) fn format_err(&self, err: &JsonpilerErr) -> String {
+    let mut err_str = err.title();
     let first_parser = match self.first_parser() {
       Ok(parser) => parser,
       Err(missing_first) => {
-        return format!("{}{missing_first}{ERR_END}", missing_first.title());
+        return format!("{err_str}{missing_first}{ERR_END}");
       }
     };
-    let mut err_str = err.title().clone();
     err_str.push_str(&wrap_text(&err.to_string(), 28));
-    let pos_vec = err.pos_vec();
-    if !pos_vec.is_empty() {
-      for pos in pos_vec.iter().rev() {
-        let (file_str, l_c, code, carets) =
-          self.parsers[pos.file as usize].err_info(*pos, &first_parser.val.file);
-        err_str.push_str(&format!("{ERR_SEPARATE}{file_str}{l_c}{ERR_SEPARATE}{code}| {carets}"));
-      }
+    for pos in err.pos_vec().iter().rev() {
+      let (file_str, l_c, code, carets) =
+        self.parsers[pos.file as usize].err_info(*pos, &first_parser.val.file);
+      err_str.push_str(&format!("{ERR_SEPARATE}{file_str}{l_c}{ERR_SEPARATE}{code}| {carets}"));
     }
     err_str.push_str(ERR_END);
     if let Some(issue_msg) = err.issue_msg() {
@@ -178,12 +177,12 @@ impl Pos<Parser> {
     let mut root =
       Path::new(root_file).parent().unwrap_or(Path::new("C:")).to_string_lossy().to_string();
     root.push(path::MAIN_SEPARATOR);
-    let find_ln = |i: &usize| self.val.source.as_bytes()[*i] == b'\n';
-    let len = self.val.source.len();
+    let find_ln = |i: &usize| self.val.text.as_bytes()[*i] == b'\n';
+    let len = self.val.text.len();
     let index = (pos.offset as usize).min(len);
     let start = (0..index).rfind(&find_ln).map_or(0, |st| st + 1);
     let end = (index..len).find(&find_ln).unwrap_or(len);
-    let line = String::from_utf8_lossy(&self.val.source.as_bytes()[start..end]);
+    let line = String::from_utf8_lossy(&self.val.text.as_bytes()[start..end]);
     let carets_offset = index - start;
     let carets = (pos.size as usize).min(end - index).max(1);
     let file_path = self.val.file.strip_prefix(&root).unwrap_or(&self.val.file).into();
@@ -274,6 +273,7 @@ impl fmt::Display for TokenKind {
 impl fmt::Display for NameKind {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.write_str(match self {
+      Argument => "argument",
       BuiltInFunc => "built-in function",
       UserDefinedFunc => "user-defined function",
       GlobalVar => "global variable",
@@ -448,4 +448,10 @@ pub(crate) fn make_header(title: &str) -> String {
   let base_len = PREFIX.chars().count() + title.chars().count() + SPACES;
   let dash_len = 30usize.saturating_sub(base_len);
   format!("{PREFIX} {title} {}", "-".repeat(dash_len))
+}
+pub(crate) fn format_variable(name: &str, kind: NameKind) -> String {
+  format!("{kind} `{name}`")
+}
+pub(crate) fn format_ret_val(name: &str) -> String {
+  format!("the return value of `{name}`")
 }

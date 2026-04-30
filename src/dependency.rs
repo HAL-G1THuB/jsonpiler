@@ -45,27 +45,27 @@ impl Jsonpiler {
     for (name, u_d) in self.user_defined.clone() {
       self.push_symbol(SymbolInfo {
         definition: Some(u_d.pos),
-        json_type: FuncT(u_d.val.params.clone(), Box::new(u_d.val.ret_type.clone())),
+        json_type: FuncT(u_d.val.params, Box::new(u_d.val.ret_type)),
         kind: UserDefinedFunc,
         name: name.clone(),
-        refs: u_d.val.refs.clone(),
+        refs: u_d.val.refs,
       });
       if !reachable.contains(&u_d.val.dep.id)
         && !name.starts_with('_')
         && !self.parsers[u_d.pos.file as usize].val.exports.contains_key(&name)
       {
-        self.warn(u_d.pos, UnusedName(UserDefinedFunc, name.clone()))?;
+        self.warn(u_d.pos, UnusedName(UserDefinedFunc, name))?;
       }
     }
     Ok(())
   }
   pub(crate) fn link_function(&mut self, id: LabelId, insts: &[Inst], stack_size: i32) {
-    self.link_label(id, insts, stack_size, true, FN_RETURN);
+    self.link_label(id, &[insts], stack_size, true, FN_RETURN);
   }
   pub(crate) fn link_label(
     &mut self,
     id: LabelId,
-    body: &[Inst],
+    body: &[&[Inst]],
     stack_size: i32,
     seh: bool,
     (is_function, do_return): (bool, bool),
@@ -75,7 +75,9 @@ impl Jsonpiler {
     if is_function {
       insts.extend_from_slice(&[Push(Rbp), mov_q(Rbp, Rsp), SubRId(Rsp, stack_size)]);
     }
-    insts.extend_from_slice(body);
+    for bo in body.iter() {
+      insts.extend_from_slice(bo);
+    }
     if do_return {
       if is_function {
         insts.extend_from_slice(&[AddRId(Rsp, stack_size), Pop(Rbp), Custom(RET)]);

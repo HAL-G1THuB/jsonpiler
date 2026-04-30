@@ -9,38 +9,23 @@ impl Jsonpiler {
     for _ in 0..scope.locals.len() {
       self.drop_scope(scope)?;
     }
-    for (name, local) in take(&mut scope.local_top) {
-      if local.val.refs.is_empty() && !name.starts_with('_') {
-        self.warn(local.pos, UnusedName(LocalVar, name.clone()))?;
-      }
-      self.push_symbol(SymbolInfo {
-        definition: Some(local.pos),
-        name,
-        kind: LocalVar,
-        json_type: local.val.val.as_type(),
-        refs: local.val.refs.clone(),
-      });
-      self.drop_json(local.val.val, true, scope);
-    }
-    Ok(())
+    self.drop_var_table(
+      take(&mut scope.local_top),
+      |jsonpiler, json, scope_2| jsonpiler.drop_json(json, true, scope_2),
+      scope,
+    )
   }
   fn drop_global(&mut self, scope: &mut Scope) -> ErrOR<()> {
-    for (name, global) in take(&mut self.globals) {
-      if global.val.refs.is_empty() && !name.starts_with('_') {
-        self.warn(global.pos, UnusedName(GlobalVar, name.clone()))?;
-      }
-      self.push_symbol(SymbolInfo {
-        definition: Some(global.pos),
-        name,
-        kind: GlobalVar,
-        json_type: global.val.val.as_type(),
-        refs: global.val.refs.clone(),
-      });
-      if let Some(memory) = global.val.val.memory() {
-        self.heap_free(memory, scope);
-      }
-    }
-    Ok(())
+    let globals = take(&mut self.globals);
+    self.drop_var_table(
+      globals,
+      |jsonpiler, json, scope_2| {
+        if let Some(memory) = json.memory() {
+          jsonpiler.heap_free(memory, scope_2);
+        }
+      },
+      scope,
+    )
   }
   #[expect(clippy::needless_pass_by_value)]
   pub(crate) fn drop_json(&mut self, json: Json, force: bool, scope: &mut Scope) {
@@ -52,18 +37,33 @@ impl Jsonpiler {
     }
   }
   pub(crate) fn drop_scope(&mut self, scope: &mut Scope) -> ErrOR<()> {
-    for (name, local) in scope.locals.pop().unwrap_or_default() {
-      if local.val.refs.is_empty() && !name.starts_with('_') {
-        self.warn(local.pos, UnusedName(LocalVar, name.clone()))?;
+    self.drop_var_table(
+      scope.locals.pop().unwrap_or_default(),
+      |jsonpiler, json, scope_2| jsonpiler.drop_json(json, true, scope_2),
+      scope,
+    )
+  }
+  fn drop_var_table<F>(
+    &mut self,
+    var_table: BTreeMap<String, Pos<Variable>>,
+    mut free: F,
+    scope: &mut Scope,
+  ) -> ErrOR<()>
+  where
+    F: FnMut(&mut Jsonpiler, Json, &mut Scope),
+  {
+    for (name, variable) in var_table {
+      if variable.val.refs.is_empty() && !name.starts_with('_') {
+        self.warn(variable.pos, UnusedName(variable.val.kind, name.clone()))?;
       }
       self.push_symbol(SymbolInfo {
-        definition: Some(local.pos),
+        definition: Some(variable.pos),
         name,
-        kind: LocalVar,
-        json_type: local.val.val.as_type(),
-        refs: local.val.refs.clone(),
+        kind: variable.val.kind,
+        json_type: variable.val.val.as_type(),
+        refs: variable.val.refs,
       });
-      self.drop_json(local.val.val, true, scope);
+      free(self, variable.val.val, scope);
     }
     Ok(())
   }

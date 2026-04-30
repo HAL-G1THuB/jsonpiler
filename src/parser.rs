@@ -14,7 +14,7 @@ pub(crate) struct Parser {
   pub dep: Dependency,
   pub exports: BTreeMap<String, Pos<UserDefinedInfo>>,
   pub file: String,
-  pub source: String,
+  pub text: String,
   pub warns: Vec<Pos<Warning>>,
 }
 #[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
@@ -45,7 +45,7 @@ impl Position {
 }
 impl Pos<Parser> {
   fn check_eof(&self) -> ParseErrOR<()> {
-    if self.val.source.len() <= self.pos.offset as usize { Err(self.eof_err()) } else { Ok(()) }
+    if self.val.text.len() <= self.pos.offset as usize { Err(self.eof_err()) } else { Ok(()) }
   }
   fn consume(&mut self) -> ParseErrOR<u8> {
     self.check_eof()?;
@@ -70,7 +70,7 @@ impl Pos<Parser> {
   }
   #[expect(clippy::cast_possible_truncation)]
   fn eof_err(&self) -> Pos<ParseErr> {
-    Position { offset: self.val.source.len() as u32, ..self.pos }
+    Position { offset: self.val.text.len() as u32, ..self.pos }
       .with(UnexpectedToken(TokenKind::Eof))
   }
   fn expect(&mut self, expected: u8) -> ParseErrOR<()> {
@@ -84,14 +84,14 @@ impl Pos<Parser> {
     self.check_eof().is_ok() && self.peek().is_ascii_digit()
   }
   pub(crate) fn get_slice(&self, pos: Position) -> ParseErrOR<&str> {
-    let Some(slice) = self.val.source.get(pos.offset as usize..pos.end() as usize) else {
+    let Some(slice) = self.val.text.get(pos.offset as usize..pos.end() as usize) else {
       return parse_err!(pos, InvalidChar);
     };
     Ok(slice)
   }
   pub(crate) fn new(source: String, file_idx: u32, file: String, id: LabelId) -> Self {
     Position::new(file_idx).with(Parser {
-      source,
+      text: source,
       file,
       comments: BTreeMap::new(),
       exports: BTreeMap::new(),
@@ -100,7 +100,7 @@ impl Pos<Parser> {
     })
   }
   fn peek(&self) -> u8 {
-    self.val.source.as_bytes()[self.pos.offset as usize]
+    self.val.text.as_bytes()[self.pos.offset as usize]
   }
   fn set_size(&self, pos: &mut Position) {
     pos.size = self.pos.offset - pos.offset;
@@ -237,7 +237,7 @@ impl Pos<Parser> {
     let mut pos = self.pos;
     self.expect(b'"')?;
     let mut bytes = vec![];
-    while (self.pos.offset as usize) < self.val.source.len() {
+    while (self.pos.offset as usize) < self.val.text.len() {
       if self.consume_if(b'"')? {
         self.set_size(&mut pos);
         return String::from_utf8(bytes).or(parse_err!(self.pos, InvalidChar));

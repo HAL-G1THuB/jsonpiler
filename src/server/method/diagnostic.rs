@@ -8,15 +8,14 @@ impl Pos<Parser> {
     severity: u8,
     unused: bool,
   ) -> JsonNoPos {
-    let index = floor_char_boundary(&self.val.source, pos.offset as usize);
-    let end = floor_char_boundary(&self.val.source, pos.end() as usize);
-    let start =
-      (0..index).rfind(|i| self.val.source.as_bytes()[*i] == b'\n').map_or(0, |st| st + 1);
-    let line_slice = &self.val.source.get(start..index).unwrap_or_default();
+    let index = floor_char_boundary(&self.val.text, pos.offset as usize);
+    let end = floor_char_boundary(&self.val.text, pos.end() as usize);
+    let start = (0..index).rfind(|i| self.val.text.as_bytes()[*i] == b'\n').map_or(0, |st| st + 1);
+    let line_slice = &self.val.text.get(start..index).unwrap_or_default();
     let start_col = line_slice.encode_utf16().count();
     let mut end_line = pos.line;
     let mut end_col = start_col;
-    let text = &self.val.source.get(index..end).unwrap_or_default();
+    let text = &self.val.text.get(index..end).unwrap_or_default();
     let mut parts = text.split('\n');
     if let Some(first) = parts.next() {
       end_col += first.encode_utf16().count();
@@ -72,18 +71,18 @@ impl Server {
   }
   pub(crate) fn update_source(&mut self, uri: &str) {
     let Some(mut source) = self.get_source(uri) else {
+      self.clear_diag(uri.to_owned());
       self.sources.remove(uri);
       return;
     };
     let mut jsonpiler = Jsonpiler::new(true);
     for reload_uri in take(&mut source.reload) {
-      self.clear_diag(reload_uri.clone());
       if Path::new(&uri2path(&reload_uri)).exists() {
         self.update_source(&reload_uri)
       }
     }
     let mut first_parser =
-      <Pos<Parser>>::new(source.text.clone(), 0, uri2path(uri), jsonpiler.id());
+      <Pos<Parser>>::new(take(&mut source.text), 0, uri2path(uri), jsonpiler.id());
     let parsed = first_parser.parse_jspl();
     jsonpiler.parsers.push(first_parser);
     let mut diag_map = BTreeMap::new();
@@ -122,6 +121,11 @@ impl Server {
         ]),
       );
     }
+    let Ok(first_parser_mut) = jsonpiler.first_parser_mut() else {
+      self.sources.remove(uri);
+      return;
+    };
+    source.text = take(&mut first_parser_mut.val.text);
     self.sources.insert(uri.to_owned(), source);
   }
 }

@@ -62,7 +62,7 @@ impl Json {
       ),
       Str(Lit(bind)) => StrN(bind),
       Array(Var(_)) | Bool(Var(_)) | Float(Var(_)) | Int(Var(_)) | Null(Var(_))
-      | Object(Var(_)) | Str(Var(_)) => NullN,
+      | Object(Var(_)) | Str(Var(_)) => StrN(self.describe()),
     }
   }
   pub(crate) fn describe(&self) -> String {

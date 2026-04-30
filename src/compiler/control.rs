@@ -28,7 +28,8 @@ built_in! {self, func, scope, control;
     for _ in 1..=func.val.len {
       if if_expr.val.len() != 2 {
         return Err(type_err(
-          "`if` expression".into(), if_expr_t,
+          "`if` expression".into(),
+          if_expr_t,
           if_expr.pos.with(ArrayT)
         ));
       }

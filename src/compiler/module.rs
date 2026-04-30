@@ -33,13 +33,12 @@ impl Jsonpiler {
       return err!(pos, RecursiveInclude(file));
     }
     if let Some(file_idx) = self.parsers.iter().position(|parser| parser.val.file == file) {
-      for (name, val) in &self.parsers[file_idx].val.exports {
-        if let Some(refs) = imports.remove(name) {
-          if self.user_defined.get(name).is_none_or(|u_d| u_d.pos.file as usize != file_idx) {
+      for (name, val) in self.parsers[file_idx].val.exports.clone() {
+        if let Some(refs) = imports.remove(&name) {
+          if self.user_defined.get(&name).is_none_or(|u_d| u_d.pos.file as usize != file_idx) {
             self.check_defined(&val.pos.with(name.clone()), pos, scope)?;
           }
-          let u_d = self.user_defined.entry(name.clone()).or_insert(val.clone());
-          u_d.val.refs.extend(refs);
+          self.user_defined.entry(name).or_insert(val).val.refs.extend(refs);
         }
       }
       if !imports.is_empty() {
@@ -57,7 +56,7 @@ impl Jsonpiler {
     let file_idx = self.parsers.len();
     self.push_parser(source, file.clone());
     let root_id = self.parsers[file_idx].val.dep.id;
-    let total_size: usize = self.parsers.iter().map(|parser| parser.val.source.len()).sum();
+    let total_size: usize = self.parsers.iter().map(|parser| parser.val.text.len()).sum();
     if total_size > GB as usize {
       return err!(pos, TooLargeFile);
     }

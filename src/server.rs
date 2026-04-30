@@ -5,6 +5,7 @@ mod utility;
 use self::time_stamp::{format_micros, time_stamp};
 pub(crate) use self::utility::*;
 use crate::prelude::*;
+use std::collections::hash_map::Entry;
 use std::{
   io::{self, BufRead as _, BufReader, Read as _, Write as _},
   process::exit,
@@ -13,7 +14,6 @@ use std::{
 const MB: u64 = 1 << 20u8;
 pub(crate) struct Server {
   channel: Channel,
-  pending: HashMap<String, Vec<JsonNoPos>>,
   pub requests: BTreeMap<IdKind, (String, Instant)>,
   scheduler: Scheduler,
   shutdown: bool,
@@ -58,12 +58,13 @@ impl fmt::Display for IdKind {
 pub(crate) struct Source {
   pub analysis: Option<Analysis>,
   pub parsed: Option<Pos<Json>>,
+  pub pending: Vec<JsonNoPos>,
   pub reload: BTreeSet<String>,
   pub text: String,
 }
 impl Source {
   pub(crate) fn new(text: String) -> Self {
-    Source { text, reload: BTreeSet::new(), parsed: None, analysis: None }
+    Source { text, reload: BTreeSet::new(), parsed: None, analysis: None, pending: vec![] }
   }
 }
 impl Server {
@@ -85,6 +86,17 @@ impl Server {
         None
       }
     })
+  }
+  pub(crate) fn get_source_mut(&mut self, uri: &str) -> Option<&mut Source> {
+    let file = uri2path(uri);
+    if let Entry::Vacant(entry) = self.sources.entry(uri.to_owned()) {
+      if fs::metadata(&file).ok()?.len() > MB {
+        return None;
+      }
+      entry.insert(Source::new(fs::read_to_string(&file).ok()?));
+      self.update_source(uri);
+    }
+    self.sources.get_mut(uri)
   }
   #[expect(clippy::print_stderr)]
   fn handle(&mut self, msg: String) {
@@ -147,7 +159,7 @@ impl Server {
     loop {
       let Some(msg) = self.read() else {
         self.log_only_error(Instant::now(), "Failed to read message");
-        exit(1);
+        continue;
       };
       self.handle(msg);
       while let Ok(uri) = self.channel.rx.try_recv() {
@@ -160,7 +172,6 @@ impl Server {
     Server {
       shutdown: false,
       sources: HashMap::new(),
-      pending: HashMap::new(),
       scheduler: Scheduler::new(channel.tx.clone()),
       channel,
       stdin: BufReader::new(io::stdin()),

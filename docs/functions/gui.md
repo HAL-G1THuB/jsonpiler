@@ -7,13 +7,14 @@ GUI(render: Ident) -> Null
 ```
 
 render draws each pixel.
-It takes (x, y, frame, mouseX, mouseY) and returns a color (0xRRGGBB).
+It takes `render(x, y, frame, mouseX, mouseY) -> color`.
 
 x: -256~255
 y: -256~255
 frame: 0~...
 mouse_x: -256~...
 mouse_y: -256~...
+color: 0xRRGGBB
 
 ```jspl
 define(

@@ -14,12 +14,13 @@ pub(crate) struct Scope {
 }
 #[derive(Default, Debug, Clone)]
 pub(crate) struct Variable {
+  pub kind: NameKind,
   pub refs: Vec<Position>,
   pub val: Json,
 }
 impl Variable {
-  pub(crate) fn new(val: Json) -> Self {
-    Variable { val, refs: vec![] }
+  pub(crate) fn new(val: Json, kind: NameKind) -> Self {
+    Variable { val, kind, refs: vec![] }
   }
 }
 impl Scope {
@@ -87,7 +88,7 @@ impl Scope {
     }
     self.unused_map.insert(start, size);
   }
-  pub(crate) fn get_var_local(&mut self, var: &Pos<String>) -> Option<Json> {
+  pub(crate) fn get_var_local(&mut self, var: &Pos<String>) -> Option<&Pos<Variable>> {
     for locals in self.iter_locals() {
       if let Some(variable) = locals.get_var(var) {
         return Some(variable);

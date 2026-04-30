@@ -7,8 +7,9 @@ abs(Int) -> Int
 abs(Float) -> Float
 ```
 
-Returns the absolute value of the given integer or float.
-If the given integer is `0x8000000000000000` (the smallest 64-bit signed integer), the result is `0x8000000000000000` itself due to the nature of two's complement representation.
+Returns the absolute value of `Int` or `Float`.
+If the value is `0x8000000000000000` (the smallest 64-bit signed integer),
+the result is unchanged due to two's complement representation.
 
 ```jspl
 abs(-5) => 5
@@ -23,7 +24,7 @@ Str + Str... -> Str
 ```
 
 Returns the sum of all operands.
-if all operands are strings, the result is the concatenation of all strings.
+If the operands are strings, they are concatenated.
 
 ```jspl
 1 + 5 + 4 + 6 => 16
@@ -39,8 +40,8 @@ Int - Int... -> Int
 Float - Float... -> Float
 ```
 
-Subtracts each subsequent operand from the first and returns the result.
-If given one argument, invert the sign.
+Subtracts each subsequent operand from the first.
+With one argument, the sign is inverted.
 
 ```jspl
 30 - 5 - { 4 + 6 }
@@ -54,7 +55,7 @@ Int * Int... -> Int
 Float * Float... -> Float
 ```
 
-Returns the result of multiplying operands.
+Multiplies all operands.
 
 ```jspl
 30 * 5 * { 4 + 6 } => 1500
@@ -67,8 +68,8 @@ Int / Int... -> Int
 Float / Float... -> Float
 ```
 
-Returns the result of dividing the first operand by all following operands.
-If the divisor is zero, an error is generated at runtime or compile time.
+Divides the first operand by each subsequent operand.
+If any divisor is zero, an error is generated at runtime or compile time.
 
 ```jspl
 30 / 5 / 6 => 1
@@ -80,7 +81,7 @@ If the divisor is zero, an error is generated at runtime or compile time.
 Int % Int -> Int
 ```
 
-Returns the result of the remainder operation.
+Computes the remainder of the first operand divided by the second.
 
 ```jspl
 30 % 7 => 2
@@ -92,7 +93,7 @@ Returns the result of the remainder operation.
 Int(Float) -> Int
 ```
 
-Returns the integer part of the given float.
+Converts `Float` to `Int` by discarding the fractional part.
 
 ```jspl
 Int(1.5) => 1
@@ -104,7 +105,7 @@ Int(1.5) => 1
 Float(Int) -> Float
 ```
 
-Converts an integer to a float by adding .0
+Converts `Int` to `Float` by adding .0
 
 ```jspl
 Float(1) => 1.0
@@ -117,7 +118,7 @@ random() -> Int
 ```
 
 Returns a pseudo-random 64-bit integer.
-Not suitable for cryptography.
+Not suitable for cryptographic purposes.
 
 ```jspl
 {"random": []} => 1234567890
@@ -129,7 +130,7 @@ Not suitable for cryptography.
 Int << Int -> Int
 ```
 
-Returns the result of left bitwise shift.
+Performs a left bitwise shift.
 
 ```jspl
 1 << 3 => 8
@@ -141,7 +142,7 @@ Returns the result of left bitwise shift.
 Int >> Int -> Int
 ```
 
-Returns the result of right bitwise shift.
+Performs a right bitwise shift.
 
 ## sqrt
 
@@ -149,7 +150,7 @@ Returns the result of right bitwise shift.
 sqrt(Float) -> Float
 ```
 
-Returns the square root of the given float.
+Returns the square root of `Float`.
 
 ```jspl
 sqrt(2.0) => 1.414...

@@ -10,6 +10,12 @@
 
 ### jsonpiler 0.10
 
+#### 0.10.1
+
+- Changed
+  - Released JsonpilerExtension v0.2.1, compatible with this version
+  - Updated `docs`
+
 #### 0.10.0
 
 - Added
@@ -20,6 +26,7 @@
   - The LSP server now releases resources for closed files
   - Formatted LSP server logs
   - The LSP server now returns function documentation when hovering over built-in functions
+  - `tests/test.rs`
 
 - Fixed
   - Formatter error with the unary `-` operator

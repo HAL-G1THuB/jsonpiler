@@ -8,7 +8,7 @@ Float != Float... -> Bool
 Str != Str -> bool
 ```
 
-Returns `true` if all arguments are not equal, `false` otherwise.
+Returns `true` if no adjacent arguments are equal.
 
 ```jspl
 1 != 1 => false
@@ -22,7 +22,7 @@ Float == Float... -> Bool
 Str == Str -> bool
 ```
 
-Returns `true` if all arguments are equal, `false` otherwise.
+Returns `true` if all arguments are equal.
 
 ```jspl
 1 == 1 => true
@@ -38,7 +38,7 @@ Int < Int... -> Bool
 Float < Float... -> Bool
 ```
 
-Returns `true` if the arguments are in strictly increasing order, `false` otherwise.
+Returns `true` if arguments are in strictly increasing order.
 
 ```jspl
 2 < 1 => false
@@ -51,7 +51,7 @@ Int <= Int... -> Bool
 Float <= Float... -> Bool
 ```
 
-Returns `true` if the arguments are in increasing order, `false` otherwise.
+Returns `true` if arguments are in increasing order.
 
 ```jspl
 1 <= 2 => true
@@ -64,7 +64,7 @@ Int >= Int... -> Bool
 Float >= Float... -> Bool
 ```
 
-Returns `true` if the arguments are in decreasing order, `false` otherwise.
+Returns `true` if arguments are in decreasing order.
 
 ```jspl
 2 >= 1 => true
@@ -77,7 +77,7 @@ Int > Int... -> Bool
 Float > Float... -> Bool
 ```
 
-Returns `true` if the arguments are in strictly decreasing order, `false` otherwise.
+Returns `true` if arguments are in strictly decreasing order.
 
 ```jspl
 2 > 1 => true

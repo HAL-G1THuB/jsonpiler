@@ -18,7 +18,7 @@ built_in! {self, func, scope, define;
       let arg = Local(Long, scope.alloc(mem_type.size(), mem_type.size())?);
       let json = json_type.to_json(param_type_str.pos, arg)?;
       scope.innermost().insert(
-        var_name.val.clone(), var_name.pos.with(Variable::new(json.clone()))
+        var_name.val.clone(), var_name.pos.with(Variable::new(json.clone(), Argument))
       );
       args.push(Memory(arg, mem_type));
       params.push((var_name.val, json_type));
@@ -35,8 +35,7 @@ built_in! {self, func, scope, define;
     }));
     let ret = self.eval(func.arg()?, scope)?;
     if ret_type != ret.val.as_type() {
-      let ret_val = format!("Function `{}`'s return value", name.val);
-      return Err(type_err(ret_val, vec![ret_type], ret.map_ref(Json::as_type)));
+      return Err(type_err(format_ret_val(&name.val), vec![ret_type], ret.map_ref(Json::as_type)));
     }
     let tmp = scope.alloc(8, 8)?;
     scope.extend(&self.mov_json(Rax, ret.clone(), Some(scope.id))?);
