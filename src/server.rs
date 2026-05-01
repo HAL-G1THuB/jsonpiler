@@ -5,8 +5,9 @@ mod utility;
 use self::time_stamp::{format_micros, time_stamp};
 pub(crate) use self::utility::*;
 use crate::prelude::*;
-use std::collections::hash_map::Entry;
 use std::{
+  collections::hash_map::Entry,
+  env,
   io::{self, BufRead as _, BufReader, Read as _, Write as _},
   process::exit,
   time::Instant,
@@ -14,6 +15,7 @@ use std::{
 const MB: u64 = 1 << 20u8;
 pub(crate) struct Server {
   channel: Channel,
+  pub docs: Option<HashMap<String, String>>,
   pub requests: BTreeMap<IdKind, (String, Instant)>,
   scheduler: Scheduler,
   shutdown: bool,
@@ -176,6 +178,7 @@ impl Server {
       channel,
       stdin: BufReader::new(io::stdin()),
       stdout: io::stdout(),
+      docs: None,
       requests: BTreeMap::new(),
     }
   }
@@ -272,4 +275,64 @@ impl Server {
       .to_string(),
     )
   }
+}
+pub(crate) fn build_doc_cache() -> HashMap<String, String> {
+  let mut map = HashMap::new();
+  let Some(exe_dir) =
+    env::current_exe().ok().and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
+  else {
+    return map;
+  };
+  let dir = exe_dir.join("../docs/functions");
+  let Ok(entries) = fs::read_dir(&dir) else {
+    return map;
+  };
+  for entry in entries.flatten() {
+    let path = entry.path();
+    if path.file_name().and_then(|os_str| os_str.to_str()) == Some("README.md") {
+      continue;
+    }
+    if path.extension().and_then(|os_str| os_str.to_str()) != Some("md") {
+      continue;
+    }
+    let Ok(content) = fs::read_to_string(&path) else {
+      continue;
+    };
+    parse_markdown_into(&content, &mut map);
+  }
+  map
+}
+#[expect(clippy::else_if_without_else)]
+fn parse_markdown_into(content: &str, map: &mut HashMap<String, String>) {
+  let mut current_name: Option<String> = None;
+  let mut current_body = String::new();
+  for line in content.lines() {
+    if let Some(name) = line.strip_prefix("## ") {
+      if let Some(prev) = current_name.take() {
+        map.insert(prev, unescape_hash(current_body.trim()));
+        current_body.clear();
+      }
+      current_name = Some(name.trim().to_owned());
+    } else if current_name.is_some() {
+      current_body.push_str(line);
+      current_body.push('\n');
+    }
+  }
+  if let Some(last) = current_name {
+    map.insert(last, unescape_hash(current_body.trim()));
+  }
+}
+fn unescape_hash(string: &str) -> String {
+  let mut out = String::with_capacity(string.len());
+  let mut chars = string.chars();
+  while let Some(char) = chars.next() {
+    if char == '\\' {
+      if let Some(next) = chars.next() {
+        out.push(next);
+      }
+    } else {
+      out.push(char);
+    }
+  }
+  out
 }

@@ -74,6 +74,8 @@ impl Server {
     self.response(id, items);
   }
   pub(crate) fn m_initialize(&mut self, id: IdKind) {
+    use super::build_doc_cache;
+    self.docs = Some(build_doc_cache());
     let mut capabilities = vec![
       ("textDocumentSync".into(), IntN(2)),
       (

@@ -27,9 +27,11 @@ Jsonpiler now has a function to support GUI.
 
 ## What’s New
 
-- Changed
+### 0.10.2
+
+- Added
   - Released JsonpilerExtension v0.2.1, compatible with this version
-  - Updated `docs`
+  - Cache LSP hover documentation at initialization
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 

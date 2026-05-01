@@ -10,6 +10,12 @@
 
 ### jsonpiler 0.10
 
+#### 0.10.2
+
+- Added
+  - Released JsonpilerExtension v0.2.2, compatible with this version
+  - Cache LSP hover documentation at initialization
+
 #### 0.10.1
 
 - Changed

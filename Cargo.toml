@@ -1,6 +1,6 @@
 [package]
 name = "jsonpiler"
-version = "0.10.1"
+version = "0.10.2"
 edition = "2024"
 description = "a Json syntax programming language for Windows"
 license = "Apache-2.0"
@@ -14,7 +14,7 @@ doc = false
 [lib]
 doc = false
 [profile.release]
-opt-level = 0
+opt-level = 3
 panic = "abort"
 [badges]
 maintenance = { status = "actively-developed" }

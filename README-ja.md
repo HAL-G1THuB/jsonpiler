@@ -28,11 +28,11 @@ Jsonpilerに GUI をサポートする関数が追加されました。
 
 ## 更新情報
 
-### 0.10.1
+### 0.10.2
 
-- 変更
-  - 本バージョンに対応したJsonpilerExtension v0.2.1を公開
-  - `docs` を更新
+- 追加
+  - 本バージョンに対応したJsonpilerExtension v0.2.0を公開
+  - LSPのホバーのドキュメントを初期化時にキャッシュするように
 
 詳細は **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG-ja.md)** を参照してください。
 
