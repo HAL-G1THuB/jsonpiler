@@ -1,27 +1,28 @@
 pub(crate) use crate::Jsonpiler;
-pub(crate) use crate::assembler::{
-  Api,
+pub(crate) use crate::assembler::ops::{
   ArithSdKind::{self, *},
-  Assembler,
   ConditionCode::{self, *},
-  DataLbl::{self, *},
-  Inst::{self, *},
   Logic::{self, *},
   Operand::{self, *},
-  Scale::*,
-  Section::{self, *},
   Shift,
   ShiftDirection::{self, *},
-  Sib,
-  UnaryKind::*,
-  disp::Disp,
-  register::Register::{self, *},
-  rm::RM,
-  sect_header::SectionHeader,
+  UnaryKind::{self, *},
 };
-pub(crate) use crate::dependency::{Analysis, Dependency, SymbolInfo};
+pub(crate) use crate::assembler::{
+  Assembler,
+  disp::Disp,
+  inst::Inst::{self, *},
+  register::Register::{self, *},
+  rm::{RM, Scale::*, Sib},
+  section::{
+    Section::{self, *},
+    SectionHeader,
+  },
+};
+pub(crate) use crate::dependency::{Analysis, CompiledFunc, Dependency, SymbolInfo};
 pub(crate) use crate::internal::handler::Handlers;
 pub(crate) use crate::json::{
+  Bind::{self, *},
   Json::{self, *},
   JsonNoPos::{self, *},
   JsonType::{self, *},
@@ -41,38 +42,45 @@ pub(crate) use crate::parser::error::{
   Warning::{self, *},
   format_ret_val, format_variable, make_header, type_err,
 };
-pub(crate) use crate::parser::{Comment, Parser, Position};
-pub(crate) use crate::server::sync::{Channel, Scheduler};
+pub(crate) use crate::parser::{
+  Comment, Parser,
+  position::{Pos, Position},
+};
 pub(crate) use crate::server::{
   IdKind::{self, *},
   Server,
+  sync::{Channel, Scheduler},
 };
 pub(crate) use crate::utility::consts::{
   assembly_consts::*, builtin_flags::*, custom_insts::*, dll::*, format_config::*, gui_config::*,
   runtime_err::*, symbols::*, version::*,
 };
-pub(crate) use crate::utility::move_json::*;
-pub(crate) use crate::utility::other::{
+pub(crate) use crate::utility::memory::{
   Address::{self, *},
-  Bind::{self, *},
-  BuiltIn, BuiltInInfo, BuiltInPtr, CompiledFunc, Dll, FileId, LabelId,
   Lifetime::*,
   Memory,
   MemorySize::*,
-  MemoryType, Pos,
+  MemoryType,
   RegSize::*,
-  Seh,
   Storage::{self, *},
-  UserDefinedInfo,
 };
-pub(crate) use crate::utility::scope::{Scope, Variable};
-pub(crate) use crate::utility::{VarTable, *};
-pub(crate) use crate::{
-  arg, arg_custom, built_in, err, extend, parse_err, symbol, unwrap_arg, write_all,
+pub(crate) use crate::utility::other::{
+  BuiltIn, BuiltInInfo, BuiltInPtr, Dll, FileIdx, LabelId, Seh, Signature, UserDefinedInfo,
 };
-pub(crate) use core::mem::{replace, take};
+pub(crate) use crate::utility::{
+  data_lbl::{
+    Api,
+    DataLbl::{self, *},
+  },
+  move_json::*,
+  scope::Scope,
+  var_table::{VarTable, Variable},
+  *,
+};
+pub(crate) use crate::{arg, arg_custom, built_in, err, extend, symbol, unwrap_arg, write_all};
 pub(crate) use std::{
   collections::{BTreeMap, BTreeSet, HashMap},
-  fmt, fs, io,
+  env, fmt, fs, io, iter,
+  mem::{replace, take},
   path::Path,
 };

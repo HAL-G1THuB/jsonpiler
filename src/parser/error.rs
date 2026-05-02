@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use std::{num, path};
+use std::{num::TryFromIntError, path};
 pub(crate) type ParseErrOR<T> = Result<T, Pos<ParseErr>>;
 pub(crate) type ErrOR<T> = Result<T, JsonpilerErr>;
 #[derive(Debug, Clone)]
@@ -98,8 +98,8 @@ impl From<Pos<ParseErr>> for JsonpilerErr {
     Parse(err, vec![pos])
   }
 }
-impl From<num::TryFromIntError> for JsonpilerErr {
-  fn from(_: num::TryFromIntError) -> Self {
+impl From<TryFromIntError> for JsonpilerErr {
+  fn from(_: TryFromIntError) -> Self {
     Internal(CastError)
   }
 }

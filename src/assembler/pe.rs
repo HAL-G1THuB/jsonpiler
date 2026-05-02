@@ -1,6 +1,6 @@
-use super::sizeof_entry;
+use super::utility::*;
 use crate::prelude::*;
-use std::io::{self, Seek as _, SeekFrom::Start, Write as _};
+use io::{Seek as _, Write as _};
 impl Assembler {
   pub(crate) fn build_idata(&self) -> ErrOR<Vec<u8>> {
     let idt_size = self.sizeof_idt()?;
@@ -59,8 +59,9 @@ impl Assembler {
       pdata[unwind_info..unwind_info + 4].copy_from_slice(&xdata_offset.to_le_bytes());
       let push_rbp = self.sizeof_inst(&Push(Rbp), 0)?;
       let mov_rbp_rsp = push_rbp + self.sizeof_inst(&mov_q(Rbp, Rsp), push_rbp)?;
-      let sub_rsp_size =
-        u8::try_from(mov_rbp_rsp + self.sizeof_inst(&SubRId(Rsp, size), mov_rbp_rsp)?)?;
+      let sub_rsp_size = u8::try_from(
+        mov_rbp_rsp + self.sizeof_inst(&SubRId(Rsp, size.cast_unsigned()), mov_rbp_rsp)?,
+      )?;
       extend!(
         xdata,
         [0o11, sub_rsp_size, 4, Rbp as u8, sub_rsp_size, 1],
@@ -152,7 +153,7 @@ impl Assembler {
   }
 }
 fn write_section(file: &mut fs::File, (data, header): &(Vec<u8>, SectionHeader)) -> ErrOR<()> {
-  file.seek(Start(u64::from(header.r_ptr)))?;
+  file.seek(io::SeekFrom::Start(u64::from(header.r_ptr)))?;
   file.write_all(data)?;
   Ok(())
 }

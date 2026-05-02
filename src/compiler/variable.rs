@@ -81,8 +81,7 @@ impl Jsonpiler {
   }
   fn critical_sect(&mut self, scope: &mut Scope, action: &'static str) {
     let critical_section = Global(self.get_critical_section());
-    let action_cs = self.import(KERNEL32, action);
-    scope.extend(&[LeaRM(Rcx, critical_section), CallApi(action_cs)]);
+    scope.extend(&[LeaRM(Rcx, critical_section), CallApi(self.api(KERNEL32, action))]);
   }
   pub(crate) fn declare(
     &mut self,

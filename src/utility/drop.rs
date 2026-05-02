@@ -69,12 +69,11 @@ impl Jsonpiler {
   }
   pub(crate) fn heap_free(&mut self, Memory(addr, mem_type): Memory, scope: &mut Scope) {
     if mem_type.heap == HeapPtr {
-      let heap_free = self.import(KERNEL32, "HeapFree");
       scope.extend(&[
         mov_q(Rcx, Global(self.symbols[HEAP])),
         Clear(Rdx),
         mov_q(R8, addr),
-        CallApiCheck(heap_free),
+        CallApiCheck(self.api(KERNEL32, "HeapFree")),
         DecMd(Global(self.symbols[LEAK_CNT])),
       ]);
     }

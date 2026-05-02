@@ -1,4 +1,20 @@
 use crate::prelude::*;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Scale {
+  S1 = 0,
+  #[expect(dead_code)]
+  S2 = 1,
+  S4 = 2,
+  #[expect(dead_code)]
+  S8 = 3,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(clippy::arbitrary_source_item_ordering)]
+pub(crate) struct Sib {
+  pub scale: Scale,
+  pub index: Register,
+  pub base: Register,
+}
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RM {
   Base(Register, Disp),

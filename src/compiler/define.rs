@@ -1,5 +1,4 @@
 use crate::prelude::*;
-use std::iter;
 built_in! {self, func, scope, define;
   f_define => {"define", SPECIAL, Exact(4), {
     let id = self.id();
@@ -28,9 +27,8 @@ built_in! {self, func, scope, define;
     let epilogue = self.id();
     scope.epilogue = Some((epilogue, ret_type.clone()));
     self.user_defined.insert(name.val.clone(), name.pos.with(UserDefinedInfo {
-      params,
-      ret_type: ret_type.clone(),
-      dep: Dependency { id, uses: vec![] },
+      sig: Signature { params, ret_type: ret_type.clone() },
+      dep: Dependency::new(id),
       refs: vec![],
     }));
     let ret = self.eval(func.arg()?, scope)?;

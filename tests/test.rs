@@ -29,7 +29,6 @@ mod tests {
       if path.extension().and_then(|ext| ext.to_str()) != Some("jspl") {
         continue;
       }
-
       let name = path.file_name().expect("example file must have a file name");
       fs::copy(&path, dst.join(name)).expect("failed to copy example file");
     }
@@ -60,13 +59,11 @@ mod tests {
       ("lcm.jspl", 36),
       ("or_nand_xor.jspl", 0),
     ];
-
     for (file, expected) in cases {
       let code = run_example(&examples_dir, file);
       assert_eq!(code, expected, "unexpected exit code for {file}");
     }
   }
-
   #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
   #[test]
   fn run_random_example_and_check_exit_code_range() {
@@ -77,7 +74,6 @@ mod tests {
       "random.jspl exit code is out of expected range [0, 99]: {code}"
     );
   }
-
   #[cfg(not(all(target_os = "windows", target_arch = "x86_64")))]
   #[test]
   fn skip_on_unsupported_platform() {

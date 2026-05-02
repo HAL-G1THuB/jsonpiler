@@ -7,12 +7,6 @@ impl Assembler {
     }
     Ok(code_size)
   }
-  pub(crate) fn sizeof_iat(&self) -> ErrOR<u32> {
-    self.dlls.iter().map(sizeof_entry).sum()
-  }
-  pub(crate) fn sizeof_idt(&self) -> ErrOR<u32> {
-    Ok((len_u32(&self.dlls)? + 1) * 20)
-  }
   pub(crate) fn sizeof_inst(&self, inst: &Inst, size: u32) -> ErrOR<u32> {
     Ok(match inst {
       ShiftR(_, _, operand) => {
@@ -57,9 +51,6 @@ impl Assembler {
       Ok(long)
     }
   }
-}
-pub(crate) fn sizeof_entry(dll: &Dll) -> ErrOR<u32> {
-  Ok((len_u32(&dll.1)? + 1) * 8)
 }
 pub(crate) fn sizeof_mov_q(operands: (Operand<u64>, Operand<u64>)) -> ErrOR<u32> {
   Ok(match operands {

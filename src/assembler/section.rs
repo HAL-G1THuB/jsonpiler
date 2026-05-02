@@ -1,4 +1,16 @@
+use super::utility::r_size;
 use crate::prelude::*;
+#[repr(u8)]
+#[derive(Eq, PartialEq, Hash, Clone, Copy)]
+pub(crate) enum Section {
+  Text,
+  Data,
+  RData,
+  PData,
+  XData,
+  Bss,
+  IData,
+}
 #[derive(Debug, Clone, Copy)]
 #[expect(clippy::arbitrary_source_item_ordering)]
 pub(crate) struct SectionHeader {

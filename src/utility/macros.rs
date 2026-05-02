@@ -26,12 +26,6 @@ macro_rules! err {
   };
 }
 #[macro_export]
-macro_rules! parse_err {
-  ($pos:expr, $kind:expr) => {
-    Err($pos.with($kind))
-  };
-}
-#[macro_export]
 macro_rules! arg { ($func:ident, ($($kind:tt)+) => $body:ident) => {{
     let arg = $func.arg()?;
     if let $($kind)+ = arg.val {

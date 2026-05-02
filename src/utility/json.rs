@@ -10,6 +10,20 @@ pub(crate) enum Json {
   Object(Bind<Vec<KeyVal>>),
   Str(Bind<String>),
 }
+#[derive(Debug, Clone)]
+pub(crate) enum Bind<T> {
+  Lit(T),
+  Var(Memory),
+}
+impl<T: Copy> Copy for Bind<T> {}
+impl<T> fmt::Display for Bind<T> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      Var(memory) => write!(f, "{memory}"),
+      Lit(_) => f.write_str(" (Literal)"),
+    }
+  }
+}
 #[derive(Debug, Clone, Default)]
 pub(crate) enum JsonNoPos {
   ArrayN(Vec<JsonNoPos>),
@@ -27,7 +41,7 @@ pub(crate) enum JsonType {
   BoolT,
   CustomT(String),
   FloatT,
-  FuncT(Vec<(String, JsonType)>, Box<JsonType>),
+  FuncT(Box<Signature>),
   IntT,
   NullT,
   ObjectT,
@@ -138,7 +152,7 @@ impl JsonType {
       BoolT => Ok(MemoryType { heap: Value, size: Small(RB) }),
       FloatT | IntT | NullT => Ok(MemoryType { heap: Value, size: Small(RQ) }),
       StrT => Ok(MemoryType { heap: HeapPtr, size: Dynamic }),
-      FuncT(_, _) | ArrayT | ObjectT => err!(pos, UnsupportedType(self.name())),
+      FuncT(_) | ArrayT | ObjectT => err!(pos, UnsupportedType(self.name())),
       CustomT(_) => err!(pos, UnknownType(self.name())),
     }
   }
@@ -148,7 +162,7 @@ impl JsonType {
       NullT => "Null",
       FloatT => "Float",
       ObjectT => "Object",
-      FuncT(_, _) => "Func",
+      FuncT(_) => "Func",
       IntT => "Int",
       StrT => "Str",
       ArrayT => "Array",
@@ -164,7 +178,7 @@ impl JsonType {
       FloatT => Ok(Float(Var(memory))),
       NullT => Ok(Null(Var(memory))),
       BoolT => Ok(Bool(Var(memory))),
-      FuncT(_, _) | ArrayT | ObjectT => err!(pos, UnsupportedType(self.name())),
+      FuncT(_) | ArrayT | ObjectT => err!(pos, UnsupportedType(self.name())),
       CustomT(name) => err!(pos, UnknownType(name.clone())),
     }
   }
@@ -218,23 +232,6 @@ impl JsonNoPos {
       FloatN(lit) => write!(fmter, "{lit}"),
       StrN(lit) => write!(fmter, "\"{}\"", json_escape(lit)),
       Self::NullN => write!(fmter, "null"),
-    }
-  }
-}
-impl<T> fmt::Display for Bind<T> {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match self {
-      Var(memory) => write!(f, "{memory}"),
-      Lit(_) => f.write_str(" (Literal)"),
-    }
-  }
-}
-impl fmt::Display for Memory {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match self.0 {
-      Local(Tmp, _) => Ok(()),
-      Local(Long, _) => write!(f, " (Local variable)"),
-      Global(_) => write!(f, " (Global variable)"),
     }
   }
 }

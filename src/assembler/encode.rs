@@ -1,3 +1,4 @@
+use super::utility::*;
 use crate::prelude::*;
 impl Assembler {
   fn encode_alias(&mut self, insts: &[Inst], size: u32) -> ErrOR<Vec<u8>> {

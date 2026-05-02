@@ -32,23 +32,22 @@ impl Server {
             Argument => format!("{{ {}: {} }}", info.name, info.json_type),
             GlobalVar => format!("global({}: {} = _)", info.name, info.json_type),
             LocalVar => format!("let({}: {} = _)", info.name, info.json_type),
-            BuiltInFunc | UserDefinedFunc => format!(
-              "define({}{})",
-              info.name,
-              if let FuncT(func_params, ret_type) = &info.json_type {
+            BuiltInFunc | UserDefinedFunc =>
+              if let FuncT(sig) = &info.json_type {
                 format!(
-                  ", {{ {} }}, {}, {{ _ }}",
-                  func_params
+                  "{}({}) -> {}",
+                  info.name,
+                  sig
+                    .params
                     .iter()
                     .map(|(param_name, json_type)| format!("{param_name}: {json_type}"))
                     .collect::<Vec<_>>()
-                    .join("; "),
-                  ret_type
+                    .join(", "),
+                  sig.ret_type
                 )
               } else {
-                String::new()
-              }
-            ),
+                format!("{}(?) -> ?", info.name)
+              },
           },
           info.kind
         )
@@ -92,8 +91,7 @@ impl Server {
     let source = self.get_source(&uri)?;
     let offset = range2offset(&source.text, &position)?;
     let mut jsonpiler = Jsonpiler::new(true);
-    jsonpiler.push_parser(source.text, uri2path(&uri));
-    let parsed = jsonpiler.first_parser_mut().ok()?.parse_jspl().ok()?;
+    let parsed = jsonpiler.push_parser(source.text, uri2path(&uri)).ok()?.parse_jspl().ok()?;
     jsonpiler.compile(parsed).ok()?;
     Some((jsonpiler, offset))
   }

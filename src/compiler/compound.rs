@@ -73,7 +73,6 @@ impl Jsonpiler {
             var.pos.with(variable.val.as_type()),
           ));
         };
-        let heap_alloc = self.import(KERNEL32, "HeapAlloc");
         let str_len = self.str_len(scope.id)?;
         let tmp = scope.tmp(8, 8, func)?;
         let tmp2 = scope.tmp(8, 8, func)?;
@@ -91,7 +90,7 @@ impl Jsonpiler {
           mov_q(R8, tmp),
           AddRR(R8, Rax),
           IncR(R8),
-          CallApi(heap_alloc),
+          CallApi(self.api(KERNEL32, "HeapAlloc")),
           IncMd(leak),
           mov_q(Rcx, tmp),
           self.mov_str(Rsi, Var(dst_str)),

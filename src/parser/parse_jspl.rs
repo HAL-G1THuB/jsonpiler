@@ -1,3 +1,4 @@
+use super::utility::*;
 use crate::prelude::*;
 impl Pos<Parser> {
   pub(crate) fn parse_block(&mut self, is_top_level: bool) -> ParseErrOR<Json> {
@@ -15,7 +16,7 @@ impl Pos<Parser> {
         break;
       }
       if !entries.is_empty() && !is_separated && !is_eof {
-        return parse_err!(self.pos, ExpectedToken(TokenKind::Separate));
+        return Err(self.pos.with(ExpectedToken(TokenKind::Separate)));
       }
       let value = self.try_operator(0)?;
       if let Some(pos) = entry_pos {
@@ -68,10 +69,23 @@ impl Pos<Parser> {
       self.pos.offset += 1;
     }
     if pos.offset == self.pos.offset {
-      return parse_err!(pos, ExpectedIdent);
+      return Err(pos.with(ExpectedIdent));
     }
     self.set_size(&mut pos);
     Ok(pos.with(self.get_slice(pos)?.into()))
+  }
+  pub(crate) fn parse_jspl(&mut self) -> ParseErrOR<Pos<Json>> {
+    if self.skip_ws_comment(true).is_err() {
+      return Ok(self.pos.with(Null(Lit(()))));
+    }
+    let mut pos = self.pos;
+    let val = self.parse_block(true)?;
+    self.set_size(&mut pos);
+    if self.skip_ws_comment(true).is_err() {
+      Ok(pos.with(val))
+    } else {
+      Err(self.pos.with(ExpectedToken(TokenKind::Eof)))
+    }
   }
   fn skip_space_check_sep(&mut self) -> bool {
     while (self.pos.offset as usize) < self.val.text.len() {
@@ -263,9 +277,7 @@ impl Pos<Parser> {
             "true" => Bool(Lit(true)),
             "false" => Bool(Lit(false)),
             "null" => Null(Lit(())),
-            _ => {
-              Object(Lit(vec![(ident.pos.with("$".into()), ident.map(|string| Str(Lit(string))))]))
-            }
+            _ => Object(Lit(vec![(ident.pos.with("$".into()), ident.map(|str| Str(Lit(str))))])),
           }
         }
       }

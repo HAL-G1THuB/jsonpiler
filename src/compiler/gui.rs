@@ -10,37 +10,24 @@ init_gui => {"GUI", SPECIAL, Exact(1), {
     let render = u_d.val.clone();
     self.use_function(scope.id, render.dep.id);
     self.use_u_d(scope.id, render.dep.id)?;
-    if render.params.len() != 5
+    if render.sig.params.len() != 5
     {
       return err!(
         name.pos,
-        ArityError { name: "render".into(), expected: Exact(5), actual: len_u32(&render.params)? }
+        ArityError { name: "render".into(), expected: Exact(5), actual: len_u32(&render.sig.params)? }
       )
     }
-    for (param_name, param_type) in &render.params {
+    for (param_name, param_type) in &render.sig.params {
       if param_type != &IntT
       {
         return Err(type_err(format!("argument `{param_name}`"), vec![IntT], name.pos.with(param_type.clone())));
       }
     }
-    if render.ret_type != IntT {
-      return Err(type_err(format_ret_val("render"), vec![IntT], name.pos.with(render.ret_type.clone())));
+    if render.sig.ret_type != IntT {
+      return Err(type_err(format_ret_val("render"), vec![IntT], name.pos.with(render.sig.ret_type.clone())));
     }
     render.dep.id
   };
-  scope.update_args_count(12);
-  let get_module_handle = self.import(KERNEL32, "GetModuleHandleW");
-  let load_icon_w = self.import(USER32, "LoadIconW");
-  let load_cursor_w = self.import(USER32, "LoadCursorW");
-  let register_class_ex_w = self.import(USER32, "RegisterClassExW");
-  let unregister_class_w = self.import(USER32, "UnregisterClassW");
-  let create_window_ex_w = self.import(USER32, "CreateWindowExW");
-  let adjust_window_rect_ex = self.import(USER32, "AdjustWindowRectEx");
-  let show_window = self.import(USER32, "ShowWindow");
-  let update_window = self.import(USER32, "UpdateWindow");
-  let get_message_w = self.import(USER32, "GetMessageW");
-  let translate_message = self.import(USER32, "TranslateMessage");
-  let dispatch_message_w = self.import(USER32, "DispatchMessageW");
   let flag_gui = Global(self.symbols[FLAG_GUI]);
   let class_name = Global(self.global_w_chars(TITLE));
   let window_name = Global(self.global_w_chars(name.val));
@@ -72,29 +59,29 @@ init_gui => {"GUI", SPECIAL, Exact(1), {
     mov_q(Local(Tmp, wnd_cls + 0x38), Rax),
     mov_q(Local(Tmp, wnd_cls + 0x48), Rax),
     Clear(Rcx),
-    CallApiCheck(get_module_handle),
+    CallApiCheck(self.api(KERNEL32, "GetModuleHandleW")),
     mov_q(Local(Tmp, wnd_cls + 0x18), Rax),
     Clear(Rcx),
     mov_d(Rdx, 0x7F00),
-    CallApiCheck(load_icon_w),
+    CallApiCheck(self.api(USER32, "LoadIconW")),
     mov_q(Local(Tmp, wnd_cls + 0x20), Rax),
     Clear(Rcx),
     mov_d(Rdx, 0x7F00),
-    CallApiCheck(load_cursor_w),
+    CallApiCheck(self.api(USER32, "LoadCursorW")),
     mov_q(Local(Tmp, wnd_cls + 0x28), Rax),
     mov_d(Rax, 6),
     mov_q(Local(Tmp, wnd_cls + 0x30), Rax),
     LeaRM(Rax, class_name),
     mov_q(Local(Tmp, wnd_cls + 0x40), Rax),
     LeaRM(Rcx, Local(Tmp, wnd_cls)),
-    CallApiCheck(register_class_ex_w),
+    CallApiCheck(self.api(USER32, "RegisterClassExW")),
     mov_d(Local(Tmp, right), GUI_W),
     mov_d(Local(Tmp, bottom), GUI_H),
     LeaRM(Rcx, Local(Tmp, size_rect)),
     mov_d(Rdx, 0xCF_0000),
     Clear(R8),
     Clear(R9),
-    CallApiCheck(adjust_window_rect_ex),
+    CallApiCheck(self.api(USER32, "AdjustWindowRectEx")),
     mov_d(Rax, Local(Tmp, right)),
     mov_d(Rcx, Local(Tmp, left)),
     SubRR(Rax, Rcx),
@@ -116,19 +103,19 @@ init_gui => {"GUI", SPECIAL, Exact(1), {
     mov_q(Args(12), Rax),
     mov_q(Rax, Local(Tmp, wnd_cls + 0x18)),
     mov_q(Args(11), Rax),
-    CallApiCheck(create_window_ex_w),
+    CallApiCheck(self.api(USER32, "CreateWindowExW")),
     mov_q(hwnd, Rax),
     mov_q(Rcx, hwnd),
     mov_d(Rdx, 5),
-    CallApi(show_window),
+    CallApi(self.api(USER32, "ShowWindow")),
     mov_q(Rcx, hwnd),
-    CallApiCheck(update_window),
+    CallApiCheck(self.api(USER32, "UpdateWindow")),
     Lbl(msg_loop),
     LeaRM(Rcx, msg),
     Clear(Rdx),
     Clear(R8),
     Clear(R9),
-    CallApi(get_message_w),
+    CallApi(self.api(USER32, "GetMessageW")),
     IncR(Rax),
     LogicRR(Test, Rax, Rax),
     JCc(E, self.handlers.win),
@@ -136,17 +123,17 @@ init_gui => {"GUI", SPECIAL, Exact(1), {
     LogicRR(Test, Rax, Rax),
     JCc(E, exit_gui),
     LeaRM(Rcx, msg),
-    CallApi(translate_message),
+    CallApi(self.api(USER32, "TranslateMessage")),
     LeaRM(Rcx, msg),
-    CallApi(dispatch_message_w),
+    CallApi(self.api(USER32, "DispatchMessageW")),
     Jmp(msg_loop),
     Lbl(exit_gui),
     mov_b(flag_gui, 0),
     Clear(Rcx),
-    CallApiCheck(get_module_handle),
+    CallApiCheck(self.api(KERNEL32, "GetModuleHandleW")),
     LeaRM(Rcx, class_name),
     mov_q(Rdx, Rax),
-    CallApiCheck(unregister_class_w),
+    CallApiCheck(self.api(USER32, "UnregisterClassW")),
   ]);
   Ok(Null(Lit(())))
 }}

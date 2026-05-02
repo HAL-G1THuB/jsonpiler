@@ -39,8 +39,7 @@ impl Jsonpiler {
     for (name, size) in BSS_SYMBOLS {
       self.bss_symbol(name, *size);
     }
-    let first_dep = self.first_parser()?.val.dep.clone();
-    let mut scope = Scope::new(first_dep.id);
+    let mut scope = Scope::new(self.first_parser()?.val.dep.id);
     self.seh_handler(scope.id)?;
     self.win_handler(scope.id)?;
     self.ctrl_c_handler(scope.id)?;
@@ -52,12 +51,12 @@ impl Jsonpiler {
     scope.extend(&self.check_stack_leak(scope.id, tmp)?);
     scope.free(tmp, MemoryType { heap: Value, size: Small(RQ) });
     scope.check_free()?;
-    self.check_unused_functions(&first_dep)?;
+    self.check_unused_functions(0)?;
     let stack_size = scope.resolve_stack_size()?;
     let mut insts = self.startup()?;
     insts.push(scope.take_body());
     self.link_label(
-      first_dep.id,
+      scope.id,
       insts.iter().map(|vec| vec.as_slice()).collect::<Vec<&[Inst]>>().as_slice(),
       stack_size,
       true,
@@ -65,16 +64,10 @@ impl Jsonpiler {
     );
     Ok(())
   }
-  pub(crate) fn first_parser(&self) -> ErrOR<&Pos<Parser>> {
-    self.parsers.first().ok_or(Internal(MissingFirstParser))
-  }
-  pub(crate) fn first_parser_mut(&mut self) -> ErrOR<&mut Pos<Parser>> {
-    self.parsers.first_mut().ok_or(Internal(MissingFirstParser))
-  }
-  fn get_std_any(&mut self, get_std_handle: Api, std_id: u32, std_n: LabelId) -> Vec<Inst> {
+  fn get_std_any(&mut self, std_id: u32, std_n: LabelId) -> Vec<Inst> {
     vec![
       mov_d(Rcx, std_id),
-      CallApi(get_std_handle),
+      CallApi(self.api(KERNEL32, "GetStdHandle")),
       Clear(Rcx),
       DecR(Rcx),
       LogicRR(Cmp, Rax, Rcx),
@@ -131,7 +124,7 @@ impl Jsonpiler {
     self.push_symbol(SymbolInfo {
       definition: None,
       // dummy
-      json_type: FuncT(vec![], NullT.into()),
+      json_type: FuncT(Signature { params: vec![], ret_type: NullT }.into()),
       kind: BuiltInFunc,
       name: name.to_owned(),
       refs: vec![],
@@ -143,27 +136,22 @@ impl Jsonpiler {
     let std_o = self.symbols[STD_O];
     let std_e = self.symbols[STD_E];
     let heap = self.symbols[HEAP];
-    let set_console_cp = self.import(KERNEL32, "SetConsoleCP");
-    let set_console_output_cp = self.import(KERNEL32, "SetConsoleOutputCP");
-    let get_process_heap = self.import(KERNEL32, "GetProcessHeap");
-    let get_std_handle = self.import(KERNEL32, "GetStdHandle");
-    let set_ctrl_c_handler = self.import(KERNEL32, "SetConsoleCtrlHandler");
     Ok(vec![
       vec![
         mov_d(Rcx, CP_UTF8),
-        CallApiCheck(set_console_cp),
+        CallApiCheck(self.api(KERNEL32, "SetConsoleCP")),
         mov_d(Rcx, CP_UTF8),
-        CallApiCheck(set_console_output_cp),
-        CallApiCheck(get_process_heap),
+        CallApiCheck(self.api(KERNEL32, "SetConsoleOutputCP")),
+        CallApiCheck(self.api(KERNEL32, "GetProcessHeap")),
         mov_q(Global(heap), Rax),
         LeaRM(Rcx, Global(self.handlers.ctrl_c)),
         Clear(Rdx),
         IncR(Rdx),
-        CallApiCheck(set_ctrl_c_handler),
+        CallApiCheck(self.api(KERNEL32, "SetConsoleCtrlHandler")),
       ],
-      self.get_std_any(get_std_handle, (-10i32).cast_unsigned(), std_i),
-      self.get_std_any(get_std_handle, (-11i32).cast_unsigned(), std_o),
-      self.get_std_any(get_std_handle, (-12i32).cast_unsigned(), std_e),
+      self.get_std_any((-10i32).cast_unsigned(), std_i),
+      self.get_std_any((-11i32).cast_unsigned(), std_o),
+      self.get_std_any((-12i32).cast_unsigned(), std_e),
       // self.get_std_any(get_std_handle, 0, std_e),
       // [Clear(Rcx), IDivR(Rcx)],
       take(&mut self.startup),

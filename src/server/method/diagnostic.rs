@@ -81,10 +81,12 @@ impl Server {
         self.update_source(&reload_uri)
       }
     }
-    let mut first_parser =
-      <Pos<Parser>>::new(take(&mut source.text), 0, uri2path(uri), jsonpiler.id());
+    let Ok(first_parser) = jsonpiler.push_parser(take(&mut source.text), uri2path(uri)) else {
+      self.clear_diag(uri.to_owned());
+      self.sources.remove(uri);
+      return;
+    };
     let parsed = first_parser.parse_jspl();
-    jsonpiler.parsers.push(first_parser);
     let mut diag_map = BTreeMap::new();
     match parsed {
       Ok(json) => {

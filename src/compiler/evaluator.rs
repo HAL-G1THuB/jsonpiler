@@ -42,15 +42,15 @@ impl Jsonpiler {
       return err!(name.pos, UndefinedFunc(name.val.clone()));
     };
     u_d.val.refs.push(name.pos);
-    let UserDefinedInfo { dep, params, ret_type, .. } = u_d.val.clone();
+    let UserDefinedInfo { dep, sig, .. } = u_d.val.clone();
     self.use_function(scope.id, dep.id);
     self.use_u_d(scope.id, dep.id)?;
-    let ret = name.pos.with(ret_type);
+    let ret = name.pos.with(sig.ret_type);
     let mut func = self.func_info((name, args), false, scope)?;
-    let params_len = len_u32(&params)?;
+    let params_len = len_u32(&sig.params)?;
     scope.update_args_count(params_len);
     func.validate_args(Exact(params_len))?;
-    for (_, param_type) in params {
+    for (_, param_type) in sig.params {
       let arg = func.arg()?;
       if arg.val.as_type() != param_type {
         return Err(func.args_err(vec![param_type], arg.map_ref(Json::as_type)));

@@ -1,5 +1,4 @@
 use crate::prelude::*;
-use std::iter;
 #[derive(Default, Debug, Clone)]
 pub(crate) struct Scope {
   args_count: u32,
@@ -11,17 +10,6 @@ pub(crate) struct Scope {
   pub loop_labels: Vec<(LabelId, LabelId, usize)>,
   stack_size: i32,
   unused_map: BTreeMap<i32, i32>,
-}
-#[derive(Default, Debug, Clone)]
-pub(crate) struct Variable {
-  pub kind: NameKind,
-  pub refs: Vec<Position>,
-  pub val: Json,
-}
-impl Variable {
-  pub(crate) fn new(val: Json, kind: NameKind) -> Self {
-    Variable { val, kind, refs: vec![] }
-  }
 }
 impl Scope {
   pub(crate) fn alloc(&mut self, used: i32, align: i32) -> ErrOR<i32> {
@@ -137,7 +125,7 @@ impl Scope {
       BoolT => self.ret_bool(src)?,
       FloatT => Float(Var(self.ret(src)?)),
       StrT => self.ret_str(src, HeapPtr)?,
-      CustomT(_) | FuncT(_, _) | ArrayT | ObjectT => {
+      CustomT(_) | FuncT(_) | ArrayT | ObjectT => {
         return err!(dst.pos, UnsupportedType(dst.val.to_string()));
       }
     })
@@ -152,8 +140,8 @@ impl Scope {
     self.push(MovMSd(addr, xmm));
     Ok(Float(Var(Memory(addr, MemoryType { heap: Value, size: Small(RQ) }))))
   }
-  pub(crate) fn take_body(self) -> Vec<Inst> {
-    self.body
+  pub(crate) fn take_body(&mut self) -> Vec<Inst> {
+    take(&mut self.body)
   }
   pub(crate) fn tmp(&mut self, size: i32, align: i32, func: &mut Pos<BuiltIn>) -> ErrOR<Address> {
     Ok(Local(Tmp, self.tmp_offset(size, align, func)?))
@@ -172,4 +160,7 @@ impl Scope {
   pub(crate) fn update_args_count(&mut self, size: u32) {
     self.args_count = self.args_count.max(size);
   }
+}
+fn align_down_i32(num: i32, align: i32) -> ErrOR<i32> {
+  num.div_euclid(align).checked_mul(align).ok_or(Internal(InternalOverFlow))
 }

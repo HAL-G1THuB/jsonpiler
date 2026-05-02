@@ -1,25 +1,23 @@
 use crate::prelude::*;
 built_in! {self, func, _scope, intrinsic;
   __alloc => {"__alloc", COMMON, Exact(1), {
-    let heap_alloc = self.import(KERNEL32, "HeapAlloc");
     let leak = Global(self.symbols[LEAK_CNT]);
     _scope.extend(&mov_int(R8, arg!(func, (Int(x)) => x).val));
     _scope.extend(&[
       mov_q(Rcx, Global(self.symbols[HEAP])),
       mov_d(Rdx, 8),
-      CallApi(heap_alloc),
+      CallApi(self.api(KERNEL32, "HeapAlloc")),
       IncMd(leak)
     ]);
     Ok(Int(Var(_scope.ret(Rax)?)))
   }},
   __free => {"__free", COMMON, Exact(1), {
-    let heap_free = self.import(KERNEL32, "HeapFree");
     let leak = Global(self.symbols[LEAK_CNT]);
     _scope.extend(&mov_int(R8, arg!(func, (Int(x)) => x).val));
     _scope.extend(&[
       mov_q(Rcx, Global(self.symbols[HEAP])),
       Clear(Rdx),
-      CallApiCheck(heap_free),
+      CallApiCheck(self.api(KERNEL32, "HeapFree")),
       DecMd(leak)
     ]);
     Ok(Null(Lit(())))
@@ -48,7 +46,7 @@ impl Jsonpiler {
     let api_name = func.arg()?.into_ident("API NAME")?.val;
     let ret_type =
       func.arg()?.into_ident("RET VAL")?.map(|val: String| JsonType::from_string(val.as_ref()));
-    let api = self.import(&dll, &api_name);
+    let api = self.api(&dll, &api_name);
     let args_len = func.val.len - 3;
     scope.update_args_count(args_len);
     for idx in 0..args_len {

@@ -25,15 +25,16 @@ Jsonpiler now has a function to support GUI.
 
 [Source code of the program to draw the Mandelbrot set with GUI](https://github.com/HAL-G1THuB/jsonpiler/blob/main/examples/jspl/gui_mandelbrot_zoom_scroll.jspl)
 
-## What’s New
-
-### 0.10.2
-
-- Added
-  - Released JsonpilerExtension v0.2.1, compatible with this version
-  - Cache LSP hover documentation at initialization
+## What's New
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
+
+### v0.10.3
+
+- Changed
+  - Released JsonpilerExtension v0.2.3
+  - Type signatures for user-defined functions in LSP hover
+  - Module structure of source files
 
 ## Requirements
 
@@ -233,6 +234,3 @@ This project’s license is specified in the repository.
 Issues and PRs are welcome! If you find a bug, please include the following information:
 
 > 🚨 Please make sure you are running on Windows x64.
-
-- The JSON program (minimal reproduction if possible)
-- Jsonpiler version

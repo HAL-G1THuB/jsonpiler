@@ -32,7 +32,6 @@ impl Jsonpiler {
     func: &mut Pos<BuiltIn>,
     scope: &mut Scope,
   ) -> ErrOR<Json> {
-    let heap_alloc = self.import(KERNEL32, "HeapAlloc");
     let str_len = self.str_len(scope.id)?;
     let tmp_s = scope.tmp(8, 8, func)?;
     let tmp_d = scope.tmp(8, 8, func)?;
@@ -61,7 +60,7 @@ impl Jsonpiler {
       mov_d(Rdx, 8),
       mov_q(R8, acc_len),
       IncR(R8),
-      CallApi(heap_alloc),
+      CallApi(self.api(KERNEL32, "HeapAlloc")),
       IncMd(leak),
       mov_q(buffer, Rax),
       mov_q(Rdi, Rax),

@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use std::{env, process::Command};
+use std::process::Command;
 macro_rules! next_file {
   ($args:ident, $program_name:ident) => {{
     let Some(next_file) = $args.next() else {
@@ -42,17 +42,17 @@ impl Jsonpiler {
     let exe_path = Path::new(&file).with_extension("exe");
     let exe = exe_path.to_string_lossy().to_string();
     let full = full_path(&file)?;
-    let root_id = self.id();
-    self.parsers.push(<Pos<Parser>>::new(source, 0, full.clone(), root_id));
+    let first_parser = self.push_parser(source, full.clone())?;
     let parsed = match Path::new(&file).extension().map(|ext| ext.to_string_lossy()) {
-      Some(jspl) if jspl == "jspl" => self.first_parser_mut()?.parse_jspl(),
-      Some(json) if json == "json" => self.first_parser_mut()?.parse_json(),
+      Some(jspl) if jspl == "jspl" => first_parser.parse_jspl(),
+      Some(json) if json == "json" => first_parser.parse_json(),
       _ => return Err(Compilation(UnsupportedFile, vec![])),
     }
     .map_err(Into::<JsonpilerErr>::into)?;
     self.compile(parsed)?;
-    let (insts, seh) = self.resolve_calls()?;
-    let assembler = Assembler::new(take(&mut self.dlls), root_id, self.handlers);
+    let (insts, seh) = self.build_functions()?;
+    let assembler =
+      Assembler::new(take(&mut self.dlls), self.first_parser()?.val.dep.id, self.handlers);
     assembler.assemble(&insts, take(&mut self.data), &full, seh)?;
     if build_only {
       return Ok(0);

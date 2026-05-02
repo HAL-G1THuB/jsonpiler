@@ -7,8 +7,7 @@ pub(crate) use self::utility::*;
 use crate::prelude::*;
 use std::{
   collections::hash_map::Entry,
-  env,
-  io::{self, BufRead as _, BufReader, Read as _, Write as _},
+  io::{BufRead as _, BufReader, Read as _, Write as _},
   process::exit,
   time::Instant,
 };
@@ -103,12 +102,12 @@ impl Server {
   #[expect(clippy::print_stderr)]
   fn handle(&mut self, msg: String) {
     let mut jsonpiler = Jsonpiler::new(false);
-    let mut json_parser = Pos::<Parser>::new(msg, 0, "server_stdin.json".into(), jsonpiler.id());
-    let mut json = match json_parser.parse_json().map(|parsed| parsed.val) {
-      Ok(json) => json.delete_pos(),
+    let mut json = match (|| -> ErrOR<Pos<Json>> {
+      jsonpiler.push_parser(msg, "server_stdin.json".into())?.parse_json().map_err(Into::into)
+    })() {
+      Ok(json) => json.val.delete_pos(),
       Err(err) => {
-        jsonpiler.parsers.push(json_parser);
-        eprintln!("{}", jsonpiler.format_err(&err.into()));
+        eprintln!("{}", jsonpiler.format_err(&err));
         self.error(NullI, -32700, "Parse error");
         return;
       }
@@ -123,7 +122,7 @@ impl Server {
     } else {
       None
     };
-    let Some(method) = json.get("method").and_then(|method| method.as_str()) else {
+    let Some(method) = (|| json.get("method")?.as_str())() else {
       self.error(id_opt.unwrap_or(NullI), -32600, "Invalid Request");
       return;
     };

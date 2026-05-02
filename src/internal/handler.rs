@@ -149,7 +149,6 @@ impl Jsonpiler {
     let matched = self.id();
     let epilogue = self.id();
     let std_e = Global(self.symbols[STD_E]);
-    let write_file = self.import(KERNEL32, "WriteFile");
     let tmp = Local(Tmp, -0x8);
     let mut insts = vec![];
     extend!(
@@ -169,7 +168,7 @@ impl Jsonpiler {
         LeaRM(R9, tmp),
         Clear(Rax),
         mov_q(Args(5), Rax),
-        CallApi(write_file),
+        CallApi(self.api(KERNEL32, "WriteFile")),
       ],
       self.write_err_msg(ERR_END, tmp)?,
       self.write_err_msg(ISSUE, tmp)?,
@@ -180,7 +179,7 @@ impl Jsonpiler {
         LeaRM(R9, tmp),
         Clear(Rax),
         mov_q(Args(5), Rax),
-        CallApi(write_file),
+        CallApi(self.api(KERNEL32, "WriteFile")),
       ],
       self.write_err_msg("`\n", tmp)?,
       [Lbl(epilogue), mov_q(Rcx, Rbx)]
@@ -207,10 +206,6 @@ impl Jsonpiler {
     const SIZE: i32 = 0x70;
     self.use_function(caller, self.handlers.win);
     let exit = self.id();
-    let format_msg = self.import(KERNEL32, "FormatMessageW");
-    let get_last_err = self.import(KERNEL32, "GetLastError");
-    let local_free = self.import(KERNEL32, "LocalFree");
-    let write_file = self.import(KERNEL32, "WriteFile");
     let print_e = self.get_print_e(self.handlers.win)?;
     let u16_to_8 = self.get_u16_to_8(self.handlers.win)?;
     let digit = self.id();
@@ -225,8 +220,8 @@ impl Jsonpiler {
       insts,
       [
         mov_q(Rbp, Rsp),
-        SubRId(Rsp, SIZE),
-        CallApi(get_last_err),
+        SubRId(Rsp, SIZE.cast_unsigned()),
+        CallApi(self.api(KERNEL32, "GetLastError")),
         mov_q(Rdi, Rax),
         mov_d(Rcx, 0x1300),
         Clear(Rdx),
@@ -236,7 +231,7 @@ impl Jsonpiler {
         mov_q(Args(5), Rax),
         mov_q(Args(6), Rdx),
         mov_q(Args(7), Rdx),
-        CallApi(format_msg),
+        CallApi(self.api(KERNEL32, "FormatMessageW")),
         LogicRR(Test, Rax, Rax),
         JCc(E, exit),
         mov_q(Rcx, msg),
@@ -280,16 +275,15 @@ impl Jsonpiler {
         LeaRM(R9, tmp),
         Clear(Rax),
         mov_q(Args(5), Rax),
-        CallApi(write_file),
+        CallApi(self.api(KERNEL32, "WriteFile")),
       ],
       self.write_err_msg("`\n", tmp)?,
-      [Lbl(exit), mov_q(Rcx, msg), CallApi(local_free), mov_q(Rcx, Rdi)]
+      [Lbl(exit), mov_q(Rcx, msg), CallApi(self.api(KERNEL32, "LocalFree")), mov_q(Rcx, Rdi)]
     );
     self.link_label(self.handlers.win, &[&insts], SIZE, true, LABEL_NOT_RETURN);
     Ok(())
   }
   pub(crate) fn write_err_msg(&mut self, text: &str, tmp: Address) -> ErrOR<Vec<Inst>> {
-    let write_file = self.import(KERNEL32, "WriteFile");
     Ok(vec![
       mov_q(Rcx, Global(self.symbols[STD_E])),
       LeaRM(Rdx, Global(self.global_str(text))),
@@ -297,7 +291,7 @@ impl Jsonpiler {
       LeaRM(R9, tmp),
       Clear(Rax),
       mov_q(Args(5), Rax),
-      CallApi(write_file),
+      CallApi(self.api(KERNEL32, "WriteFile")),
     ])
   }
 }

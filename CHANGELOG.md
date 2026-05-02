@@ -10,22 +10,29 @@
 
 ### jsonpiler 0.10
 
-#### 0.10.2
-
-- Added
-  - Released JsonpilerExtension v0.2.2, compatible with this version
-  - Cache LSP hover documentation at initialization
-
-#### 0.10.1
+#### v0.10.3
 
 - Changed
-  - Released JsonpilerExtension v0.2.1, compatible with this version
-  - Updated `docs`
+  - Released JsonpilerExtension v0.2.3
+  - Type signatures for user-defined functions in LSP hover
+  - Module structure of source files
 
-#### 0.10.0
+#### v0.10.2
 
 - Added
-  - Released JsonpilerExtension v0.2.0, compatible with this version
+  - Released JsonpilerExtension v0.2.2
+  - Cache LSP hover documentation at initialization
+
+#### v0.10.1
+
+- Changed
+  - Released JsonpilerExtension v0.2.1
+  - Updated `docs`
+
+#### v0.10.0
+
+- Added
+  - Released JsonpilerExtension v0.2.0
   - The LSP server now processes minor code changes in batches
   - Added hover functionality to the LSP server
   - Added definition and reference navigation to the LSP server
@@ -42,32 +49,32 @@
 
 ### jsonpiler 0.9
 
-#### 0.9.5
+#### v0.9.5
 
 - Fixed
   - An issue where internal error messages were not displayed correctly
 
-#### 0.9.4
+#### v0.9.4
 
 - Added
   - The `MemoryType` structure, which represents memory types
 
-#### 0.9.3
+#### v0.9.3
 
 - Changed
   - Improved the mechanism for tracking whether a function has been used
 
-#### 0.9.2
+#### v0.9.2
 
 - Changed
   - Version information is now automatically generated from `Cargo.toml`
 
-#### 0.9.1
+#### v0.9.1
 
 - Fixed
   - Issue where `!=` did not work correctly with `Str`
 
-#### 0.9.0
+#### v0.9.0
 
 - Added
   - Commands: `format`, `server`
@@ -98,7 +105,7 @@
 
 ### jsonpiler 0.8
 
-#### 0.8.0
+#### v0.8.0
 
 - Added
   - Commands: `help`, `version`, ` `, `release`, `build`, `build release`
@@ -120,12 +127,12 @@
 
 ### jsonpiler 0.7
 
-#### 0.7.4
+#### v0.7.4
 
 - Changed
   - Improvements to error checking and error message generation
 
-#### 0.7.3
+#### v0.7.3
 
 - Added
   - SEH (Structured Exception Handling)
@@ -142,7 +149,7 @@
 - Removed
   - Limit on the number of arguments for user-defined functions
 
-#### 0.7.2
+#### v0.7.2
 
 - Added
   - Early return mechanism for functions: `ret`
@@ -151,7 +158,7 @@
 - Changed
   - Optimizations for integer storage and local memory access reduced about 30% of the machine code section in generated `.exe` files
 
-#### 0.7.1
+#### v0.7.1
 
 - Added
   - `Int` bitwise operations for `not`, `and`, `or`, `xor`
@@ -161,7 +168,7 @@
   - Added constant folding optimization for `Int` arithmetic operators (`+`, `-`, `*`, `/`, `%`)
   - String literals are now placed in the `.rdata` section
 
-#### 0.7.0
+#### v0.7.0
 
 - Added
   - GUI feature: `GUI`
@@ -175,7 +182,7 @@
 
 ### jsonpiler 0.6
 
-#### 0.6.5
+#### v0.6.5
 
 - Added
   - New functions: `assert`, `random`
@@ -191,12 +198,12 @@
 - Fixed
   - An issue where the sign of a `Float` value was not correctly inverted when passed to the `-` function
 
-#### 0.6.4
+#### v0.6.4
 
 - Fixed
   - An issue where the fifth and subsequent arguments of user-defined functions were not recognized correctly
 
-#### 0.6.3
+#### v0.6.3
 
 - Added
   - Arithmetic operations `+`, `-`, `*`, `/` now support the `Float` type
@@ -206,7 +213,7 @@
 - Fixed
   - Error in the `global` function
 
-#### 0.6.2
+#### v0.6.2
 
 - Added
   - New function: `len`
@@ -219,14 +226,14 @@
   - An issue where boolean values were not correctly passed to user-defined functions
   - An issue where strings stored in local variables were not recognized correctly
 
-#### 0.6.1
+#### v0.6.1
 
 - Added
   - JSPL
     JSPL (Jsonpiler Structured Programming Language) is a new syntax introduced for Jsonpiler, designed to make programs easier for humans to write and read
   - Japanese version of the language specification
 
-#### 0.6.0
+#### v0.6.0
 
 - Added
   - Loop construct: `while`
@@ -247,17 +254,17 @@
 
 ### jsonpiler 0.5
 
-#### 0.5.3 ~ 0.5.4
+#### v0.5.3 ~ 0.5.4
 
 - Fixed
   - Critical bug introduced in 0.5.0
 
-#### 0.5.1 ~ 0.5.2
+#### v0.5.1 ~ 0.5.2
 
 - Fixed
   - Issue where `*.bin binary` was not added to `.gitattributes`
 
-#### 0.5.0
+#### v0.5.0
 
 - Added
   - A custom assembler and linker integrated into jsonpiler
@@ -274,7 +281,7 @@
 
 ### jsonpiler 0.4
 
-#### 0.4.2
+#### v0.4.2
 
 - Added
   - New function: `concat`
@@ -290,7 +297,7 @@
   - Minimum number of arguments for `+`, `/`, `*`, `or`, `and`, `xor` is now 2
   - The return value of `message` is now `Null`
 
-#### 0.4.1
+#### v0.4.1
 
 - Added
   - Function used to specify the return value of a `Block`: `value`
@@ -306,7 +313,7 @@
   - Dependency on C functions (`malloc`, `free`), making `ucrtbase.dll` unnecessary
   - Safety checks that became unnecessary after restricting input files to under 1GB
 
-#### 0.4.0
+#### v0.4.0
 
 - Added
   - Logical operation functions: `not`, `xor`, `or`, `and`
@@ -318,7 +325,7 @@
 
 ### jsonpiler 0.3
 
-#### 0.3.5
+#### v0.3.5
 
 - Added
   - Japanese versions of CHANGELOG and README
@@ -331,7 +338,7 @@
   - Documentation comments with little substantive content
   - Alternative documentation that became unnecessary after the 0.1.6 documentation bug fix
 
-#### 0.3.4
+#### v0.3.4
 
 - Added
   - Support for assigning the `bool` type
@@ -339,7 +346,7 @@
 - Changed
   - A more systematic system for generating assembly instructions and labels to improve maintainability
 
-#### 0.3.3
+#### v0.3.3
 
 - Fixed
   - A bug where memory was not correctly freed from the stack when processing scope-based logic
@@ -348,7 +355,7 @@
 - Removed
   - Redundant safety checks
 
-#### 0.3.2
+#### v0.3.2
 
 - Added
   - Support for assigning the `Float` type
@@ -359,12 +366,12 @@
 - Fixed
   - Bug in the `global` function
 
-#### 0.3.1
+#### v0.3.1
 
 - Added
   - New functions `/`, `abs`, `%`
 
-#### 0.3.0
+#### v0.3.0
 
 - Changed
   - JSON objects now allow duplicate keys
@@ -381,7 +388,7 @@
 
 ### jsonpiler 0.2
 
-#### 0.2.3
+#### v0.2.3
 
 - Added
   - Tracking of temporary values to enable efficient stack deallocation
@@ -390,7 +397,7 @@
   - ~~Duplicate object keys are no longer allowed~~
   - Improved error formatting to display `^` markers across the full error range using `pos.size`
 
-#### 0.2.2
+#### v0.2.2
 
 - Added
   - `examples` directory
@@ -401,7 +408,7 @@
   - ~~To prioritize user-defined functions, write `["$", "function"]`~~
   - `-` negates the value when called with a single argument
 
-#### 0.2.1
+#### v0.2.1
 
 - Added
   - Stack allocation at the start of a scope and stack deallocation at the end
@@ -412,7 +419,7 @@
 - Fixed
   - Fixed an issue where the assembler failed when `+`, `-`, or `*` received literals larger than 32 bits
 
-#### 0.2.0
+#### v0.2.0
 
 - Added
   - New functions: ~~`eval`~~, `list`, ~~`'`~~
@@ -422,7 +429,7 @@
 
 ### jsonpiler 0.1
 
-#### 0.1.11
+#### v0.1.11
 
 - Added
   - Caching and reuse of string literals
@@ -431,12 +438,12 @@
   - Generalized variable generation in assembly code
   - Names of internal structures
 
-#### 0.1.10
+#### v0.1.10
 
 - Fixed
   - Parser issues from the previous version
 
-#### 0.1.9
+#### v0.1.9
 
 - Added
   - Feature to dynamically adjust stack allocation
@@ -447,7 +454,7 @@
 - Fixed
   - ~~Reduced parser overhead~~
 
-#### 0.1.8
+#### v0.1.8
 
 - Added
   - Function `global`
@@ -456,7 +463,7 @@
   - Structure of the variable table
   - ~~`begin` introduces a scope~~
 
-#### 0.1.7
+#### v0.1.7
 
 - Added
   - Temporary register preservation with automatic save and restore
@@ -465,7 +472,7 @@
   - ~~The main function returns `ExitCode`~~
   - Internal functions are included in the binary only when needed
 
-#### 0.1.6
+#### v0.1.6
 
 - Changed
   - Function `=` returns `null`
@@ -474,23 +481,23 @@
 - Fixed
   - Documentation build error on docs.rs
 
-#### 0.1.5
+#### v0.1.5
 
 - Added
   - `CHANGELOG.md`
 
-#### 0.1.4
+#### v0.1.4
 
 - Fixed
   - Typo in the previous crate
 
-#### 0.1.3
+#### v0.1.3
 
 - Changed
   - Object entries preserve insertion order
   - Object value evaluation order follows insertion order
 
-#### 0.1.2
+#### v0.1.2
 
 - Added
   - Mermaid diagram in `README.md`
@@ -498,6 +505,6 @@
 - Fixed
   - Bug affecting expression evaluation order
 
-#### 0.1.0 ~ 0.1.1
+#### v0.1.0 ~ 0.1.1
 
 - Migrated from the previous crate.

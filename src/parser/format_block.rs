@@ -1,3 +1,4 @@
+use super::utility::*;
 use crate::prelude::*;
 impl Pos<Parser> {
   pub(crate) fn format_block(
@@ -102,7 +103,7 @@ impl Pos<Parser> {
       indentation + u32::from(val_size < LINE_MAX || !is_block),
       LINE_MAX <= size && !is_define && !is_while && !is_single_if,
     );
-    let mut signature = 0;
+    let mut sig = 0;
     match val {
       Pos { val: Array(Lit(args)), .. } => {
         for (idx, item) in args.iter().enumerate() {
@@ -111,10 +112,10 @@ impl Pos<Parser> {
             continue;
           }
           out.push(',');
-          if is_define && idx < 3 && signature < LINE_MAX {
+          if is_define && idx < 3 && sig < LINE_MAX {
             out.push(' ');
             self.format_json(out, item, indentation + 1)?;
-            signature += self.sizeof_json(item)?;
+            sig += self.sizeof_json(item)?;
           } else {
             self.format_json_sep(out, size, item.pos.offset + 1, item, indentation)?;
           }
