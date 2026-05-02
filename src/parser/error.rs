@@ -148,21 +148,30 @@ impl JsonpilerErr {
 impl Jsonpiler {
   pub(crate) fn format_err(&self, err: &JsonpilerErr) -> String {
     let mut err_str = err.title();
-    let first_parser = match self.first_parser() {
-      Ok(parser) => parser,
+    let pos_str_opt = match self.first_parser() {
+      Ok(parser) => Some(self.format_pos_vec(err.pos_vec(), &parser.val.file)),
+      Err(_) if err.pos_vec().is_empty() => None,
       Err(missing_first) => {
-        return format!("{err_str}{missing_first}{ERR_END}");
+        err_str = missing_first.title();
+        None
       }
     };
     err_str.push_str(&wrap_text(&err.to_string(), 28));
-    for pos in err.pos_vec().iter().rev() {
-      let (file_str, l_c, code, carets) =
-        self.parsers[pos.file as usize].err_info(*pos, &first_parser.val.file);
-      err_str.push_str(&format!("{ERR_SEPARATE}{file_str}{l_c}{ERR_SEPARATE}{code}| {carets}"));
+    if let Some(pos_str) = pos_str_opt {
+      err_str.push_str(&pos_str);
     }
     err_str.push_str(ERR_END);
     if let Some(issue_msg) = err.issue_msg() {
       err_str.push_str(&issue_msg);
+    }
+    err_str
+  }
+  pub(crate) fn format_pos_vec(&self, pos_vec: &[Position], first_file: &str) -> String {
+    let mut err_str = String::new();
+    for pos in pos_vec.iter().rev() {
+      let (file_str, l_c, code, carets) =
+        self.parsers[pos.file as usize].err_info(*pos, first_file);
+      err_str.push_str(&format!("{ERR_SEPARATE}{file_str}{l_c}{ERR_SEPARATE}{code}| {carets}"));
     }
     err_str
   }
@@ -218,7 +227,7 @@ impl fmt::Display for CompilationErr {
         write!(f, "`{name}` requires {expected},\n  but {actual} {be} supplied")
       }
       ZeroDivision => write!(f, "{ZERO_DIVISION}"),
-      IOError(err) => write!(f, "IOError:\n  {err}"),
+      IOError(err) => write!(f, "IOError:  {err}"),
       IncludeFuncNotFound(funcs) => {
         write!(f, "Function is either private or not found:")?;
         for func in funcs {

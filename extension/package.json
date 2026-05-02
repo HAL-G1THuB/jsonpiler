@@ -3,7 +3,7 @@
   "name": "jsplsyntax",
   "displayName": "Jsonpiler",
   "description": "Provides language server and language features for JSPL.",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "engines": {
     "vscode": "^1.103.0"
   },

@@ -30,12 +30,12 @@ Jsonpilerに GUI をサポートする関数が追加されました。
 
 詳細は **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG-ja.md)** を参照してください。
 
-### v0.10.3
+### v0.10.4
 
-- 変更
-  - JsonpilerExtension v0.2.3
-  - LSPのユーザー定義関数のホバーの型シグネチャ
-  - ソースファイルのモジュール構造
+- 修正
+  - JsonpilerExtension v0.2.4
+  - 存在しないファイルを開いたときのエラーを修正
+  - GUI関数のエラーを修正
 
 ## 必要条件
 

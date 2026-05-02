@@ -29,12 +29,12 @@ Jsonpiler now has a function to support GUI.
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 
-### v0.10.3
+### v0.10.4
 
-- Changed
-  - Released JsonpilerExtension v0.2.3
-  - Type signatures for user-defined functions in LSP hover
-  - Module structure of source files
+- Fixed
+  - Released JsonpilerExtension v0.2.4
+  - Fixed an error that occurred when attempting to open a non-existent file
+  - Fixed an error in the GUI function
 
 ## Requirements
 

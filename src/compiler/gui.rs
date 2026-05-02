@@ -42,6 +42,7 @@ init_gui => {"GUI", SPECIAL, Exact(1), {
   let bottom = size_rect + 12;
   let msg_loop = self.id();
   let exit_gui = self.id();
+  scope.update_args_count(12);
   scope.extend(&[
     mov_b(Rax, flag_gui),
     LogicRbRb(Test, Rax, Rax),
@@ -82,12 +83,12 @@ init_gui => {"GUI", SPECIAL, Exact(1), {
     Clear(R8),
     Clear(R9),
     CallApiCheck(self.api(USER32, "AdjustWindowRectEx")),
-    mov_d(Rax, Local(Tmp, right)),
-    mov_d(Rcx, Local(Tmp, left)),
+    MovSxDRMd(Rax, Local(Tmp, right)),
+    MovSxDRMd(Rcx, Local(Tmp, left)),
     SubRR(Rax, Rcx),
     mov_q(Args(7), Rax),
-    mov_d(Rax, Local(Tmp, bottom)),
-    mov_d(Rcx, Local(Tmp, top)),
+    MovSxDRMd(Rax, Local(Tmp, bottom)),
+    MovSxDRMd(Rcx, Local(Tmp, top)),
     SubRR(Rax, Rcx),
     mov_q(Args(8), Rax),
     mov_d(Rcx, 0x0004_0000),

@@ -2,6 +2,8 @@
 
 ## JsonpilerExtension v0.2
 
+### v0.2.4 (jsonpiler v0.10.4)
+
 ### v0.2.3 (jsonpiler v0.10.3)
 
 ### v0.2.2 (jsonpiler v0.10.2)

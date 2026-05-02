@@ -10,6 +10,13 @@
 
 ### jsonpiler 0.10
 
+#### v0.10.4
+
+- Fixed
+  - Released JsonpilerExtension v0.2.4
+  - Fixed an error that occurred when attempting to open a non-existent file
+  - Fixed an error in the GUI function
+
 #### v0.10.3
 
 - Changed
