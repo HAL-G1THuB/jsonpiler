@@ -4,4 +4,7 @@
 /.vscode/
 /extension/dist
 /extension/docs
+/extension/node_modules
 *.vsix
+.DS_Store
+._*

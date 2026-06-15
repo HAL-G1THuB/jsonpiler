@@ -1,13 +1,19 @@
 use crate::prelude::*;
-use std::{num::TryFromIntError, path};
+use std::num::TryFromIntError;
 pub(crate) type ParseErrOR<T> = Result<T, Pos<ParseErr>>;
 pub(crate) type ErrOR<T> = Result<T, JsonpilerErr>;
 #[derive(Debug, Clone)]
-pub(crate) enum JsonpilerErr {
-  Compilation(CompilationErr, Vec<Position>),
+pub(crate) struct JsonpilerErr {
+  pub kind: JsonpilerErrKind,
+  pub refs: Vec<Position>,
+}
+#[derive(Debug, Clone)]
+pub(crate) enum JsonpilerErrKind {
+  Compilation(CompilationErr),
   Internal(InternalErr),
-  Parse(ParseErr, Vec<Position>),
+  Parse(ParseErr),
   Platform(String),
+  Warning(Warning),
 }
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Arity {
@@ -28,16 +34,17 @@ pub(crate) enum RuntimeErr {
 }
 #[derive(Debug, Clone)]
 pub(crate) enum CompilationErr {
-  ArityError { name: String, expected: Arity, actual: u32 },
-  DuplicateName(NameKind, String),
-  IOError(String),
+  ArityErr { name: String, expected: Arity, actual: u32 },
+  DuplicateName { first: NameKind, kind: NameKind, name: String },
+  IOErr(String),
+  IfNoTrueBranch,
   IncludeFuncNotFound(BTreeSet<String>),
-  OutSideError { name: String, place: &'static str },
+  OutSideErr { name: String, place: &'static str },
   Overflow,
   RecursiveInclude(String),
   TooLargeFile,
   TooLargeShift,
-  TypeError { name: String, expected: Vec<JsonType>, actual: JsonType },
+  TypeErr { name: String, expected: Vec<JsonType>, actual: JsonType },
   UndefinedFunc(String),
   UndefinedVar(String),
   UnknownType(String),
@@ -75,11 +82,13 @@ pub(crate) enum TokenKind {
 }
 #[derive(Debug, Clone)]
 pub(crate) enum InternalErr {
+  A64NotImplemented(String),
   ArgNotFound(String, u32),
   CastError,
   DuplicateLabel,
   InternalOverFlow,
   InvalidInst(String),
+  MismatchInstGen,
   MissingFirstParser,
   StackLeak,
   UnknownLabel,
@@ -95,111 +104,106 @@ pub(crate) enum NameKind {
 }
 impl From<Pos<ParseErr>> for JsonpilerErr {
   fn from(Pos { val: err, pos }: Pos<ParseErr>) -> Self {
-    Parse(err, vec![pos])
+    JsonpilerErr { kind: Parse(err), refs: vec![pos] }
+  }
+}
+impl From<InternalErr> for JsonpilerErr {
+  fn from(kind: InternalErr) -> Self {
+    JsonpilerErr { kind: Internal(kind), refs: vec![] }
   }
 }
 impl From<TryFromIntError> for JsonpilerErr {
   fn from(_: TryFromIntError) -> Self {
-    Internal(CastError)
+    JsonpilerErr { kind: Internal(CastError), refs: vec![] }
   }
 }
 impl From<io::Error> for JsonpilerErr {
   fn from(err: io::Error) -> Self {
-    Compilation(IOError(err.to_string()), vec![])
+    JsonpilerErr { kind: Compilation(IOErr(err.to_string())), refs: vec![] }
   }
 }
 impl From<Pos<io::Error>> for JsonpilerErr {
   fn from(err: Pos<io::Error>) -> Self {
-    Compilation(IOError(err.val.to_string()), vec![err.pos])
+    JsonpilerErr { kind: Compilation(IOErr(err.val.to_string())), refs: vec![err.pos] }
   }
 }
-impl fmt::Display for JsonpilerErr {
+impl fmt::Display for JsonpilerErrKind {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      Compilation(kind, _) => write!(f, "{kind}"),
-      Parse(kind, _) => write!(f, "{kind}"),
+      Compilation(kind) => write!(f, "{kind}"),
+      Parse(kind) => write!(f, "{kind}"),
       Internal(kind) => write!(f, "{kind}"),
       Platform(err_str) => write!(f, "{err_str}"),
+      Warning(warn) => write!(f, "{warn}"),
     }
   }
 }
-impl JsonpilerErr {
+impl JsonpilerErrKind {
   pub(crate) fn issue_msg(&self) -> Option<String> {
     match self {
-      Compilation(..) | Parse(..) | Platform(_) => None,
+      Compilation(_) | Parse(_) | Platform(_) | Warning(_) => None,
       Internal(kind) => Some(format!("{ISSUE}{}`", kind.err_code())),
-    }
-  }
-  pub(crate) fn pos_vec(&self) -> &[Position] {
-    match self {
-      Parse(_, pos_vec) | Compilation(_, pos_vec) => pos_vec,
-      Platform(_) | Internal(_) => &[],
     }
   }
   pub(crate) fn title(&self) -> String {
     make_header(match self {
-      Compilation(..) => "CompilationError",
-      Parse(..) => "ParseError",
+      Compilation(_) => "CompilationError",
+      Parse(_) => "ParseError",
       Internal(_) => "InternalError",
       Platform(_) => "PlatformError",
+      Warning(_) => "Warning",
     })
   }
 }
-impl Jsonpiler {
-  pub(crate) fn format_err(&self, err: &JsonpilerErr) -> String {
-    let mut err_str = err.title();
-    let pos_str_opt = match self.first_parser() {
-      Ok(parser) => Some(self.format_pos_vec(err.pos_vec(), &parser.val.file)),
-      Err(_) if err.pos_vec().is_empty() => None,
-      Err(missing_first) => {
-        err_str = missing_first.title();
-        None
-      }
-    };
-    err_str.push_str(&wrap_text(&err.to_string(), 28));
-    if let Some(pos_str) = pos_str_opt {
-      err_str.push_str(&pos_str);
+impl JsonpilerErr {
+  fn format_err(
+    &self,
+    mut get_info: impl FnMut(Position) -> (String, String, String, String),
+  ) -> String {
+    let mut err_str = self.kind.title();
+    err_str.push_str(&wrap_text(&self.kind.to_string(), 28));
+    for pos in self.refs.iter().rev() {
+      let (file_str, l_c, code, carets) = get_info(*pos);
+      err_str.push_str(&format!("{ERR_SEP}{file_str}{l_c}{ERR_SEP}{code}| {carets}"));
     }
     err_str.push_str(ERR_END);
-    if let Some(issue_msg) = err.issue_msg() {
+    if let Some(issue_msg) = self.kind.issue_msg() {
       err_str.push_str(&issue_msg);
     }
     err_str
   }
-  pub(crate) fn format_pos_vec(&self, pos_vec: &[Position], first_file: &str) -> String {
-    let mut err_str = String::new();
-    for pos in pos_vec.iter().rev() {
-      let (file_str, l_c, code, carets) =
-        self.parsers[pos.file as usize].err_info(*pos, first_file);
-      err_str.push_str(&format!("{ERR_SEPARATE}{file_str}{l_c}{ERR_SEPARATE}{code}| {carets}"));
-    }
-    err_str
+}
+impl Jsonpiler {
+  pub(crate) fn format_err(&self, err: &JsonpilerErr) -> String {
+    err.format_err(|pos| self.files[pos.file].err_info(pos))
+  }
+}
+impl Pos<Parser> {
+  pub(crate) fn format_err(&self, err: &JsonpilerErr, rel_path: &str) -> String {
+    err.format_err(|pos| self.err_info(pos, rel_path))
+  }
+}
+impl File {
+  pub(crate) fn err_info(&self, pos: Position) -> (String, String, String, String) {
+    self.parser.err_info(pos, &self.rel_path)
   }
 }
 impl Pos<Parser> {
   #[must_use]
-  pub(crate) fn err_info(
-    &self,
-    pos: Position,
-    root_file: &str,
-  ) -> (String, String, String, String) {
-    let mut root =
-      Path::new(root_file).parent().unwrap_or(Path::new("C:")).to_string_lossy().to_string();
-    root.push(path::MAIN_SEPARATOR);
+  pub(crate) fn err_info(&self, pos: Position, rel_path: &str) -> (String, String, String, String) {
     let find_ln = |i: &usize| self.val.text.as_bytes()[*i] == b'\n';
     let len = self.val.text.len();
     let index = (pos.offset as usize).min(len);
     let start = (0..index).rfind(&find_ln).map_or(0, |st| st + 1);
     let end = (index..len).find(&find_ln).unwrap_or(len);
     let line = String::from_utf8_lossy(&self.val.text.as_bytes()[start..end]);
-    let carets_offset = index - start;
+    let carets_off = index - start;
     let carets = (pos.size as usize).min(end - index).max(1);
-    let file_path = self.val.file.strip_prefix(&root).unwrap_or(&self.val.file).into();
     (
-      file_path,
-      format!(":{}:{}", pos.line + 1, carets_offset + 1),
+      rel_path.into(),
+      format!(":{}:{}", pos.line + 1, carets_off + 1),
       format!("{line}\n"),
-      format!("{}{}", " ".repeat(carets_offset), "^".repeat(carets)),
+      format!("{}{}", " ".repeat(carets_off), "^".repeat(carets)),
     )
   }
 }
@@ -207,27 +211,29 @@ impl fmt::Display for CompilationErr {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       Overflow => write!(f, "Overflow"),
-      UnsupportedType(typ) => write!(f, "Unsupported type:\n  {typ}"),
-      UnknownType(typ) => write!(f, "Unknown type:\n  {typ}"),
-      UndefinedVar(var) => write!(f, "Undefined variable:\n  {var}"),
-      UndefinedFunc(func) => write!(f, "Undefined function:\n  {func}"),
-      UnsupportedFile => write!(f, "Unsupported file:\n  .json or .jspl expected"),
-      RecursiveInclude(file) => write!(f, "Recursive include:\n  {file}"),
-      DuplicateName(kind, name) => write!(f, "Duplicate {kind}:\n  `{name}`"),
-      OutSideError { name, place } => write!(f, "`{name}` outside of {place}"),
-      TypeError { name, expected, actual: typ } => {
+      UnsupportedType(typ) => write!(f, "Unsupported type: {typ}"),
+      UnknownType(typ) => write!(f, "Unknown type: {typ}"),
+      UndefinedVar(var) => write!(f, "Undefined variable: {var}"),
+      UndefinedFunc(func) => write!(f, "Undefined function: {func}"),
+      UnsupportedFile => write!(f, "Unsupported file: .json or .jspl expected"),
+      RecursiveInclude(file) => write!(f, "Recursive include: {file}"),
+      DuplicateName { first, kind, name } => {
+        write!(f, "Duplicate {kind}: {first} `{name}` already exists")
+      }
+      OutSideErr { name, place } => write!(f, "`{name}` outside of {place}"),
+      TypeErr { name, expected, actual: typ } => {
         write!(
           f,
-          "{name} expected type `{}`,\n  but got `{typ}`",
+          "{name} expected type `{}`, but got `{typ}`",
           expected.iter().map(JsonType::name).collect::<Vec<_>>().join("` or `")
         )
       }
-      ArityError { name, expected, actual } => {
+      ArityErr { name, expected, actual } => {
         let be = if *actual == 1 { "is" } else { "are" };
         write!(f, "`{name}` requires {expected},\n  but {actual} {be} supplied")
       }
       ZeroDivision => write!(f, "{ZERO_DIVISION}"),
-      IOError(err) => write!(f, "IOError:  {err}"),
+      IOErr(err) => write!(f, "IOError: {err}"),
       IncludeFuncNotFound(funcs) => {
         write!(f, "Function is either private or not found:")?;
         for func in funcs {
@@ -236,23 +242,26 @@ impl fmt::Display for CompilationErr {
         Ok(())
       }
       TooLargeFile => {
-        write!(f, "Input file size exceeds 1 GB.\n  Please provide a smaller file.")
+        write!(f, "Input file size exceeds 1 GB. Please provide a smaller file.")
       }
       TooLargeShift => write!(f, "{TOO_LARGE_SHIFT}"),
+      IfNoTrueBranch => write!(f, "{IF_NO_TRUE_BRANCH}"),
     }
   }
 }
 impl fmt::Display for InternalErr {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
+      MismatchInstGen => write!(f, "Mismatch instruction generation"),
       InternalOverFlow => write!(f, "Overflow"),
       DuplicateLabel => write!(f, "Duplicate label"),
       UnknownLabel => write!(f, "Unknown label"),
-      InvalidInst(inst) => write!(f, "Invalid instruction:\n  {inst}"),
+      InvalidInst(inst) => write!(f, "Invalid instruction: {inst}"),
       ArgNotFound(name, nth) => write!(f, "The {nth} argument of `{name}` does not exist"),
       CastError => write!(f, "Cast error"),
       MissingFirstParser => write!(f, "Missing first parser"),
       StackLeak => write!(f, "Stack is not fully released"),
+      A64NotImplemented(feature) => write!(f, "A64 unimplemented feature: {feature}"),
     }
   }
 }
@@ -346,34 +355,26 @@ impl InternalErr {
       UnknownLabel => "UNKNOWN_LABEL",
       InvalidInst(_) => "INVALID_INST",
       ArgNotFound(..) => "ARG_NOT_FOUND",
+      A64NotImplemented(_) => "A64_UNIMPLEMENTED",
       CastError => "CAST_ERROR",
       StackLeak => "STACK_LEAK",
       MissingFirstParser => "MISSING_FIRST_PARSER",
+      MismatchInstGen => "MISMATCH_INST_GEN",
     }
   }
 }
 impl Jsonpiler {
-  pub(crate) fn warn(&mut self, pos: Position, err: Warning) -> ErrOR<()> {
-    let root_file = self.first_parser()?.val.file.clone();
-    self.parsers[pos.file as usize].warn(pos, err, &root_file);
+  #[expect(clippy::print_stderr)]
+  pub(crate) fn warn(&mut self, warn: Pos<Warning>) -> ErrOR<()> {
+    let file = &mut self.files[warn.pos.file];
+    file.parser.val.warns.push(warn.clone());
+    eprintln!("{}", self.format_err(&warning!(warn.pos, warn.val.clone())));
     Ok(())
   }
 }
-impl Pos<Parser> {
-  #[expect(clippy::print_stderr)]
-  pub(crate) fn warn(&mut self, pos: Position, err: Warning, root_file: &str) {
-    let (file, l_c, code, carets) = self.err_info(pos, root_file);
-    eprintln!("{WARNING}\n| {err}{ERR_SEPARATE}{file}{l_c}{ERR_SEPARATE}{code}| {carets}{ERR_END}");
-    self.val.warns.push(pos.with(err));
-  }
-}
 impl Pos<BuiltIn> {
-  pub(crate) fn args_err(
-    &mut self,
-    expected: Vec<JsonType>,
-    json_type: Pos<JsonType>,
-  ) -> JsonpilerErr {
-    type_err(format_nth_args(self.val.nth, &self.val.name), expected, json_type)
+  pub(crate) fn args_err(&mut self, expected: Vec<JsonType>, actual: &Pos<Json>) -> JsonpilerErr {
+    type_err(fmt_args(self.val.nth, &self.val.name), expected, actual.map_ref(Json::as_type))
   }
   pub(crate) fn validate_args(&self, expected: Arity) -> ErrOR<()> {
     let name = self.val.name.clone();
@@ -386,11 +387,11 @@ impl Pos<BuiltIn> {
     } {
       Ok(())
     } else {
-      err!(self.pos, ArityError { name, expected, actual })
+      err!(self.pos, ArityErr { name, expected, actual })
     }
   }
 }
-fn format_nth_args(nth: u32, name: &str) -> String {
+pub(crate) fn fmt_args(nth: u32, name: &str) -> String {
   let suffix = match nth % 10 {
     _ if (11..=13).contains(&(nth % 100)) => "th",
     1 => "st",
@@ -403,9 +404,9 @@ fn format_nth_args(nth: u32, name: &str) -> String {
 pub(crate) fn type_err(
   name: String,
   expected: Vec<JsonType>,
-  json_type: Pos<JsonType>,
+  Pos { val: actual, pos }: Pos<JsonType>,
 ) -> JsonpilerErr {
-  Compilation(TypeError { name, expected, actual: json_type.val }, vec![json_type.pos])
+  compilation!(pos, TypeErr { name, expected, actual })
 }
 fn char_width(char: char) -> usize {
   if char.is_ascii() { 1 } else { 2 }
@@ -427,15 +428,13 @@ fn wrap_line(string: &str, max_width: usize) -> Vec<String> {
   for char in string.chars() {
     let w = char_width(char);
     if width + w > max_width {
-      #[expect(clippy::assigning_clones)]
       if let Some(space_pos) = last_space_byte {
         let (line, rest) = current.split_at(space_pos);
-        result.push(line.to_owned());
-        current = rest.trim_start().to_owned();
+        result.push(line.into());
+        current = rest.trim_start().into();
         width = current.chars().map(char_width).sum();
       } else {
-        result.push(current.clone());
-        current.clear();
+        result.push(take(&mut current));
         width = 0;
       }
       last_space_byte = None;
@@ -458,9 +457,9 @@ pub(crate) fn make_header(title: &str) -> String {
   let dash_len = 30usize.saturating_sub(base_len);
   format!("{PREFIX} {title} {}", "-".repeat(dash_len))
 }
-pub(crate) fn format_variable(name: &str, kind: NameKind) -> String {
+pub(crate) fn fmt_var(name: &str, kind: NameKind) -> String {
   format!("{kind} `{name}`")
 }
-pub(crate) fn format_ret_val(name: &str) -> String {
+pub(crate) fn fmt_ret_val(name: &str) -> String {
   format!("the return value of `{name}`")
 }

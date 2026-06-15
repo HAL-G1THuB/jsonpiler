@@ -25,30 +25,33 @@ impl Jsonpiler {
     &self,
     name: &Pos<String>,
     pos: Position,
+    kind: NameKind,
     scope: &mut Scope,
   ) -> ErrOR<()> {
+    let dup_err =
+      |first_kind| err!(pos, DuplicateName { first: first_kind, kind, name: name.val.clone() });
     if let Some(local) = scope.get_var_local(name) {
-      return err!(pos, DuplicateName(local.val.kind, name.val.clone()));
+      return dup_err(local.val.kind);
     }
     if let Some(global) = self.globals.get(&name.val) {
-      return err!(pos, DuplicateName(global.val.kind, name.val.clone()));
+      return dup_err(global.val.kind);
     }
-    if self.builtin.contains_key(&name.val.as_ref()) {
-      return err!(pos, DuplicateName(BuiltInFunc, name.val.clone()));
+    if self.builtin.contains_key(&name.val) {
+      return dup_err(BuiltInFunc);
     }
     if self.user_defined.contains_key(&name.val) {
-      return err!(pos, DuplicateName(UserDefinedFunc, name.val.clone()));
+      return dup_err(UserDefinedFunc);
     }
     Ok(())
   }
-  pub(crate) fn get_var(&mut self, var: &Pos<String>, scope: &mut Scope) -> ErrOR<Pos<Variable>> {
-    if let Some(variable) = scope.get_var_local(var).or_else(|| self.globals.get_var(var)) {
-      Ok(variable.clone())
+  pub(crate) fn get_var(&mut self, name: &Pos<String>, scope: &mut Scope) -> ErrOR<Pos<Variable>> {
+    if let Some(var) = scope.get_var_local(name).or_else(|| self.globals.get_var(name)) {
+      Ok(var.clone())
     } else {
-      err!(var.pos, UndefinedVar(var.val.clone()))
+      err!(name.pos, UndefinedVar(name.val.clone()))
     }
   }
-  pub(crate) fn push_symbol(&mut self, symbol: SymbolInfo) {
+  pub(crate) fn push_sym(&mut self, symbol: SymbolInfo) {
     if let Some(analysis) = &mut self.analysis {
       analysis.symbols.push(symbol);
     }

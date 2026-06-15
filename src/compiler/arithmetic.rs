@@ -1,117 +1,228 @@
 use crate::prelude::*;
+pub(crate) const CHECK_X: Option<CheckFn<X64Inst>> = Some(&Jsonpiler::nz_cqo);
+pub(crate) const CHECK_A: Option<CheckFn<A64Inst>> = Some(&Jsonpiler::nz_a);
 built_in! {self, _func, scope, arithmetic;
-  abs => {"abs", COMMON, Exact(1), {
-    match _func.arg()? {
-      Pos { val: Int(int), .. } => {
-        scope.extend(&mov_int(Rax, int));
-        scope.extend(&[Custom(CQO), LogicRR(Xor, Rax, Rdx), SubRR(Rax, Rdx)]);
-        Ok(Int(Var(scope.ret(Rax)?)))
-      }
-      Pos { val: Float(float), .. } => {
-        scope.extend(&mov_float_reg(Rax, float));
-        scope.push(Custom(BTR_RAX_63));
-        Ok(Float(Var(scope.ret(Rax)?)))
-      }
-      other => Err(_func.args_err(vec![IntT, BoolT], other.map_ref(Json::as_type)))
-    }
-  }},
-  calc_add => {"+", COMMON, AtLeast(2), {
-    self.arithmetic_op(
-      &(AddRR(Rax, Rcx), Add),
-      (&i64::checked_add, &i64::checked_add),
-      0, (&|| Ok(None), &|| Some(IncR(Rax))),
-      None, _func, scope
-    )
-  }},
-  calc_div => {"/", COMMON, AtLeast(2), {
-    let func_pos = _func.pos;
-    self.arithmetic_op(
-      &(IDivR(Rcx), Div),
-      (&i64::checked_div, &i64::checked_mul),
-      1, (&|| err!(func_pos, ZeroDivision), &|| None),
-      Some(&Jsonpiler::check_zero_cqo), _func, scope
-    )
-  }},
-  calc_minus => {"-", COMMON, AtLeast(1), {
-    if _func.val.len == 1 {
+  {"abs", COMMON, Exact(1),
+    abs => {
       match _func.arg()? {
         Pos { val: Int(int), .. } => {
-          scope.extend(&mov_int(Rax, int));
-          scope.push(UnaryR(Neg, Rax));
-          Ok(Int(Var(scope.ret(Rax)?)))
+          scope.ee_x(vec![
+            load_int_x(Rax, int)?,
+            vec![Cqo, RR(S8, Xor, Rax, Rdx), RR(S8, Sub, Rax, Rdx)]
+          ])?;
+          Ok(Int(Var(scope.ret_x(S8, Rax)?)))
         }
         Pos { val: Float(float), .. } => {
-          scope.extend(&mov_float_reg(Rax, float));
-          scope.push(Custom(BTC_RAX_63));
-          Ok(Float(Var(scope.ret(Rax)?)))
+          scope.ee_x(vec![load_float_reg_x(Rax, float)?, vec![BitTest(Btr, Rax, 63)]])?;
+          Ok(Float(Var(scope.ret_x(S8, Rax)?)))
         }
-        other => Err(_func.args_err(vec![IntT, BoolT], other.map_ref(Json::as_type)))
+        other => Err(_func.args_err(vec![IntT, FloatT], &other))
       }
-    } else {
-      self.arithmetic_op(
-        &(SubRR(Rax, Rcx), Sub),
-        (&i64::checked_sub, &i64::checked_add),
-        0, (&|| Ok(None), &|| Some(DecR(Rax))),
-        None, _func, scope
-      )
+    },
+  abs_a => {
+      match _func.arg()? {
+        Pos { val: Int(int), .. } => {
+          scope.ee_a(vec![
+            load_int_a(X0, int)?,
+            vec![Asr(X1, X0, 63), EorR3(X0, X0, X1), SubR3(X0, X0, X1)]
+          ])?;
+          Ok(Int(Var(scope.ret_a(S8, X1, X0)?)))
+        }
+        Pos { val: Float(float), .. } => {
+          scope.ee_a(vec![
+            self.load_dn(X0, X0, float)?,
+            vec![FAbsD(X0, X0)]
+          ])?;
+          scope.ret_dn(X0, X0)
+        }
+        other => Err(_func.args_err(vec![IntT, FloatT], &other))
+      }
     }
-  }},
-  calc_mul => {"*", COMMON, AtLeast(2), {
-    self.arithmetic_op(
-      &(IMulRR(Rax, Rcx), Mul),
-      (&i64::checked_mul, &i64::checked_mul),
-      1, (&|| Ok(Some(0)), &|| None),
-      None, _func, scope
-    )
-  }},
-  float => {"Float", COMMON, Exact(1), {
-    scope.extend(&mov_int(Rax, arg!(_func, (Int(x)) => x).val));
-    scope.push(CvtSi2Sd(Rax, Rax));
-    scope.ret_xmm(Rax)
-  }},
-  int => {"Int", COMMON, Exact(1), {
-    scope.extend(&self.mov_float_xmm(Rax, Rax, arg!(_func, (Float(x)) => x).val)?);
-    scope.push(CvtTSd2Si(Rax, Rax));
-    Ok(Int(Var(scope.ret(Rax)?)))
-  }},
-  random => {"random", COMMON, Exact(0), {
-    scope.push(Call(self.get_random(scope.id)?));
-    Ok(Int(Var(scope.ret(Rax)?)))
-  }},
-  rem => {"%", COMMON, Exact(2), {
-    let lhs = arg!(_func, (Int(x)) => x).val;
-    let Pos { val: rhs, pos } = arg!(_func, (Int(x)) => x);
+  },
+  {"+", COMMON, AtLeast(2),
+    calc_add => { self.arith_add(_func, scope) },
+    calc_add_a => { self.arith_add(_func, scope) }
+  },
+  {"/", COMMON, AtLeast(2),
+    calc_div => { self.arith_div(_func, scope) },
+    calc_div_a => { self.arith_div(_func, scope) }
+  },
+  {"-", COMMON, AtLeast(1),
+    calc_minus => { self.minus(_func, scope) },
+    calc_minus_a => { self.minus(_func, scope) }
+  },
+  {"*", COMMON, AtLeast(2),
+    calc_mul => { self.arith_mul(_func, scope) },
+    calc_mul_a => { self.arith_mul(_func, scope) }
+  },
+  {"Float", COMMON, Exact(1),
+    float => {
+      scope.ee_x(vec![
+        load_int_x(Rax, arg!(_func, (Int(x)) => x).val)?,
+        vec![CvtSi2Sd(Rax, Rax)]
+      ])?;
+      scope.ret_xmm(Rax)
+    },
+    float_a => {
+      scope.ee_a(vec![
+        load_int_a(X0, arg!(_func, (Int(x)) => x).val)?,
+        vec![SCvtFD(X0, X0)]
+      ])?;
+      scope.ret_dn(X0, X0)
+    }
+  },
+  {"Int", COMMON, Exact(1),
+    int => {
+      scope.ee_x(vec![
+        self.load_xmm(Rax, Rax, arg!(_func, (Float(x)) => x).val)?,
+        vec![CvtTSd2Si(Rax, Rax)]
+      ])?;
+      Ok(Int(Var(scope.ret_x(S8, Rax)?)))
+    },
+    int_a => {
+      scope.ee_a(vec![
+        self.load_dn(X0, X0, arg!(_func, (Float(x)) => x).val)?,
+        vec![FCvtZSD(X0, X0)]
+      ])?;
+      Ok(Int(Var(scope.ret_a(S8, X1, X0)?)))
+    }
+  },
+  {"random", COMMON, Exact(0),
+    random => {
+      scope.p_x(Call(self.get_random_x(scope.id)?))?;
+      Ok(Int(Var(scope.ret_x(S8, Rax)?)))
+    },
+    random_a => {
+      scope.p_a(Bl(self.get_random_a(scope.id)?))?;
+      Ok(Int(Var(scope.ret_a(S8, X1, X0)?)))
+    }
+  },
+  {"%", COMMON, Exact(2),
+    rem => { self.reminder(_func, scope) },
+    rem_a => { self.reminder(_func, scope) }
+  },
+  {"<<", COMMON, Exact(2),
+    shift_left => { self.shift(Shl, _func, scope) },
+    shift_left_a => { self.shift(Shl, _func, scope) }
+  },
+  {">>", COMMON, Exact(2),
+    shift_right => { self.shift(Sar, _func, scope) },
+    shift_right_a => { self.shift(Sar, _func, scope) }
+  },
+  {"sqrt", COMMON, Exact(1),
+    sqrt => {
+      scope.ee_x(vec![
+        self.load_xmm(Rax, Rax, arg!(_func, (Float(x)) => x).val)?,
+        vec![SqrtSd(Rax, Rax)]
+      ])?;
+      scope.ret_xmm(Rax)
+    },
+    sqrt_a => {
+      scope.ee_a(vec![
+        self.load_dn(X0, X0, arg!(_func, (Float(x)) => x).val)?,
+        vec![FSqrtD(X0, X0)]
+      ])?;
+      scope.ret_dn(X0, X0)
+    }
+},
+}
+pub(crate) type Op = dyn Fn(i64, i64) -> Option<i64>;
+pub(crate) type CheckFn<'a, T> = &'a dyn Fn(&mut Jsonpiler, Position, LabelId) -> ErrOR<Vec<T>>;
+pub(crate) type Arith<'a> = (
+  Result<Group1, (X64Inst, Option<CheckFn<'a, X64Inst>>)>,
+  ArithSdKind,
+  &'a dyn Fn(A64Reg, A64Reg, A64Reg) -> A64Inst,
+  Option<CheckFn<'a, A64Inst>>,
+);
+impl Jsonpiler {
+  fn arith_add(&mut self, func: &mut Pos<BuiltIn>, scope: &mut Scope) -> ErrOR<Json> {
+    const CHECKED: (&Op, &Op) = (&i64::checked_add, &i64::checked_add);
+    let when = (&|| Ok(None), Some(IncR(Rax)));
+    if self.flags.debug {
+      self.arith((Ok(Add), AddSd, &AddSR3, None), CHECKED, 0, when, func, scope)
+    } else {
+      self.arith((Ok(Add), AddSd, &AddR3, None), CHECKED, 0, when, func, scope)
+    }
+  }
+  fn arith_div(&mut self, func: &mut Pos<BuiltIn>, scope: &mut Scope) -> ErrOR<Json> {
+    const CHECKED: (&Op, &Op) = (&i64::checked_div, &i64::checked_mul);
+    let func_pos = func.pos;
+    let when = (&|| err!(func_pos, ZeroDivision), None);
+    self.arith((Err((IDivR(Rcx), CHECK_X)), Div, &SDivR3, CHECK_A), CHECKED, 1, when, func, scope)
+  }
+  fn arith_mul(&mut self, func: &mut Pos<BuiltIn>, scope: &mut Scope) -> ErrOR<Json> {
+    const CHECKED: (&Op, &Op) = (&i64::checked_mul, &i64::checked_mul);
+    let when = (&|| Ok(Some(0)), None);
+    self.arith((Err((IMulR2(Rax, Rcx), None)), Mul, &MulR3, None), CHECKED, 1, when, func, scope)
+  }
+  fn arith_sub(&mut self, func: &mut Pos<BuiltIn>, scope: &mut Scope) -> ErrOR<Json> {
+    const CHECKED: (&Op, &Op) = (&i64::checked_sub, &i64::checked_add);
+    let when = (&|| Ok(None), Some(DecR(Rax)));
+    if self.flags.debug {
+      self.arith((Ok(Sub), SubSd, &SubSR3, None), CHECKED, 0, when, func, scope)
+    } else {
+      self.arith((Ok(Sub), SubSd, &SubR3, None), CHECKED, 0, when, func, scope)
+    }
+  }
+  fn minus(&mut self, func: &mut Pos<BuiltIn>, scope: &mut Scope) -> ErrOR<Json> {
+    if func.val.len == 1 { self.neg(func, scope) } else { self.arith_sub(func, scope) }
+  }
+  fn neg(&mut self, func: &mut Pos<BuiltIn>, scope: &mut Scope) -> ErrOR<Json> {
+    match func.arg()? {
+      Pos { val: Int(int), .. } => {
+        if self.flags.a64 {
+          scope.e_a(load_int_a(X0, int)?)?;
+          scope.p_a(SubR3(X0, Xzr, X0))?;
+          Ok(Int(Var(scope.ret_a(S8, X1, X0)?)))
+        } else {
+          scope.e_x(load_int_x(Rax, int)?)?;
+          scope.p_x(Unary(S8, Neg, Rax))?;
+          Ok(Int(Var(scope.ret_x(S8, Rax)?)))
+        }
+      }
+      Pos { val: Float(float), .. } => {
+        if self.flags.a64 {
+          scope.e_a(self.load_dn(X0, X0, float)?)?;
+          scope.p_a(FNegD(X0, X0))?;
+          scope.ret_dn(X0, X0)
+        } else {
+          scope.e_x(load_float_reg_x(Rax, float)?)?;
+          scope.p_x(BitTest(Btc, Rax, 63))?;
+          Ok(Float(Var(scope.ret_x(S8, Rax)?)))
+        }
+      }
+      other => Err(func.args_err(vec![IntT, FloatT], &other)),
+    }
+  }
+  fn reminder(&mut self, func: &mut Pos<BuiltIn>, scope: &mut Scope) -> ErrOR<Json> {
+    let lhs = arg!(func, (Int(x)) => x).val;
+    let Pos { val: rhs, pos } = arg!(func, (Int(x)) => x);
     if matches!(rhs, Lit(0)) {
       return err!(pos, ZeroDivision);
     }
     if let (Lit(lit1), Lit(lit2)) = (&lhs, &rhs) {
       return Ok(Int(Lit(lit1.wrapping_rem(*lit2))));
     }
-    scope.extend(&mov_int(Rax, lhs));
-    scope.extend(&mov_int(Rcx, rhs));
-    scope.extend(&self.check_zero_cqo(pos, scope.id)?);
-    scope.push(IDivR(Rcx));
-    Ok(Int(Var(scope.ret(Rdx)?)))
-  }},
-  shift_left => {"<<", COMMON, Exact(2), { self.shift(Shl, _func, scope) }},
-  shift_right => {">>", COMMON, Exact(2), { self.shift(Shr, _func, scope) }},
-  sqrt => {"sqrt", COMMON, Exact(1), {
-    scope.extend(&self.mov_float_xmm(Rax, Rax, arg!(_func, (Float(x)) => x).val)?);
-    scope.push(SqrtSd(Rax, Rax));
-    scope.ret_xmm(Rax)
-  }},
+    self.mov_first_operand(lhs, scope)?;
+    if self.flags.a64 {
+      scope.p_a(MovRR(X2, X0))?;
+    }
+    self.rest_op(rhs, (Err((IDivR(Rcx), CHECK_X)), Div, &SDivR3, CHECK_A), func, scope)?;
+    if self.flags.a64 {
+      scope.e_a(vec![MulR3(X0, X0, X1), SubR3(X0, X2, X0)])?;
+      Ok(Int(Var(scope.ret_a(S8, X1, X0)?)))
+    } else {
+      Ok(Int(Var(scope.ret_x(S8, Rdx)?)))
+    }
+  }
 }
-type Op = dyn Fn(i64, i64) -> Option<i64>;
-type CheckFn = dyn Fn(&mut Jsonpiler, Position, LabelId) -> ErrOR<Vec<Inst>>;
 impl Jsonpiler {
-  #[expect(clippy::too_many_arguments)]
-  fn arithmetic_op(
+  fn arith(
     &mut self,
-    op_inst: &(Inst, ArithSdKind),
+    (int_x, float_kind, int_a, check_a): Arith,
     ops: (&Op, &Op),
     ident_elem: i64,
-    when: (&impl Fn() -> ErrOR<Option<i64>>, &impl Fn() -> Option<Inst>),
-    check_opt: Option<&CheckFn>,
+    when: (&impl Fn() -> ErrOR<Option<i64>>, Option<X64Inst>),
     func: &mut Pos<BuiltIn>,
     scope: &mut Scope,
   ) -> ErrOR<Json> {
@@ -122,73 +233,153 @@ impl Jsonpiler {
           rest.push(arg!(func, (Int(x)) => x));
         }
         let (first, vars, acc) = constant_fold(pos.with(int), rest, ops, ident_elem, &when.0)?;
-        if first.is_none() && vars.is_empty() {
-          return Ok(Int(Lit(acc)));
-        }
-        if let Some(memory) = first {
-          if acc == 0
-            && let Some(ret_val) = when.0()?
-          {
-            return Ok(Int(Lit(ret_val)));
-          }
-          scope.extend(&mov_int(Rax, Var(memory)));
-          if acc != 0 {
-            if acc == 1 {
-              if let Some(inst) = when.1() {
-                scope.push(inst);
-                if !self.release {
-                  scope.push(JCc(O, self.custom_err(RuntimeOverflow, None, func.pos, scope.id)?));
+        match first {
+          Lit(lit) if vars.is_empty() => return Ok(Int(Lit(lit))),
+          Lit(lit) => self.mov_first_operand(Lit(lit), scope)?,
+          Var(mem) => {
+            self.mov_first_operand(Var(mem), scope)?;
+            match acc {
+              0 => (),
+              1 if !self.flags.a64 => {
+                if let Some(int_inst_x) = when.1 {
+                  let arith = (Err((int_inst_x, None)), float_kind, int_a, None);
+                  self.op_and_check_overflow(arith, func, scope)?;
                 }
               }
-            } else {
-              self.rest_op(Lit(acc), check_opt, op_inst.0, func, scope)?;
+              _ => self.rest_op(Lit(acc), (int_x, float_kind, int_a, check_a), func, scope)?,
             }
           }
-        } else {
-          scope.extend(&mov_int(Rax, Lit(acc)));
         }
-        for memory in vars {
-          self.rest_op(Var(memory.val), check_opt, op_inst.0, func, scope)?;
+        for mem in vars {
+          self.rest_op(Var(mem.val), (int_x, float_kind, int_a, check_a), func, scope)?;
         }
-        Ok(Int(Var(scope.ret(Rax)?)))
+        let mem = if self.flags.a64 { scope.ret_a(S8, X1, X0)? } else { scope.ret_x(S8, Rax)? };
+        Ok(Int(Var(mem)))
       }
       Pos { val: Float(float), .. } => {
-        scope.extend(&self.mov_float_xmm(Rax, Rax, float)?);
+        self.mov_first_float(float, scope)?;
         for _ in 1..func.val.len {
-          scope.extend(&self.mov_float_xmm(Rcx, Rax, arg!(func, (Float(x)) => x).val)?);
-          scope.push(ArithSd(op_inst.1, Rax, Rcx));
+          self.rest_float(arg!(func, (Float(x)) => x).val, float_kind, scope)?;
         }
-        scope.ret_xmm(Rax)
+        if self.flags.a64 { scope.ret_dn(X0, X0) } else { scope.ret_xmm(Rax) }
       }
-      Pos { val: Str(string), .. } if func.val.name == "+" => {
-        self.concat_strings(string, func, scope)
+      Pos { val: Str(string), .. } if func.val.name == "+" => self.cat_str(string, func, scope),
+      other => {
+        let mut expected = vec![IntT, FloatT];
+        if func.val.name == "+" {
+          expected.push(StrT);
+        }
+        Err(func.args_err(expected, &other))
       }
-      other => Err(func.args_err(
-        if func.val.name == "+" { vec![IntT, BoolT, StrT] } else { vec![IntT, BoolT] },
-        other.map_ref(Json::as_type),
-      )),
     }
   }
-  pub(crate) fn check_zero_cqo(&mut self, pos: Position, caller: LabelId) -> ErrOR<Vec<Inst>> {
-    let zero_division = self.custom_err(RuntimeZeroDivision, None, pos, caller)?;
-    Ok(vec![LogicRR(Test, Rcx, Rcx), JCc(E, zero_division), Custom(CQO)])
+  pub(crate) fn mov_first_float(&mut self, float: Bind<f64>, scope: &mut Scope) -> ErrOR<()> {
+    if self.flags.a64 {
+      scope.e_a(self.load_dn(X0, X0, float)?)
+    } else {
+      scope.e_x(self.load_xmm(Rax, Rax, float)?)
+    }
   }
-  fn rest_op(
+  pub(crate) fn mov_first_operand(&mut self, bind: Bind<i64>, scope: &mut Scope) -> ErrOR<()> {
+    if self.flags.a64 {
+      scope.e_a(load_int_a(X0, bind)?)
+    } else {
+      scope.e_x(load_int_x(Rax, bind)?)
+    }
+  }
+  pub(crate) fn nz_a(&mut self, pos: Position, caller: LabelId) -> ErrOR<Vec<A64Inst>> {
+    let zero_div = self.runtime_err(RuntimeZeroDivision, None, pos, caller)?;
+    Ok(vec![CmpRR(X1, Xzr), BCc(E.into(), zero_div)])
+  }
+  pub(crate) fn nz_cqo(&mut self, pos: Position, caller: LabelId) -> ErrOR<Vec<X64Inst>> {
+    let zero_div = self.runtime_err(RuntimeZeroDivision, None, pos, caller)?;
+    Ok(vec![TestRR(S8, Rcx), JCc(E, zero_div), Cqo])
+  }
+  fn op_and_check_overflow(
     &mut self,
-    bind: Bind<i64>,
-    check_opt: Option<&CheckFn>,
-    int_inst: Inst,
+    (int_1_x, float_kind, int_1_a, _): Arith,
     func: &mut Pos<BuiltIn>,
     scope: &mut Scope,
   ) -> ErrOR<()> {
-    scope.extend(&mov_int(Rcx, bind));
-    if let Some(check) = check_opt {
-      scope.extend(&check(self, func.pos, scope.id)?);
+    if self.flags.debug && float_kind != Div {
+      let cc = if self.flags.a64 {
+        if float_kind == Mul {
+          scope.e_a(vec![
+            SMulH(X3, X0, X1),
+            int_1_a(X0, X0, X1),
+            Asr(X4, X0, 63),
+            CmpRR(X3, X4),
+          ])?;
+          Ne
+        } else {
+          scope.e_a(vec![int_1_a(X0, X0, X1)])?;
+          O
+        }
+      } else {
+        match int_1_x {
+          Ok(g1) => scope.e_x(vec![RR(S8, g1, Rax, Rcx)]),
+          Err((inst, _)) => scope.e_x(vec![inst]),
+        }?;
+        O
+      };
+      let overflow = self.runtime_err(RuntimeOverflow, None, func.pos, scope.id)?;
+      scope.push_jcc(cc, overflow);
+    } else {
+      if self.flags.a64 {
+        scope.p_a(int_1_a(X0, X0, X1))?;
+      } else {
+        match int_1_x {
+          Ok(g1) => scope.e_x(vec![RR(S8, g1, Rax, Rcx)]),
+          Err((inst, _)) => scope.e_x(vec![inst]),
+        }?;
+      }
     }
-    scope.push(int_inst);
-    if !self.release {
-      scope.push(JCc(O, self.custom_err(RuntimeOverflow, None, func.pos, scope.id)?));
+    Ok(())
+  }
+  pub(crate) fn rest_float(
+    &mut self,
+    float: Bind<f64>,
+    float_kind: ArithSdKind,
+    scope: &mut Scope,
+  ) -> ErrOR<()> {
+    if self.flags.a64 {
+      scope.e_a(self.load_dn(X1, X0, float)?)?;
+      scope.p_a(FArithD(float_kind, X0, X0, X1))
+    } else {
+      scope.e_x(self.load_xmm(Rcx, Rax, float)?)?;
+      scope.p_x(ArithSd(float_kind, Rax, Rcx))
     }
+  }
+  pub(crate) fn rest_op(
+    &mut self,
+    bind: Bind<i64>,
+    (mut int_x, float_kind, int_a, check_a): Arith,
+    func: &mut Pos<BuiltIn>,
+    scope: &mut Scope,
+  ) -> ErrOR<()> {
+    if self.flags.a64 {
+      scope.e_a(load_int_a(X1, bind)?)?;
+      if let Some(check) = check_a {
+        scope.e_a(check(self, func.pos, scope.id)?)?;
+      }
+    } else {
+      if let Ok(g1) = int_x {
+        int_x = match bind {
+          Lit(lit) if i32::try_from(lit).is_ok() => Err((m8i(g1, Rax, i32::try_from(lit)?), None)),
+          Var(mem) => Err((r_m(S8, g1, Rax, mem.0), None)),
+          _ => {
+            scope.e_x(load_int_x(Rcx, bind)?)?;
+            int_x
+          }
+        };
+      } else {
+        scope.e_x(load_int_x(Rcx, bind)?)?;
+      }
+      if let Err((_, Some(check))) = int_x {
+        scope.e_x(check(self, func.pos, scope.id)?)?;
+      }
+    }
+    self.op_and_check_overflow((int_x, float_kind, int_a, check_a), func, scope)?;
     Ok(())
   }
   fn shift(
@@ -201,60 +392,70 @@ impl Jsonpiler {
     let Pos { val: rhs, pos } = arg!(func, (Int(x)) => x);
     if let (Lit(lit1), Lit(lit2)) = (&lhs, &rhs) {
       let Ok(rhs_u32) = u32::try_from(*lit2) else { return err!(pos, TooLargeShift) };
-      return Ok(Int(Lit(
-        if direction == Shl { lit1.checked_shl(rhs_u32) } else { lit1.checked_shr(rhs_u32) }
-          .ok_or(Compilation(TooLargeShift, vec![pos]))?,
-      )));
+      let checked = if direction == Shl { i64::checked_shl } else { i64::checked_shr };
+      let Some(result) = checked(*lit1, rhs_u32) else {
+        return err!(pos, TooLargeShift);
+      };
+      return Ok(Int(Lit(result)));
     }
-    scope.extend(&mov_int(Rax, lhs));
+    if self.flags.a64 {
+      scope.e_a(load_int_a(X0, lhs)?)?;
+    } else {
+      scope.e_x(load_int_x(Rax, lhs)?)?;
+    }
     if let Lit(lit2) = rhs {
       if let Ok(rhs_u8) = u8::try_from(lit2)
         && lit2 < 64
       {
-        scope.push(ShiftR(direction, Rax, Shift::Ib(rhs_u8)));
+        if self.flags.a64 {
+          scope.p_a(if direction == Shl { Lsl(X0, X0, rhs_u8) } else { Asr(X0, X0, rhs_u8) })?;
+        } else {
+          scope.p_x(ShiftR(direction, Rax, Shift::Ib(rhs_u8)))?;
+        }
       } else {
         return err!(pos, TooLargeShift);
       }
     } else {
-      let too_large_shift = self.custom_err(RuntimeTooLargeShift, None, pos, scope.id)?;
-      scope.extend(&mov_int(Rcx, rhs));
-      scope.extend(&[
-        mov_d(Rdx, 64),
-        LogicRR(Cmp, Rcx, Rdx),
-        JCc(Ge, too_large_shift),
-        ShiftR(direction, Rax, Shift::Cl),
-      ]);
+      if self.flags.a64 {
+        scope.ee_a(vec![load_int_a(X1, rhs)?, load_imm_a(X2, 64), vec![CmpRR(X1, X2)]])?;
+      } else {
+        scope.ee_x(vec![load_int_x(Rcx, rhs)?, vec![m8i(Cmp, Rcx, 64)]])?;
+      }
+      let too_large_shift = self.runtime_err(RuntimeTooLargeShift, None, pos, scope.id)?;
+      scope.push_jcc(Ge, too_large_shift);
+      if self.flags.a64 {
+        scope.p_a(if direction == Shl { LslR3(X0, X0, X1) } else { AsrR3(X0, X0, X1) })?;
+      } else {
+        scope.p_x(ShiftR(direction, Rax, Shift::Cl))?;
+      }
     }
-    Ok(Int(Var(scope.ret(Rax)?)))
+    Ok(Int(Var(if self.flags.a64 { scope.ret_a(S8, X1, X0)? } else { scope.ret_x(S8, Rax)? })))
   }
 }
 fn constant_fold(
   first: Pos<Bind<i64>>,
   rest: Vec<Pos<Bind<i64>>>,
-  ops: (&Op, &Op),
+  (first_op, rest_op): (&Op, &Op),
   ident_elem: i64,
   when0: &impl Fn() -> ErrOR<Option<i64>>,
-) -> ErrOR<(Option<Memory>, Vec<Pos<Memory>>, i64)> {
+) -> ErrOR<(Bind<i64>, Vec<Pos<Memory>>, i64)> {
   let mut vars = vec![];
   let mut acc = ident_elem;
   for bind in rest {
     match bind.val {
-      Lit(lit) => acc = ops.1(acc, lit).ok_or(Compilation(Overflow, vec![bind.pos]))?,
-      Var(memory) => vars.push(bind.pos.with(memory)),
+      Lit(lit) => acc = rest_op(acc, lit).ok_or(compilation!(bind.pos, Overflow))?,
+      Var(mem) => vars.push(bind.pos.with(mem)),
     }
   }
-  match first.val {
-    Lit(lit) => Ok((
-      None,
-      vars,
-      if acc == 0
-        && let Some(ret_val) = when0()?
-      {
-        ret_val
-      } else {
-        ops.0(lit, acc).ok_or(Compilation(Overflow, vec![first.pos]))?
-      },
-    )),
-    Var(memory) => Ok((Some(memory), vars, acc)),
-  }
+  let folded_first = if acc == 0
+    && let Some(ret_val) = when0()?
+  {
+    Lit(ret_val)
+  } else {
+    match first.val {
+      Var(mem) => Var(mem),
+      Lit(lit) => Lit(first_op(lit, acc).ok_or(compilation!(first.pos, Overflow))?),
+    }
+  };
+  Ok((folded_first, vars, acc))
 }

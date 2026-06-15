@@ -9,11 +9,11 @@ GUI(render: Ident) -> Null
 render draws each pixel.
 It takes `render(x, y, frame, mouseX, mouseY) -> color`.
 
-x: -256~255
-y: -256~255
-frame: 0~...
-mouse_x: -256~...
-mouse_y: -256~...
+x: -256...255  
+y: -256...255  
+frame: 0...  
+mouse_x: -256...  
+mouse_y: -256...  
 color: 0xRRGGBB
 
 ```jspl
@@ -22,9 +22,9 @@ define(
   { x: Int; y: Int; frame: Int; mouse_x: Int; mouse_y: Int },
   Int,
   {
-    r = 0
-    g = 0
-    b = 0
+    let(r) = 0
+    let(g) = 0
+    let(b) = 0
     if(x > 0, r = 255)
     if(y < 0, g = 255)
     if(x + y > 0, b = 255)

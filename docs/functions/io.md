@@ -50,6 +50,6 @@ When input is redirected or piped,
 reads data in 4 KB chunks by default and retains remaining data for subsequent reads.
 
 ```jspl
-name = input()
+let(name) = input()
 print("Hello, ", name, "\n")
 ```

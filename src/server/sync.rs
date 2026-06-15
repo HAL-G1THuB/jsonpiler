@@ -16,17 +16,17 @@ impl Channel {
     Channel { rx, tx }
   }
 }
-enum SchedulerCommand {
+enum SchedulerCmd {
   Cancel(String),
   Schedule { delay: Duration, uri: String },
 }
 pub(crate) struct Scheduler {
-  tx: Sender<SchedulerCommand>,
+  tx: Sender<SchedulerCmd>,
 }
 impl Scheduler {
   #[expect(clippy::let_underscore_must_use)]
   pub(crate) fn cancel(&self, uri: &str) {
-    let _: Result<_, _> = self.tx.send(SchedulerCommand::Cancel(uri.to_owned()));
+    let _: Result<_, _> = self.tx.send(SchedulerCmd::Cancel(uri.into()));
   }
   pub(crate) fn new(task_tx: UriTx) -> Self {
     let (tx, rx) = mpsc::channel();
@@ -35,11 +35,11 @@ impl Scheduler {
   }
   #[expect(clippy::let_underscore_must_use)]
   pub(crate) fn schedule(&self, uri: String, delay: Duration) {
-    let _: Result<_, _> = self.tx.send(SchedulerCommand::Schedule { delay, uri });
+    let _: Result<_, _> = self.tx.send(SchedulerCmd::Schedule { delay, uri });
   }
 }
 impl Scheduler {
-  fn run(rx: Receiver<SchedulerCommand>, task_tx: UriTx) {
+  fn run(rx: Receiver<SchedulerCmd>, task_tx: UriTx) {
     let mut pending = HashMap::<String, Instant>::new();
     loop {
       let next_deadline = pending.values().copied().min();
@@ -54,19 +54,19 @@ impl Scheduler {
         },
       };
       match command {
-        Ok(SchedulerCommand::Cancel(uri)) => {
+        Ok(SchedulerCmd::Cancel(uri)) => {
           pending.remove(&uri);
         }
-        Ok(SchedulerCommand::Schedule { delay, uri }) => {
+        Ok(SchedulerCmd::Schedule { delay, uri }) => {
           pending.insert(uri, Instant::now() + delay);
         }
         Err(RecvTimeoutError::Timeout) => {
           let now = Instant::now();
-          let ready = pending
+          let ready: Vec<_> = pending
             .iter()
             .filter(|(_, deadline)| **deadline <= now)
             .map(|(uri, _)| uri.clone())
-            .collect::<Vec<_>>();
+            .collect();
           for uri in ready {
             pending.remove(&uri);
             if task_tx.send(uri).is_err() {

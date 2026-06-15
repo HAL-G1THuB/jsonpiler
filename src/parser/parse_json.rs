@@ -1,37 +1,41 @@
 use crate::prelude::*;
+impl File {
+  pub(crate) fn parse_json(&mut self) -> ParseErrOR<Pos<Json>> {
+    self.parser.parse_json(&self.rel_path)
+  }
+}
 impl Pos<Parser> {
   fn parse_array(&mut self) -> ParseErrOR<Json> {
     self.expect(b'[')?;
     self.skip_ws()?;
-    if self.consume_if(b']')? {
-      return Ok(Array(Lit(vec![])));
-    }
     let mut array = vec![];
+    if self.consume_if(b']')? {
+      return Ok(Array(ArrayType::new(None, None), Lit(array)));
+    }
     loop {
       array.push(self.parse_value()?);
       self.skip_ws()?;
       if self.consume_if(b']')? {
-        return Ok(Array(Lit(array)));
+        return Ok(Array(ArrayType::new(None, None), Lit(array)));
       }
       self.expect(b',')?;
     }
   }
-  pub(crate) fn parse_json(&mut self) -> ParseErrOR<Pos<Json>> {
+  #[expect(clippy::print_stderr)]
+  pub(crate) fn parse_json(&mut self, rel_path: &str) -> ParseErrOR<Pos<Json>> {
     let result = self.parse_value()?;
-    if self.skip_ws().is_err() {
-      Ok(result)
-    } else {
-      Err(self.pos.with(ExpectedToken(TokenKind::Eof)))
+    let eof = self.skip_ws().is_err();
+    for warn in &self.val.warns {
+      eprintln!("{}", self.format_err(&warning!(warn.pos, warn.val.clone()), rel_path));
     }
+    if eof { Ok(result) } else { Err(self.pos.with(ExpectedToken(TokenKind::Eof))) }
   }
-  #[expect(clippy::cast_possible_truncation)]
   fn parse_keyword(&mut self, keyword: &'static str, value: Json) -> ParseErrOR<Json> {
     let mut pos = self.pos;
-    self.pos.offset += keyword.len() as u32;
+    self.pos.offset += u32::try_from(keyword.len()).map_err(|_err| pos.with(InvalidKeyword))?;
     self.check_eof()?;
     self.set_size(&mut pos);
-    let slice = self.get_slice(pos)?;
-    if slice == keyword { Ok(value) } else { Err(pos.with(InvalidKeyword)) }
+    if self.get_slice(pos)? == keyword { Ok(value) } else { Err(pos.with(InvalidKeyword)) }
   }
   pub(crate) fn parse_number(&mut self) -> ParseErrOR<Json> {
     let mut pos = self.pos;
@@ -56,7 +60,7 @@ impl Pos<Parser> {
     self.set_size(&mut pos);
     let slice = self.get_slice(pos)?;
     if float {
-      return Ok(Float(Lit(slice.parse::<f64>().map_err(|_err| pos.with(InvalidFloat))?)));
+      return Ok(Float(Lit(slice.parse().map_err(|_err| pos.with(InvalidFloat))?)));
     }
     let mut acc: i64 = 0;
     let mut chars = slice.chars();
@@ -74,10 +78,10 @@ impl Pos<Parser> {
   fn parse_object(&mut self) -> ParseErrOR<Json> {
     self.expect(b'{')?;
     self.skip_ws()?;
-    if self.consume_if(b'}')? {
-      return Ok(Object(Lit(vec![])));
-    }
     let mut object = vec![];
+    if self.consume_if(b'}')? {
+      return Ok(Object(Lit(object)));
+    }
     loop {
       let mut pos = self.pos;
       let key = self.parse_string()?;
@@ -122,7 +126,7 @@ impl Pos<Parser> {
             let mut code_point = self.parse_unicode_esc()?;
             match code_point {
               0xD800..=0xDBFF => {
-                if self.consume()? != b'\\' || self.consume()? != b'u' {
+                if !(self.consume_if(b'\\')? && self.consume_if(b'u')?) {
                   return Err(self.pos.with(UnexpectedToken(TokenKind::Esc('u'))));
                 }
                 let low = self.parse_unicode_esc()?;

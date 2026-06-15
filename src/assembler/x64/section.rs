@@ -1,15 +1,15 @@
-use super::utility::r_size;
+use super::r_size;
 use crate::prelude::*;
 #[repr(u8)]
-#[derive(Eq, PartialEq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Hash, Clone, Copy)]
 pub(crate) enum Section {
-  Text,
-  Data,
-  RData,
-  PData,
-  XData,
-  Bss,
-  IData,
+  TextX = 0,
+  DataX = 1,
+  RData = 2,
+  PData = 3,
+  XData = 4,
+  BssX = 5,
+  IData = 6,
 }
 #[derive(Debug, Clone, Copy)]
 #[expect(clippy::arbitrary_source_item_ordering)]
@@ -23,7 +23,7 @@ pub(crate) struct SectionHeader {
 }
 impl SectionHeader {
   pub(crate) fn encode(&self) -> Vec<u8> {
-    let mut out = Vec::with_capacity(40);
+    let mut out = Vec::with_capacity(SECTION_HEADER_SIZE as usize);
     extend!(
       out,
       self.name,
@@ -60,27 +60,31 @@ impl SectionHeader {
     self.r_ptr + self.r_size
   }
   pub(crate) fn next_v_addr(&self) -> ErrOR<u32> {
-    Ok(self.v_addr + align_up_u32(self.v_size, SECTION_ALIGNMENT)?)
+    Ok(self.v_addr + align_up_u32(self.v_size, SECTION_ALIGN)?)
   }
 }
 impl Section {
   pub(crate) fn characteristics(self) -> u32 {
     match self {
-      Text => 0x6000_0020,
-      Data | IData => 0xC000_0040,
-      Bss => 0xC000_0080,
+      TextX => 0x6000_0020,
+      DataX | IData => 0xC000_0040,
+      BssX => 0xC000_0080,
       RData | PData | XData => 0x4000_0040,
     }
   }
   pub(crate) fn name(self) -> [u8; 8] {
-    match self {
-      Text => *b".text\0\0\0",
-      Data => *b".data\0\0\0",
-      RData => *b".rdata\0\0",
-      PData => *b".pdata\0\0",
-      XData => *b".xdata\0\0",
-      Bss => *b".bss\0\0\0\0",
-      IData => *b".idata\0\0",
-    }
+    let name: &[u8] = match self {
+      TextX => b"text",
+      DataX => b"data",
+      RData => b"rdata",
+      PData => b"pdata",
+      XData => b"xdata",
+      BssX => b"bss",
+      IData => b"idata",
+    };
+    let mut out = *b".\0\0\0\0\0\0\0";
+    let len = name.len().min(7);
+    out[1..=len].copy_from_slice(&name[..len]);
+    out
   }
 }

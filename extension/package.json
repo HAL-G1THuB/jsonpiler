@@ -3,7 +3,7 @@
   "name": "jsplsyntax",
   "displayName": "Jsonpiler",
   "description": "Provides language server and language features for JSPL.",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "engines": {
     "vscode": "^1.103.0"
   },
@@ -11,7 +11,7 @@
     "Programming Languages",
     "Snippets"
   ],
-  "icon": "images/icon.jpg",
+  "icon": "images/icon.png",
   "main": "dist/extension.js",
   "activationEvents": [],
   "repository": {
@@ -27,7 +27,18 @@
     ],
     "configuration": {
       "title": "JSPL Settings",
-      "properties": {}
+      "properties": {
+        "jspl.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace the communication between VS Code and the language server."
+        }
+      }
     },
     "menus": {
       "editor/title": [
@@ -45,6 +56,10 @@
           "JSPL",
           "jspl"
         ],
+        "icon": {
+          "light": "./images/icon.png",
+          "dark": "./images/icon.png"
+        },
         "extensions": [
           ".jspl"
         ],
@@ -64,5 +79,12 @@
         "path": "./snippets/jspl.code-snippets"
       }
     ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "@types/vscode": "^1.103.0"
   }
 }

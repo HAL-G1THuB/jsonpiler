@@ -33,19 +33,21 @@ by_two(2) => 4
 ## if
 
 ```jspl
-if([Bool, Any]...) -> Null
-if(Bool, Any) -> Null
+if([Bool, Any]...) -> Any
+if(Bool, Any) -> Any
 ```
 
 Evaluates each condition in order.
 If a condition is `true`,
-the corresponding `then` expression is evaluated.
-Returns `null`.
+the corresponding `then` expression is evaluated and its value is returned.
+All branches must return the same type.
+If no condition is `true`, an error is occurred.
+If every branch returns `Null`, the final `[true, ...]` branch may be omitted.
 
 ```jspl
 if(
-  [1 == 1, message("1 == 1✨", "`then` branch.")]
-  [1 == 2, message("1 == 2🤔", "`else if` branch.")]
+  [1 == 1, message("1 == 1✨", "`then` branch.")],
+  [1 == 2, message("1 == 2🤔", "`else if` branch.")],
   [true, message("1 == ?🤣", "`else` branch.")]
 )
   => null
@@ -61,7 +63,7 @@ Evaluates the `body` repeatedly while the `condition` is `true`.
 Returns `null`.
 
 ```jspl
-i = 0
+let(i) = 0
 while(i < 5,
 {
   message("Loop", "");

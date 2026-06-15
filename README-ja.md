@@ -30,12 +30,21 @@ Jsonpilerに GUI をサポートする関数が追加されました。
 
 詳細は **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG-ja.md)** を参照してください。
 
-### v0.10.4
+### v0.11.0
 
+- 追加
+  - JsonpilerExtension v0.3.0
+  - VSCode拡張機能がmacOSをサポートするようになった
+  - LSPサーバーに、シンボルのリネーム機能を追加
+  - `if`が返り値を返せるようになった
+  - VSCode拡張機能に.jsplファイルのアイコンを追加
+- 変更
+  - `let(x = 0)`から`let(x) = 0`に変更
+  - `global(x = 0)`から`global(x) = 0`に変更
+  - 引数渡しを順序の変更により効率化
 - 修正
-  - JsonpilerExtension v0.2.4
-  - 存在しないファイルを開いたときのエラーを修正
-  - GUI関数のエラーを修正
+  - `>>`が符号なしシフトだった問題を修正
+  - Xmmを引数レジスタとして使用する場合のWindows x64呼び出し規約に準拠するように
 
 ## 必要条件
 

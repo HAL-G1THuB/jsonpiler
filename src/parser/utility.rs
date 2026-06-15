@@ -11,7 +11,11 @@ impl Pos<Parser> {
   }
   pub(crate) fn consume_if(&mut self, expected: u8) -> ParseErrOR<bool> {
     self.check_eof()?;
-    Ok((self.peek() == expected).then(|| self.pos.offset += 1).is_some())
+    let matched = self.peek() == expected;
+    if matched {
+      self.pos.offset += 1;
+    }
+    Ok(matched)
   }
   pub(crate) fn consume_if_multi(&mut self, expected: &[u8]) -> ParseErrOR<bool> {
     let mut last_err = None;
@@ -27,9 +31,8 @@ impl Pos<Parser> {
     }
     last_err.map_or(Ok(false), Err)
   }
-  #[expect(clippy::cast_possible_truncation)]
   pub(crate) fn eof_err(&self) -> Pos<ParseErr> {
-    Position { offset: self.val.text.len() as u32, ..self.pos }
+    Position { offset: len_u32(self.val.text.as_bytes()).unwrap_or(0), ..self.pos }
       .with(UnexpectedToken(TokenKind::Eof))
   }
   pub(crate) fn expect(&mut self, expected: u8) -> ParseErrOR<()> {

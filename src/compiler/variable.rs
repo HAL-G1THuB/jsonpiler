@@ -5,27 +5,22 @@ impl Jsonpiler {
   pub(crate) fn assign(
     &mut self,
     is_global_opt: Option<bool>,
-    (var, val): KeyVal,
+    (name, val): KeyVal,
     scope: &mut Scope,
   ) -> ErrOR<bool> {
     let reassign = if let Some(is_g) = is_global_opt {
-      self.check_defined(&var, var.pos, scope)?;
+      self.check_defined(&name, name.pos, GlobalVar, scope)?;
       Err(is_g)
     } else {
-      let variable = self.get_var(&var, scope)?.val;
-      if variable.val.as_type() != val.val.as_type() {
-        return Err(type_err(
-          format_variable(&var.val, variable.kind),
-          vec![variable.val.as_type()],
-          val.map_ref(Json::as_type),
-        ));
+      let var = self.get_var(&name, scope)?.val;
+      if var.val.as_type() != val.val.as_type() {
+        let val_type = val.map_ref(Json::as_type);
+        return Err(type_err(fmt_var(&name.val, var.kind), vec![var.val.as_type()], val_type));
       }
-      Ok(
-        variable
-          .val
-          .memory()
-          .ok_or_else(|| Compilation(UndefinedVar(var.val.clone()), vec![var.pos]))?,
-      )
+      let Some(mem) = var.val.mem() else {
+        return err!(name.pos, UndefinedVar(name.val.clone()));
+      };
+      Ok(mem)
     };
     let is_global = reassign.is_err_and(|is_g| is_g);
     let call_once = scope.loop_labels.is_empty() && scope.epilogue.is_none();
@@ -34,40 +29,47 @@ impl Jsonpiler {
       Bool(Lit(lit)) if data_sect => Bool(Var(self.global_b(*lit))),
       Int(Lit(int)) if data_sect => Int(Var(self.global_q(int.cast_unsigned()))),
       Float(Lit(lit)) if data_sect => Float(Var(self.global_q(lit.to_bits()))),
-      Null(_) | Array(_) | Bool(_) | Float(_) | Int(_) | Object(_) | Str(_) => {
+      Null(_) | Array(..) | Bool(_) | Float(_) | Int(_) | Object(_) | Str(_) => {
         if is_global {
-          self.critical_sect(scope, ENTER);
+          if self.flags.a64 {
+            self.os_unfair_lock(scope, true)?;
+          } else {
+            self.critical_sect(scope, ENTER)?;
+          }
         }
         let val_type = val.val.as_type();
-        let size = val_type.mem_type(val.pos)?.size();
-        let memory = match reassign {
-          Ok(memory) => {
-            self.heap_free(memory, scope);
-            memory
+        let mem_type = val_type.mem_type(val.pos)?;
+        let size = mem_type.size()?;
+        let mem = match reassign {
+          Ok(mem) => {
+            self.heap_free(mem, scope)?;
+            mem
           }
           Err(is_g) => Memory(
             if is_g {
-              Global(self.bss(u32::try_from(size)?, u32::try_from(size)?))
+              let size_u32 = u32::try_from(size)?;
+              Global(self.bss(size_u32, size_u32))
             } else {
               Local(Long, scope.alloc(size, size)?)
             },
-            MemoryType {
-              heap: Value,
-              size: Small(match size {
-                1 => RB,
-                4 => RD,
-                8 => RQ,
-                _ => return err!(val.pos, UnsupportedType(val_type.name())),
-              }),
-            },
+            MemType { pass_by: Value, size: Small(mem_type.reg_size()) },
           ),
         };
-        let value = val_type.to_json(val.pos, memory.0)?;
-        scope.extend(&self.mov_json(Rax, val.clone(), Some(scope.id))?);
-        scope.extend(&ret_memory(memory, Rcx, Rax)?);
-        self.drop_json(val.val, false, scope);
+        let value = val_type.to_json(val.pos, mem.0)?;
+        if self.flags.a64 {
+          scope.e_a(self.load_json_a(X0, &val, Some(scope.id))?)?;
+          scope.e_a(store_a(mem, X1, X0)?)?;
+        } else {
+          scope.e_x(self.load_json_x(Rax, &val, Some(scope.id))?)?;
+          scope.e_x(store_x(mem, Rcx, Rax)?)?;
+        }
+        self.drop_json(&val.val, false, scope)?;
         if is_global {
-          self.critical_sect(scope, LEAVE);
+          if self.flags.a64 {
+            self.os_unfair_lock(scope, false)?;
+          } else {
+            self.critical_sect(scope, LEAVE)?;
+          }
         }
         value
       }
@@ -75,55 +77,70 @@ impl Jsonpiler {
     if let Err(is_g) = reassign {
       let target = if is_g { &mut self.globals } else { scope.innermost() };
       let kind = if is_g { GlobalVar } else { LocalVar };
-      target.insert(var.val, var.pos.with(Variable::new(value, kind)));
+      target.insert(name.val, name.pos.with(Variable::new(value, kind)));
     }
     Ok(reassign.is_ok())
   }
-  fn critical_sect(&mut self, scope: &mut Scope, action: &'static str) {
-    let critical_section = Global(self.get_critical_section());
-    scope.extend(&[LeaRM(Rcx, critical_section), CallApi(self.api(KERNEL32, action))]);
+  fn critical_sect(&mut self, scope: &mut Scope, action: &'static str) -> ErrOR<()> {
+    let critical_section = Global(self.get_critical_section()?);
+    scope.e_x(vec![LeaRM(Rcx, critical_section), CallApi(self.api(KERNEL32, action))])
   }
-  pub(crate) fn declare(
-    &mut self,
-    is_global: bool,
-    func: &mut Pos<BuiltIn>,
-    scope: &mut Scope,
-  ) -> ErrOR<Json> {
-    let mut assign_expr = arg!(func, (Object(Lit(x))) => x);
-    if assign_expr.val.len() == 1
-      && let (name, Pos { val: Array(Lit(mut expr)), .. }) = take(&mut assign_expr.val[0])
-      && name.val == "="
-      && expr.len() == 2
+  fn os_unfair_lock(&mut self, scope: &mut Scope, lock: bool) -> ErrOR<()> {
+    let action = if lock { "_os_unfair_lock_lock" } else { "_os_unfair_lock_unlock" };
+    let os_unfair_lock = Global(self.get_os_unfair_lock()?).ptr();
+    scope.e_a(load_a(X0, os_unfair_lock)?)?;
+    scope.p_a(BApi(self.api(SYS_B, action)))
+  }
+  fn reassign(&mut self, func: &mut Pos<BuiltIn>, scope: &mut Scope) -> ErrOR<Json> {
+    let mut first = func.arg()?;
+    if let Object(Lit(obj)) = &mut first.val
+      && obj.len() == 1
+      && (obj[0].0.val == "let" || obj[0].0.val == "global")
     {
-      let var = take(&mut expr[0]).into_ident("Variable name")?;
-      let val = self.eval(take(&mut expr[1]), scope)?;
+      if let Some(builtin) = self.builtin.get_mut(&obj[0].0.val) {
+        builtin.refs.push(obj[0].0.pos);
+      }
+      let is_global = obj[0].0.val == "global";
+      let var = if let Array(_, Lit(args)) = &mut obj[0].1.val
+        && args.len() == 1
+      {
+        take(&mut args[0])
+      } else {
+        take(&mut obj[0].1)
+      }
+      .into_ident("Variable name")?;
+      let val = self.eval(func.arg()?, scope)?;
       self.assign(Some(is_global), (var, val), scope)?;
+      return Ok(Null(Lit(())));
+    }
+    let name = first.into_ident("Variable name")?;
+    let val = self.eval(func.arg()?, scope)?;
+    if self.assign(None, (name.clone(), val), scope)? {
       Ok(Null(Lit(())))
     } else {
-      Err(type_err(
-        format!("`{}`'s argument", func.val.name),
-        vec![CustomT("Assign expression".into())],
-        assign_expr.pos.with(ObjectT),
-      ))
+      err!(name.pos, UndefinedVar(name.val))
     }
   }
 }
-built_in! {self, func, scope, variable;
-  assign_global => {"global", SPECIAL, Exact(1), { self.declare(true, func, scope) }},
-  assign_local => {"let", SPECIAL, Exact(1), { self.declare(false, func, scope) }},
-  reassign => {"=", SPECIAL, Exact(2), {
-    let var = func.arg()?.into_ident("Variable name")?;
-    let val = self.eval(func.arg()?, scope)?;
-    if self.assign(None, (var.clone(), val), scope)? {
-      Ok(Null(Lit(())))
-    } else {
-      err!(var.pos, UndefinedVar(var.val))
-    }
-  }},
-  reference => {"$", COMMON, Exact(1), {
-    Ok(self.get_var(&arg!(func, (Str(Lit(x))) => x), scope)?.val.val.clone())
-  }},
-  scope => {"scope", SP_SCOPE, Exact(1), {
-    Ok(self.eval(func.arg()?, scope)?.val)
-  }}
+built_in! {self, _func, _scope, variable;
+  {"global", SPECIAL, Exact(1),
+    assign_global => {Ok(Null(Lit(()))) },
+    assign_global_a => { Ok(Null(Lit(()))) }
+  },
+  {"let", SPECIAL, Exact(1),
+    assign_local => { Ok(Null(Lit(()))) },
+    assign_local_a => { Ok(Null(Lit(()))) }
+  },
+  {"=", SPECIAL, Exact(2),
+    f_reassign => { self.reassign(_func, _scope) },
+    f_reassign_a => { self.reassign(_func, _scope) }
+  },
+  {"$", COMMON, Exact(1),
+    reference => { Ok(self.get_var(&arg!(_func, (Str(Lit(x))) => x), _scope)?.val.val.clone()) },
+    reference_f => { Ok(self.get_var(&arg!(_func, (Str(Lit(x))) => x), _scope)?.val.val.clone()) }
+  },
+  {"scope", SP_SCOPE, Exact(1),
+    scope => { Ok(self.eval(_func.arg()?, _scope)?.val) },
+    scope_a => { Ok(self.eval(_func.arg()?, _scope)?.val) }
+  }
 }

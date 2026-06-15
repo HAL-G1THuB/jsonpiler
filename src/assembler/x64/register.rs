@@ -1,7 +1,7 @@
 use crate::prelude::*;
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[expect(clippy::arbitrary_source_item_ordering)]
-pub(crate) enum Register {
+pub(crate) enum X64Reg {
   Rax = 0,
   Rcx = 1,
   Rdx = 2,
@@ -19,7 +19,7 @@ pub(crate) enum Register {
   R14 = 14,
   R15 = 15,
 }
-impl Register {
+impl X64Reg {
   pub(crate) fn encode_plus_reg(self, prefix: &[u8], rex_w: u8, opc: u8, imm: &[u8]) -> Vec<u8> {
     let mut code = prefix.to_vec();
     if self.rex() | rex_w == 1 {
@@ -33,16 +33,16 @@ impl Register {
     if self < Rsp || Rdi < self {
       Ok(self)
     } else {
-      Err(Internal(InvalidInst("spl, bpl ,sil and dil".into())))
+      Err(InvalidInst("spl, bpl ,sil and dil".into()).into())
     }
   }
   pub(crate) fn reg_bits(self) -> u8 {
-    self as u8 & 7
+    self as u8 & 0b111
   }
   pub(crate) fn rex(self) -> u8 {
     u8::from(R8 <= self)
   }
   pub(crate) fn rex_size(self) -> u32 {
-    u32::from(R8 <= self)
+    u32::from(self.rex())
   }
 }

@@ -5,12 +5,13 @@ define(fib_recursive, { n: Int }, Int,
 define(fib_loop, { n: Int }, Int,
 {
   if(n <= 1, ret(n))
-  let(a = 0)
-  let(b = 1)
-  let(i = 2)
-  while(i <= n, { let(t = a + b); a = b; b = t; i += 1 })
+  let(a) = 0
+  let(b) = 1
+  let(i) = 2
+  while(i <= n, { let(t) = a + b; a = b; b = t; i += 1 })
   b
 }
 )
 assert(fib_recursive(10) == fib_loop(10) == 55, "fib error")
 export(fib_recursive, fib_loop)
+fib_recursive(10)

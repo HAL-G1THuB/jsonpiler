@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use std::time::Instant;
 #[expect(clippy::modulo_arithmetic)]
 pub(crate) fn time_stamp() -> String {
   let now = now();
@@ -29,9 +30,10 @@ pub(crate) fn time_stamp() -> String {
     month += 1;
   }
   let day = days + 1;
-  format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z", year, month, day, hour, min, sec, millis)
+  format!("{year:04}-{month:02}-{day:02}T{hour:02}:{min:02}:{sec:02}.{millis:03}Z")
 }
-pub(crate) fn format_micros(micros: u128) -> String {
+pub(crate) fn format_micros(start: Instant) -> String {
+  let micros = start.elapsed().as_micros();
   let ms = micros / 1000;
   let frac = micros % 1000;
   format!("{ms}.{frac:03}ms")

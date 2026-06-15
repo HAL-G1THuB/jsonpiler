@@ -47,14 +47,6 @@ pub mod builtin_flags {
     (LABEL_NOT_RETURN, _UNREACHABLE, FN_NOT_RETURN, FN_RETURN)
   );
 }
-pub mod custom_insts {
-  pub const CQO: &[u8] = &[0x48, 0x99];
-  pub const RET: &[u8] = &[0xC3];
-  pub const CLD_REPNE_SCASB: &[u8] = &[0xFC, 0xF2, 0xAE];
-  pub const CLD_REP_MOVSB: &[u8] = &[0xFC, 0xF3, 0xA4];
-  pub const BTR_RAX_63: &[u8] = &[0x48, 0x0F, 0xBA, 0xF0, 0x3F];
-  pub const BTC_RAX_63: &[u8] = &[0x48, 0x0F, 0xBA, 0xF8, 0x3F];
-}
 pub mod gui_config {
   pub const GUI_H: u32 = 0x200;
   pub const GUI_W: u32 = 0x200;
@@ -78,16 +70,45 @@ pub mod format_config {
   ];
 }
 pub mod assembly_consts {
-  use crate::Register::{self, R8, R9, Rcx, Rdx};
-  pub const ARG_REGS: [Register; 4] = [Rcx, Rdx, R8, R9];
+  use crate::X64Reg::{self, *};
+  use crate::assembler::a64::register::A64Reg::{self, *};
+  pub const X64_ARG_REGS: [X64Reg; 4] = [Rcx, Rdx, R8, R9];
+  pub const A64_ARG_REGS: [A64Reg; 8] = [X0, X1, X2, X3, X4, X5, X6, X7];
+  pub const CP_UTF8: u32 = 65001;
   pub const IMAGE_BASE: u64 = 0x1_4000_0000;
-  pub const FILE_ALIGNMENT: u32 = 0x200;
-  pub const SECTION_ALIGNMENT: u32 = 0x1000;
+  pub const FILE_ALIGN: u32 = 0x200;
+  pub const SECTION_ALIGN: u32 = 0x1000;
   pub const PE_HEADER_OFFSET: u32 = 0x40;
+  pub const COFF_HEADER_SIZE: u32 = 0x18;
+  pub const SECTION_HEADER_SIZE: u32 = 0x28;
   pub const NUMBER_OF_SECTIONS: u16 = 7;
   pub const OPTIONAL_HEADER_SIZE: u16 = 0xF0;
-  pub const HEADERS_SIZE: u32 =
-    PE_HEADER_OFFSET + 0x18 + OPTIONAL_HEADER_SIZE as u32 + 0x28 * NUMBER_OF_SECTIONS as u32;
+  pub const HEADERS_SIZE: u32 = PE_HEADER_OFFSET
+    + COFF_HEADER_SIZE
+    + OPTIONAL_HEADER_SIZE as u32
+    + SECTION_HEADER_SIZE * NUMBER_OF_SECTIONS as u32;
+  pub const A64_TEXT_ADDR: u64 = 0x1_0000_0000;
+  pub const A64_SEG_ALIGN: u32 = 0x4000;
+  pub const A64_PAGE_SHIFT: u8 = 0xC;
+  pub const A64_PAGE_SIZE: u32 = 1 << A64_PAGE_SHIFT;
+  pub const STUB_SIZE: u32 = 0x10;
+  pub const STUB_HELPER_SIZE: u64 = 0x20;
+  pub const STUB_BINDER: [u8; 0x10] = *b"dyld_stub_binder";
+  pub const SYS_B: &str = "/usr/lib/libSystem.B.dylib";
+  pub const OBJC_A: &str = "/usr/lib/libobjc.A.dylib";
+  pub const NS_APP: &str = "NSApplication";
+  pub const APP_KIT: &str = "/System/Library/Frameworks/AppKit.framework/AppKit";
+  pub const CORE_GRAPHICS: &str = "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics";
+  pub const LIB_EDIT: &str = "/usr/lib/libedit.dylib";
+  pub const SIGHUP: i64 = 1;
+  pub const SIGINT: i64 = 2;
+  pub const SIGQUIT: i64 = 3;
+  pub const SIGILL: i64 = 4;
+  pub const SIGABRT: i64 = 6;
+  pub const SIGSEGV: i64 = 11;
+  pub const SIGTERM: i64 = 15;
+  pub const APP_DELEGATE: &str = "AppDelegate";
+  pub const SP: A64Reg = Xzr;
 }
 pub mod symbols {
   macro_rules! def_sym {
@@ -106,8 +127,8 @@ pub mod symbols {
     MSG_BOX,
     FLAG_GUI,
     HEAP,
-    LEAK_CNT,
-    CRITICAL_SECTION,
+    LEAK,
+    LOCK,
     INPUT,
     PRINT,
     PRINT_N,
@@ -117,22 +138,25 @@ pub mod symbols {
     STR_EQ,
     INT2STR,
     UTF8_SLICE,
+    CREATE_WINDOW,
   );
 }
 pub mod runtime_err {
   pub const ZERO_DIVISION: &str = "Division by zero";
   pub const TOO_LARGE_SHIFT: &str = "Shift amount exceeds 63 bits";
+  pub const IF_NO_TRUE_BRANCH: &str = "No `if` branch was true";
+  pub const ILL_INST: &str = "Illegal instruction";
   pub const ACCESS_VIOLATION: &str = "AccessViolation";
   pub const STACK_OVERFLOW: &str = "StackOverflow";
   pub const EXCEPTION_OCCURRED: &str = "ExceptionOccurred";
-  pub const WARNING: &str = "\n\u{256d}- Warning -------------------";
   pub const INTERNAL_ERR: &str = "InternalError";
-  pub const SYSTEM_EXIT: &str = "\n\u{256d}- Exit ----------------------";
-  pub const RUNTIME_ERR: &str = "\n\u{256d}- RuntimeError --------------";
+  pub const SYSTEM_EXIT: &str = "Exit";
+  pub const RUNTIME_ERR: &str = "RuntimeError";
   pub const WIN_API_ERR: &str = "\n| WinApiError:\n|   ";
   pub const ERR_END: &str = "\n\u{2570}-----------------------------\n";
-  pub const ERR_SEPARATE: &str = "\n|-----------------------------\n| ";
-  pub const HIDDEN_ERROR: &str = "
+  pub const ERR_END_NO_N: &str = "\u{2570}-----------------------------\n";
+  pub const ERR_SEP: &str = "\n|-----------------------------\n| ";
+  pub const HIDDEN_ERR: &str = "
 \u{256d}- ???Error ------------------
 | An unexpected error occurred.
 \u{2570}-----------------------------

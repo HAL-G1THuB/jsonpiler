@@ -1,104 +1,115 @@
 define(square, { n: Float }, Float, n * n)
-global(ball_x = 0.0)
-global(ball_y = 0.0)
-global(ball_vx = -15.0)
-global(ball_vy = 10.0)
-global(score_p1 = 0)
-global(score_p2 = 0)
-global(pos_p1 = 0.0)
-global(width = 512.0)
-global(height = 512.0)
-global(paddle_w = 8.0)
-global(paddle_h = 64.0)
-global(ball_r = 20.0)
-global(left_x = width / -2.0)
-global(right_x = width / 2.0)
-global(paddle_w_half = 4)
-global(paddle_h_half = paddle_h / 2.0)
-global(collision_x = height / 2.0 - ball_r)
-global(p1_surface = left_x + paddle_w)
-global(p1_cx = -252)
-global(p2_surface = right_x - paddle_w)
-global(p2_cx = 252)
-global(p1_cy = 0.0)
+global(ball_x) = 0.0
+global(ball_y) = 0.0
+global(ball_vx) = -15.0
+global(ball_vy) = 10.0
+global(score_p1) = 0
+global(score_p2) = 0
+global(pos_p1) = 0.0
+global(width) = 512.0
+global(height) = 512.0
+global(paddle_w) = 8.0
+global(paddle_h) = 64.0
+global(ball_r) = 20.0
+global(left_x) = width / -2.0
+global(right_x) = width / 2.0
+global(paddle_w_half) = 4
+global(p_h_half) = paddle_h / 2.0
+global(collision_x) = height / 2.0 - ball_r
+global(p1_surface) = left_x + paddle_w
+global(p1_cx) = -252
+global(p2_surface) = right_x - paddle_w
+global(p2_cx) = 252
+global(p1_cy) = 0.0
 import("random.jspl", rand_range)
+define(in_bounds, { center: Int; radius: Int; pos: Int }, Bool,
+  abs(pos - center) <= radius
+)
+define(in_bounds_f, { center: Float; radius: Float; pos: Float }, Bool,
+  abs(pos - center) <= radius
+)
 define(rgb, { r: Int; g: Int; b: Int }, Int, r * 256 * 256 + g * 256 + b)
-define(paddle_hit, { paddle_surface: Float; paddle_cy: Float; dir: Int }, Bool,
+define(paddle_hit, { p_surface: Float; p_cy: Float; dir: Int }, Bool,
 {
-  let(dx = ball_x - paddle_surface)
-  let(p_bottom = paddle_cy - paddle_h_half)
-  let(p_top = paddle_cy + paddle_h_half)
-  let(dy_bottom = ball_y - p_bottom)
-  let(dy_top = ball_y - p_top)
-  let(rect_x_ok = abs(dx) <= ball_r)
-  let(rect_y_ok = p_bottom <= ball_y <= p_top)
-  let(collision_rect = rect_x_ok and rect_y_ok)
-  let(d2_corner_bottom = square(dx) + square(dy_bottom))
-  let(d2_corner_top = square(dx) + square(dy_top))
-  if({
-      collision_rect
-    } or {
-      d2_corner_bottom <= square(ball_r)
-    } or {
-      d2_corner_top <= square(ball_r)
-    },
-  {
-    let(speed = sqrt(square(ball_vx) + square(ball_vy)))
-    speed *= 1.05
-    let(hit_pos = { ball_y - paddle_cy } / paddle_h_half)
-    if([ hit_pos > 0.9, hit_pos = 0.9 ], [ hit_pos < -0.9, hit_pos = -0.9 ])
-    ball_vy = hit_pos * speed
-    ball_vx = abs(sqrt(square(speed) - square(ball_vy))) * Float(dir)
-    ball_x = paddle_surface + ball_r * Float(dir)
-    ret(true)
-  }
+  let(dx) = ball_x - p_surface
+  let(p_bottom) = p_cy - p_h_half
+  let(p_top) = p_cy + p_h_half
+  let(dy_bottom) = ball_y - p_bottom
+  let(dy_top) = ball_y - p_top
+  let(rect_x_ok) = in_bounds_f(p_surface, ball_r, ball_x)
+  let(rect_y_ok) = in_bounds_f(p_cy, p_h_half, ball_y)
+  let(collision_surface) = rect_x_ok and rect_y_ok
+  let(d2_corner_bottom) = square(dx) + square(dy_bottom)
+  let(d2_corner_top) = square(dx) + square(dy_top)
+  if(
+    [
+      {
+        collision_surface
+      } or {
+        d2_corner_bottom <= square(ball_r)
+      } or {
+        d2_corner_top <= square(ball_r)
+      },
+    {
+      let(speed) = sqrt(square(ball_vx) + square(ball_vy))
+      speed *= 1.05
+      let(hit_pos) = { ball_y - p_cy } / p_h_half
+      hit_pos = if([ hit_pos > 0.9, 0.9 ], [ hit_pos < -0.9, -0.9 ], [ true, hit_pos ])
+      ball_vy = hit_pos * speed
+      ball_vx = abs(sqrt(square(speed) - square(ball_vy))) * Float(dir)
+      ball_x = p_surface + ball_r * Float(dir)
+      true
+    }
+    ],
+    [ true, false ]
   )
-  false
 }
 )
 define(in_score_cell, { x: Int; y: Int; score: Int; invert_x: Bool }, Bool,
 {
-  let(score_per_line = 5)
-  let(base_x = -248)
-  let(base_y = 248)
+  let(score_per_line) = 5
+  let(base_x) = -248
+  let(base_y) = 248
   if(invert_x, base_x *= -1)
-  let(score_size = 24)
-  let(spacing = 8)
-  let(score_span = score_size + spacing)
-  let(row = { base_y - y } / score_span)
-  let(column = 0)
-  let(paddle_surface = x - base_x)
+  let(score_size) = 24
+  let(spacing) = 8
+  let(score_span) = score_size + spacing
+  let(row) = { base_y - y } / score_span
+  let(column) = 0
+  let(paddle_surface) = x - base_x
   if(invert_x, paddle_surface *= -1)
   column = { paddle_surface / score_span } % score_per_line
-  let(index = row * score_per_line + column)
-  let(cell_y = base_y - row * score_span - score_size)
-  let(cell_offset = column * score_span)
-  let(cell_x = base_x)
+  let(index) = row * score_per_line + column
+  let(cell_y) = base_y - row * score_span - score_size
+  let(cell_offset) = column * score_span
+  let(cell_x) = base_x
   if([ invert_x, cell_x -= cell_offset + score_size ], [ true, cell_x += cell_offset ])
-  let(in_cell_x = x + 1 - score_size <= cell_x <= x)
-  let(in_cell_y = y + 1 - score_size <= cell_y <= y)
+  let(in_cell_x) = x + 1 - score_size <= cell_x <= x
+  let(in_cell_y) = y + 1 - score_size <= cell_y <= y
   if(index < score and in_cell_x and in_cell_y, ret(true))
   false
 }
 )
-define(update, { my: Int }, Null,
+define(update, { p2_cy: Int }, Null,
 {
   ball_x += ball_vx
   ball_y += ball_vy
-  let(follow_ratio = { 256.0 - ball_x } / 1024.0)
+  let(follow_ratio) = { 256.0 - ball_x } / 1024.0
   p1_cy = { pos_p1 + follow_ratio * ball_y } / { 1.0 + follow_ratio }
   if(
     [ pos_p1 - p1_cy > 16.0, p1_cy = pos_p1 - 16.0 ],
     [ pos_p1 - p1_cy < -16.0, p1_cy = pos_p1 + 16.0 ]
   )
-  let(p2_cy = Float(my))
   pos_p1 = p1_cy
   paddle_hit(p1_surface, p1_cy, 1)
-  paddle_hit(p2_surface, p2_cy, -1)
-  if(ball_y < -(collision_x), { ball_y = -(collision_x); ball_vy *= -1.0 })
-  if(ball_y > collision_x, { ball_y = collision_x; ball_vy *= -1.0 })
-  let(left_pass = ball_x < left_x - ball_r)
-  let(right_pass = ball_x > right_x + ball_r)
+  paddle_hit(p2_surface, Float(p2_cy), -1)
+  ball_y = if(
+    [ ball_y < -(collision_x), { ball_vy *= -1.0; -(collision_x) } ],
+    [ ball_y > collision_x, { ball_vy *= -1.0; collision_x } ],
+    [ true, ball_y ]
+  )
+  let(left_pass) = ball_x + ball_r < left_x
+  let(right_pass) = ball_x - ball_r > right_x
   if(left_pass,
   {
     score_p2 += 1
@@ -119,27 +130,20 @@ define(update, { my: Int }, Null,
   )
 }
 )
-define(in_rect, { x: Int; y: Int; cx: Int; cy: Int; w_half: Int; h_half: Int }, Bool,
-{
-  let(in_x = cx - w_half <= x <= cx + w_half)
-  let(in_y = cy - h_half <= y <= cy + h_half)
-  in_x and in_y
-}
+define(in_rect, { x: Int; y: Int; cx: Int; cy: Int }, Bool,
+  in_bounds(cx, paddle_w_half, x) and in_bounds(cy, Int(p_h_half), y)
 )
-define(ping_pong, { x: Int; y: Int; _frame: Int; _mx: Int; my: Int }, Int,
+define(ping_pong, { x: Int; y: Int; _frame: Int; _mx: Int; p2_cy: Int }, Int,
 {
-  if(x == y == -256, update(my))
-  let(dist2 = square(Float(x) - ball_x) + square(Float(y) - ball_y))
-  if(dist2 < square(ball_r), ret(rgb(255, 255, 0)))
-  if(in_rect(x, y, p1_cx, Int(p1_cy), paddle_w_half, Int(paddle_h_half)),
-    ret(rgb(0, 255, 255))
-  )
-  if(in_rect(x, y, p2_cx, my, paddle_w_half, Int(paddle_h_half)), ret(rgb(255, 0, 255)))
+  if(x == y == -256, update(p2_cy))
+  let(ball_d2) = square(Float(x) - ball_x) + square(Float(y) - ball_y)
+  if(ball_d2 < square(ball_r), ret(rgb(255, 255, 0)))
+  if(in_rect(x, y, p1_cx, Int(p1_cy)), ret(rgb(0, 255, 255)))
+  if(in_rect(x, y, p2_cx, p2_cy), ret(rgb(255, 0, 255)))
   if(in_score_cell(x, y, score_p2, true), ret(rgb(255, 0, 255)))
   if(in_score_cell(x, y, score_p1, false), ret(rgb(0, 255, 255)))
-  let(center = x == 0 and { { abs(y) + 8 } / 16 } % 2 == 0)
-  if(center, ret(rgb(255, 255, 255)))
-  rgb(0, 0, 0)
+  let(in_center_line) = x == 0 and { { abs(y) + 8 } / 16 } % 2 == 0
+  if([ in_center_line, rgb(255, 255, 255) ], [ true, rgb(0, 0, 0) ])
 }
 )
 main(

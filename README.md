@@ -29,12 +29,21 @@ Jsonpiler now has a function to support GUI.
 
 See **[CHANGELOG](https://github.com/HAL-G1THuB/jsonpiler/blob/main/CHANGELOG.md)** for full history and plans.
 
-### v0.10.4
+### v0.11.0
 
+- Added
+  - JsonpilerExtension v0.3.0
+  - macOS support for the VSCode extension
+  - Symbol renaming support in the LSP server
+  - if expressions can now return values
+  - Added an icon for .jspl files in the VSCode extension
+- Changed
+  - Changed let(x = 0) to let(x) = 0
+  - Changed global(x = 0) to global(x) = 0
+  - Improved argument passing efficiency by changing parameter ordering
 - Fixed
-  - Released JsonpilerExtension v0.2.4
-  - Fixed an error that occurred when attempting to open a non-existent file
-  - Fixed an error in the GUI function
+  - Fixed an issue where >> was treated as an unsigned shift operator
+  - Updated Windows x64 calling convention compliance when using XMM registers as argument registers
 
 ## Requirements
 

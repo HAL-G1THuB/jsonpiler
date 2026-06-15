@@ -1,5 +1,10 @@
 use super::utility::*;
 use crate::prelude::*;
+impl File {
+  pub(crate) fn parse_jspl(&mut self) -> ParseErrOR<Pos<Json>> {
+    self.parser.parse_jspl(&self.rel_path)
+  }
+}
 impl Pos<Parser> {
   pub(crate) fn parse_block(&mut self, is_top_level: bool) -> ParseErrOR<Json> {
     self.check_eof()?;
@@ -20,13 +25,16 @@ impl Pos<Parser> {
       }
       let value = self.try_operator(0)?;
       if let Some(pos) = entry_pos {
-        self.warn(pos, UselessLiteral, &self.val.file.clone());
+        self.val.warns.push(pos.with(UselessLiteral));
       }
       if let Object(Lit(object)) = value.val {
-        entries.extend(object);
+        entries.extend_from_slice(&object);
       } else {
         entry_pos = Some(value.pos);
-        entries.push((value.pos.with("value".to_owned()), value.pos.with(Array(Lit(vec![value])))));
+        entries.push((
+          value.pos.with("value".into()),
+          value.pos.with(Array(ArrayType::new(None, None), Lit(vec![value]))),
+        ));
       }
     }
     Ok(Object(Lit(entries)))
@@ -38,7 +46,7 @@ impl Pos<Parser> {
     let mut args = vec![];
     if self.consume_if(b')')? {
       self.set_size(&mut pos);
-      return Ok(pos.with(Array(Lit(args))));
+      return Ok(pos.with(Array(ArrayType::new(None, None), Lit(args))));
     }
     loop {
       self.skip_ws_comment(false)?;
@@ -57,7 +65,7 @@ impl Pos<Parser> {
       self.skip_ws_comment(false)?;
     }
     self.set_size(&mut pos);
-    Ok(pos.with(Array(Lit(args))))
+    Ok(pos.with(Array(ArrayType::new(None, None), Lit(args))))
   }
   fn parse_ident(&mut self) -> ParseErrOR<Pos<String>> {
     let mut pos = self.pos;
@@ -74,18 +82,19 @@ impl Pos<Parser> {
     self.set_size(&mut pos);
     Ok(pos.with(self.get_slice(pos)?.into()))
   }
-  pub(crate) fn parse_jspl(&mut self) -> ParseErrOR<Pos<Json>> {
+  #[expect(clippy::print_stderr)]
+  pub(crate) fn parse_jspl(&mut self, rel_path: &str) -> ParseErrOR<Pos<Json>> {
     if self.skip_ws_comment(true).is_err() {
       return Ok(self.pos.with(Null(Lit(()))));
     }
     let mut pos = self.pos;
     let val = self.parse_block(true)?;
     self.set_size(&mut pos);
-    if self.skip_ws_comment(true).is_err() {
-      Ok(pos.with(val))
-    } else {
-      Err(self.pos.with(ExpectedToken(TokenKind::Eof)))
+    let eof = self.skip_ws_comment(true).is_err();
+    for warn in &self.val.warns {
+      eprintln!("{}", self.format_err(&warning!(warn.pos, warn.val.clone()), rel_path));
     }
+    if eof { Ok(pos.with(val)) } else { Err(self.pos.with(ExpectedToken(TokenKind::Eof))) }
   }
   fn skip_space_check_sep(&mut self) -> bool {
     while (self.pos.offset as usize) < self.val.text.len() {
@@ -118,7 +127,7 @@ impl Pos<Parser> {
             }
             self.val.comments.insert(
               pos.offset,
-              Comment { leading: is_separated, text: self.get_slice(pos)?.to_owned() },
+              Comment { leading: is_separated, text: self.get_slice(pos)?.into() },
             );
             self.pos.line += 1;
             is_separated = true;
@@ -159,11 +168,11 @@ impl Pos<Parser> {
       && obj[0].0.pos.info == INFO_OP
       && operator.val == obj[0].0.val
       && !matches!(obj[0].0.val.as_ref(), "<<" | ">>" | "%")
-      && let Array(Lit(args)) = &mut obj[0].1.val
+      && let Array(_, Lit(args)) = &mut obj[0].1.val
     {
       args.push(right);
     } else {
-      let args = pos.with(Array(Lit(vec![take(left), right])));
+      let args = pos.with(Array(ArrayType::new(None, None), Lit(vec![take(left), right])));
       *left = pos.with(Object(Lit(vec![(operator.clone(), args)])));
     }
     Ok(())
@@ -236,7 +245,7 @@ impl Pos<Parser> {
         self.skip_ws_comment(false)?;
         if self.consume_if(b']')? {
           self.set_size(&mut pos);
-          Array(Lit(vec![]))
+          Array(ArrayType::new(None, None), Lit(vec![]))
         } else {
           let mut array = vec![];
           loop {
@@ -248,7 +257,7 @@ impl Pos<Parser> {
             }
             if self.consume_if(b']')? {
               self.set_size(&mut pos);
-              break Array(Lit(array));
+              break Array(ArrayType::new(None, None), Lit(array));
             }
             if !did_consume {
               self.expect(b',')?;

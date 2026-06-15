@@ -1,5 +1,9 @@
 # Change Log
 
+## JsonpilerExtension v0.3
+
+### v0.3.0 (jsonpiler v0.11.0)
+
 ## JsonpilerExtension v0.2
 
 ### v0.2.4 (jsonpiler v0.10.4)

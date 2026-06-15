@@ -1,7 +1,7 @@
 define(rand_range, { max: Int }, Int,
 {
   assert(0 < max, "The argument to rand_range must be greater than zero.")
-  let(rand = random())
+  let(rand) = random()
   if(rand == 1 << 63, ret(0))
   abs(rand) % max
 }

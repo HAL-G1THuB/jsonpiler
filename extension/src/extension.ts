@@ -5,14 +5,19 @@ import { LanguageClient, TransportKind } from "vscode-languageclient/node";
 let client: LanguageClient | undefined;
 let terminal: vscode.Terminal | undefined;
 export function activate(context: vscode.ExtensionContext): void {
-  const jsonpilerPath = path.join(
-    context.extensionPath,
-    "bin",
-    "jsonpiler.exe",
-  );
+  const jsonpilerName =
+    process.platform === "win32" ? "jsonpiler.exe" : "jsonpiler";
+  const jsonpilerPath = path.join(context.extensionPath, "bin", jsonpilerName);
   if (!fs.existsSync(jsonpilerPath)) {
-    vscode.window.showErrorMessage("jsonpiler.exe not found");
+    vscode.window.showErrorMessage("jsonpiler not found");
     return;
+  }
+  if (process.platform === "darwin" || process.platform === "linux") {
+    try {
+      fs.chmodSync(jsonpilerPath, 0o755);
+    } catch (e) {
+      console.error("chmod failed:", e);
+    }
   }
   const disposable = vscode.commands.registerCommand("jspl.run", async () => {
     const editor = vscode.window.activeTextEditor;
@@ -37,7 +42,8 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     const isWin = process.platform === "win32";
     const shell = vscode.env.shell;
-    const isPowerShell = shell.toLowerCase().includes("powershell");
+    const isPowerShell =
+      shell.toLowerCase().includes("powershell") || shell.includes("pwsh");
     if (isPowerShell) {
       terminal.sendText(
         "Set-PSReadLineOption -HistorySaveStyle SaveNothing",
@@ -52,6 +58,14 @@ export function activate(context: vscode.ExtensionContext): void {
     terminal.sendText(cmd, true);
   });
   context.subscriptions.push(disposable);
+  const outputChannel = vscode.window.createOutputChannel(
+    "JSPL Language Server Trace",
+    { log: true },
+  );
+  const traceOutputChannel = vscode.window.createOutputChannel(
+    "JSPL Client Trace",
+    { log: true },
+  );
   const serverOptions = {
     command: jsonpilerPath,
     args: ["server"],
@@ -59,8 +73,15 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   const clientOptions = {
     documentSelector: [{ scheme: "file", language: "jspl" }],
+    outputChannel,
+    traceOutputChannel,
   };
-  client = new LanguageClient("JSPL-LSP", serverOptions, clientOptions);
+  client = new LanguageClient(
+    "jspl",
+    "JSPL Language Server",
+    serverOptions,
+    clientOptions,
+  );
   context.subscriptions.push(client);
   client.start();
 }

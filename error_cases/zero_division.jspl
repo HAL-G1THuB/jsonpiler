@@ -1,2 +1,2 @@
 # An error will occur at runtime.
-let(zero = 0); 1 / zero
+let(zero) = 0; 1 / zero

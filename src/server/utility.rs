@@ -1,20 +1,90 @@
 use crate::prelude::*;
+use std::path;
+pub(crate) struct LogMsg {
+  pub msg: String,
+  pub msg_type: MsgType,
+  pub verbose: Option<String>,
+}
+impl LogMsg {
+  pub fn new(msg_type: MsgType, msg: String, verbose: Option<String>) -> Self {
+    Self { msg_type, msg, verbose }
+  }
+}
+#[derive(Debug, Clone, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub(crate) enum IdKind {
+  Int(i64),
+  #[default]
+  Null,
+  Str(String),
+}
+impl From<IdKind> for JsonNoPos {
+  fn from(id: IdKind) -> Self {
+    match id {
+      IdKind::Null => NullN,
+      IdKind::Int(int) => IntN(int),
+      IdKind::Str(string) => StrN(string),
+    }
+  }
+}
+impl TryFrom<JsonNoPos> for IdKind {
+  type Error = ();
+  fn try_from(json: JsonNoPos) -> Result<Self, Self::Error> {
+    match json {
+      NullN => Ok(IdKind::Null),
+      IntN(int) => Ok(IdKind::Int(int)),
+      StrN(string) => Ok(IdKind::Str(string)),
+      ArrayN(_) | BoolN(_) | FloatN(_) | ObjectN(_) => Err(()),
+    }
+  }
+}
+impl fmt::Display for IdKind {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let json_no_pos: JsonNoPos = self.clone().into();
+    json_no_pos.fmt(f)
+  }
+}
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[expect(clippy::arbitrary_source_item_ordering)]
+pub(crate) enum Trace {
+  #[default]
+  Off = 0,
+  Messages = 1,
+  Verbose = 2,
+}
+impl From<&str> for Trace {
+  fn from(str: &str) -> Self {
+    match str {
+      "off" => Trace::Off,
+      "messages" => Trace::Messages,
+      "verbose" => Trace::Verbose,
+      _ => Trace::Off,
+    }
+  }
+}
+#[derive(Debug, Clone, Copy)]
+#[expect(clippy::arbitrary_source_item_ordering)]
+pub(crate) enum MsgType {
+  Error = 1,
+  Warning = 2,
+  Info = 3,
+  Log = 4,
+}
 pub(crate) fn uri2path(uri: &str) -> String {
-  let raw = if let Some(path) = uri.strip_prefix("file:///") {
-    path.to_owned()
-  } else if let Some(path) = uri.strip_prefix("file://localhost/") {
-    path.to_owned()
+  let raw = if let Some(path) = uri.strip_prefix("file://localhost/") {
+    if cfg!(target_os = "windows") { path.into() } else { format!("/{path}") }
+  } else if let Some(path) = uri.strip_prefix("file:///") {
+    if cfg!(target_os = "windows") { path.into() } else { format!("/{path}") }
   } else if let Some(path) = uri.strip_prefix("file://") {
-    format!(r#"\\{path}"#)
+    if cfg!(target_os = "windows") { format!(r#"\\{path}"#) } else { format!("//{path}") }
   } else {
-    uri.to_owned()
+    uri.into()
   };
-  let mut file = percent_decode(&raw).replace('/', r"\");
-  if file.len() >= 2 && file.as_bytes()[1] == b':' {
+  let mut file = percent_decode(&raw).replace('/', path::MAIN_SEPARATOR_STR);
+  if cfg!(target_os = "windows") && file.len() >= 2 && file.as_bytes()[1] == b':' {
     let mut chars = file.chars();
     if let Some(first) = chars.next() {
-      let rest = chars.as_str().to_owned();
-      file = first.to_uppercase().collect::<String>();
+      let rest: String = chars.as_str().into();
+      file = first.to_uppercase().collect();
       file.push_str(&rest);
     }
   }
@@ -47,14 +117,14 @@ pub(crate) fn percent_decode(input: &str) -> String {
     out.push(bytes[idx]);
     idx += 1;
   }
-  String::from_utf8(out).unwrap_or_else(|_| input.to_owned())
+  String::from_utf8(out).unwrap_or_else(|_| input.into())
 }
 pub(crate) fn path2uri(path: &str) -> String {
   let mut string = path.replace('\\', "/");
   string = if let Some(path_wo_prefix) = string.strip_prefix("//?/UNC/") {
     format!("//{path_wo_prefix}")
   } else if let Some(path_wo_prefix) = string.strip_prefix("//?/") {
-    path_wo_prefix.to_owned()
+    path_wo_prefix.into()
   } else {
     string
   };
@@ -64,7 +134,13 @@ pub(crate) fn path2uri(path: &str) -> String {
     first.make_ascii_lowercase();
   }
   let encoded = percent_encode(&string);
-  if encoded.starts_with("//") { format!("file:{encoded}") } else { format!("file:///{encoded}") }
+  if encoded.starts_with("//") {
+    format!("file:{encoded}")
+  } else if encoded.starts_with('/') {
+    format!("file://{encoded}")
+  } else {
+    format!("file:///{encoded}")
+  }
 }
 #[expect(clippy::string_slice)]
 pub(crate) fn get_line_str(text: &str, line: usize) -> Option<(usize, &str)> {
@@ -88,7 +164,6 @@ pub(crate) fn get_line_str(text: &str, line: usize) -> Option<(usize, &str)> {
   }
   None
 }
-#[expect(clippy::cast_possible_truncation)]
 pub(crate) fn range2offset(text: &str, position: &JsonNoPos) -> Option<usize> {
   let line = position.get_int("line")?.cast_unsigned() as usize;
   let (line_start, line_str) = get_line_str(text, line)?;
@@ -108,27 +183,26 @@ pub(crate) fn range2offset(text: &str, position: &JsonNoPos) -> Option<usize> {
   }
   Some(line_start + line_str.len())
 }
-#[expect(clippy::cast_possible_truncation)]
-pub(crate) fn offset2range(text: &str, offset: usize) -> (u32, usize) {
-  let mut current_offset = 0;
+pub(crate) fn offset2range(text: &str, offset: u32) -> (u32, u32) {
+  let mut current_off = 0;
   for (line, raw_line) in text.split_inclusive('\n').enumerate() {
-    let line_len = raw_line.len();
-    if offset < current_offset + line_len {
+    let line_len = len_u32(raw_line.as_bytes()).unwrap_or(0);
+    if offset < current_off + line_len {
       let line_str = raw_line.trim_end_matches(['\n', '\r']);
       let mut utf16_count = 0;
       for (idx, ch) in line_str.char_indices() {
-        if current_offset + idx == offset {
+        if current_off + idx as u32 == offset {
           return (line as u32, utf16_count);
         }
-        utf16_count += ch.len_utf16();
+        utf16_count += ch.len_utf16() as u32;
       }
       return (line as u32, utf16_count);
     }
-    current_offset += line_len;
+    current_off += line_len;
   }
   let last_line = text.lines().count().saturating_sub(1);
   let last_line_str = text.lines().last().unwrap_or("");
-  let utf16_count = last_line_str.chars().map(|char| char.len_utf16()).sum();
+  let utf16_count = last_line_str.chars().map(|char| char.len_utf16() as u32).sum();
   (last_line as u32, utf16_count)
 }
 pub(crate) fn floor_char_boundary(source: &str, mut index: usize) -> usize {
@@ -140,8 +214,8 @@ pub(crate) fn floor_char_boundary(source: &str, mut index: usize) -> usize {
   index
 }
 pub(crate) fn format_range(
-  (s_line, s_char): (u32, usize),
-  (e_line, e_char): (u32, usize),
+  (s_line, s_char): (u32, u32),
+  (e_line, e_char): (u32, u32),
 ) -> JsonNoPos {
   ObjectN(vec![
     (
@@ -160,21 +234,14 @@ pub(crate) fn format_range(
     ),
   ])
 }
-// fn find_json(json: &Pos<Json>, offset: u32) -> Option<(Json, Position)> {
+// fn find_json(json: &Pos<Json>, offset: u32) -> Option<&Pos<Json>> {
 //   if !json.pos.in_range(offset) {
 //     return None;
 //   }
-//   match &json.val {
-//     Object(Lit(object)) => object.iter().find_map(|(key, value)| {
-//       if key.pos.in_range(offset) {
-//         Some((Str(Lit(key.val.clone())), key.pos))
-//       } else {
-//         find_json(value, offset)
-//       }
-//     }),
-//     Array(Lit(array)) => array.iter().find_map(|item| find_json(item, offset)),
-//     Array(_) | Bool(_) | Float(_) | Int(_) | Null(_) | Object(_) | Str(_) => {
-//       Some((json.val.clone(), json.pos))
+//   for child in json.val.children() {
+//     if let Some(result) = find_json(child, offset) {
+//       return Some(result);
 //     }
 //   }
+//   Some(json)
 // }

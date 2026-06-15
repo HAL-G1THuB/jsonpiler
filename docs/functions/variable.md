@@ -10,7 +10,7 @@ Introduces a new scope,
 evaluates the expression in order, and returns the result.
 
 ```jspl
-scope(let(x = 1))
+scope(let(x) = 1)
 x
 
 =>
@@ -29,7 +29,7 @@ x
 ## let
 
 ```jspl
-let(Ident = Any) -> Null
+let(Ident) = Any -> Null
 ```
 
 Creates a **local variable** with the specified name and assigns the given value.
@@ -43,7 +43,7 @@ Currently, the following types are **not assignable**:
 ## global
 
 ```jspl
-global(Ident = Any) -> Null
+global(Ident) = Any -> Null
 ```
 
 Creates a **global variable** with the specified name and assigns the given value.
